@@ -1,0 +1,3 @@
+RewriteEngine On
+RewriteCond %{HTTPS} !=on
+RewriteRule ^(.*)$ https://cinerian.com/$1 [R=301,L]

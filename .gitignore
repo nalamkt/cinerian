@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.vite/
+
+# Local editor / cache
+.idea/
+.vscode/
+*.swp
+
+# XAMPP temp artifacts
+_tmp_*

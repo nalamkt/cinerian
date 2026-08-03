@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cinerian — Prototipo</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;700&family=Saira:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #111; display: flex; flex-direction: column; align-items: center; min-height: 100vh; font-family: 'Saira', sans-serif; padding: 20px 0 40px; }
+
+/* Nav pills */
+.screen-nav { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; max-width: 700px; padding: 0 10px; }
+.nav-pill { padding: 6px 14px; border-radius: 20px; font-size: 11px; font-family: 'Rubik', sans-serif; font-weight: 700; cursor: pointer; border: 1px solid #3a3528; background: #1c1a14; color: #5a5240; letter-spacing: 0.5px; }
+.nav-pill.active { background: #ffb600; color: #26231b; border-color: #ffb600; }
+
+.device-frame { width: 340px; min-height: 700px; background: #26231b; border-radius: 40px; border: 2px solid #3a3528; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+.status-bar { display: flex; justify-content: space-between; align-items: center; padding: 14px 24px 6px; font-size: 11px; color: #7a6e55; font-family: 'Saira', sans-serif; flex-shrink: 0; }
+.screen { display: none; flex: 1; flex-direction: column; background: #26231b; overflow: hidden; position: relative; }
+.screen.active { display: flex; }
+.scroll-body { flex: 1; overflow-y: auto; }
+.scroll-body::-webkit-scrollbar { display: none; }
+
+/* ── BRAND ── */
+:root {
+  --gold: #ffb600;
+  --dark: #26231b;
+  --card: #1c1a14;
+  --border: #3a3528;
+  --text: #f5e9b8;
+  --muted: #8a7e60;
+  --dim: #5a5240;
+  --very-dim: #4a4232;
+}
+
+/* ── COMMON ── */
+.header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px 8px; }
+.header-logo { font-family: 'Rubik', sans-serif; font-size: 18px; font-weight: 700; color: var(--gold); letter-spacing: 4px; }
+.icon-btn { width: 32px; height: 32px; border-radius: 50%; background: var(--card); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.tab-bar { display: flex; border-bottom: 1px solid var(--border); padding: 0 20px; flex-shrink: 0; }
+.tab { flex: 1; text-align: center; padding: 10px 0; font-size: 11px; font-family: 'Rubik', sans-serif; font-weight: 700; letter-spacing: 1px; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; position: relative; }
+.tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.section-title { font-family: 'Rubik', sans-serif; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 1.5px; margin-bottom: 12px; }
+.bottom-nav { position: absolute; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--border); display: flex; padding: 10px 0 16px; border-radius: 0 0 38px 38px; z-index: 5; }
+.bnav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; }
+.bnav-label { font-size: 9px; color: var(--dim); font-family: 'Saira', sans-serif; }
+.bnav-item.active .bnav-label { color: var(--gold); }
+.sheet-overlay { position: absolute; inset: 0; background: rgba(15,12,8,0.8); z-index: 20; display: none; }
+.bottom-sheet { position: absolute; bottom: 0; left: 0; right: 0; background: var(--card); border-radius: 20px 20px 0 0; border-top: 1px solid var(--border); z-index: 21; padding-bottom: 32px; display: none; max-height: 90%; overflow-y: auto; }
+.bottom-sheet::-webkit-scrollbar { display: none; }
+.sheet-handle { width: 36px; height: 3px; background: var(--border); border-radius: 2px; margin: 12px auto 0; }
+.btn-primary { width: 100%; padding: 13px; border-radius: 30px; background: var(--gold) !important; color: var(--dark) !important; font-size: 13px; font-weight: 700; font-family: 'Rubik', sans-serif; letter-spacing: 1.5px; border: none !important; cursor: pointer; }
+.btn-outline { width: 100%; padding: 12px; border-radius: 30px; background: transparent !important; color: var(--gold) !important; font-size: 12px; font-weight: 700; font-family: 'Rubik', sans-serif; border: 1.5px solid var(--gold) !important; cursor: pointer; }
+.btn-ghost { width: 100%; padding: 8px; background: none !important; border: none !important; color: var(--dim) !important; font-size: 12px; font-family: 'Saira', sans-serif; cursor: pointer; text-align: center; }
+
+/* ── SCREEN 1: ONBOARDING ── */
+.onb-logo { font-family: 'Rubik', sans-serif; font-size: 28px; font-weight: 700; color: var(--gold); letter-spacing: 6px; text-align: center; margin-top: 48px; }
+.onb-sub { font-size: 10px; color: var(--dim); letter-spacing: 3px; text-align: center; margin-top: 4px; font-family: 'Saira', sans-serif; }
+.onb-dots { display: flex; gap: 6px; justify-content: center; margin-top: 18px; }
+.onb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: all 0.3s; }
+.onb-dot.active { width: 20px; border-radius: 3px; background: var(--gold); }
+.onb-slide { display: none; flex-direction: column; align-items: center; padding: 0 24px; }
+.onb-slide.active { display: flex; }
+.onb-illustration { width: 220px; height: 130px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); margin: 28px 0 18px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.onb-title { font-family: 'Rubik', sans-serif; font-size: 16px; font-weight: 700; color: var(--gold); text-align: center; letter-spacing: 0.5px; }
+.onb-desc { font-size: 12px; color: var(--muted); text-align: center; margin-top: 8px; line-height: 1.6; font-family: 'Saira', sans-serif; }
+.mini-feed { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 10px; }
+.mini-item { display: flex; align-items: center; gap: 8px; background: var(--dark); border-radius: 8px; padding: 7px 10px; border: 1px solid var(--border); }
+.mini-av { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: var(--dark); font-family: 'Rubik', sans-serif; }
+.mini-name { font-size: 9px; color: #7a6e55; font-family: 'Saira', sans-serif; }
+.mini-movie { font-size: 11px; color: #e8d48a; font-weight: 500; font-family: 'Saira', sans-serif; }
+.mini-stars { font-size: 10px; color: var(--gold); margin-left: auto; }
+
+/* LOGIN */
+.login-wrap { padding: 0 24px; display: flex; flex-direction: column; align-items: center; }
+.login-title { font-family: 'Rubik', sans-serif; font-size: 20px; font-weight: 700; color: var(--text); text-align: center; margin-bottom: 4px; }
+.login-sub { font-size: 12px; color: var(--dim); text-align: center; margin-bottom: 22px; font-family: 'Saira', sans-serif; }
+.social-btn { width: 100%; padding: 13px 16px; border-radius: 30px; background: var(--card) !important; border: 1px solid var(--border) !important; color: #c8b87a !important; font-size: 13px; font-family: 'Saira', sans-serif; display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px; }
+.divider { display: flex; align-items: center; gap: 10px; margin: 12px 0; width: 100%; }
+.divider-line { flex: 1; height: 1px; background: var(--border); }
+.divider-text { font-size: 11px; color: var(--very-dim); font-family: 'Saira', sans-serif; }
+
+/* ── SCREEN 2: HOME ── */
+.controls-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.toggle-wrap { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.toggle-track { width: 32px; height: 18px; border-radius: 9px; background: var(--border); position: relative; transition: background 0.2s; flex-shrink: 0; }
+.toggle-track.on { background: var(--gold); }
+.toggle-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--dark); position: absolute; top: 2px; left: 2px; transition: left 0.2s; }
+.toggle-track.on .toggle-thumb { left: 16px; }
+.toggle-label { font-size: 10px; font-family: 'Rubik', sans-serif; font-weight: 700; color: var(--dim); }
+.toggle-label.on { color: var(--gold); }
+.hint-text { font-size: 9px; color: var(--border); font-family: 'Saira', sans-serif; }
+.poster-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 7px; padding: 10px 14px 80px; }
+.poster-wrap { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 2/3; }
+.poster-card { width: 100%; height: 100%; position: absolute; inset: 0; border-radius: 10px; overflow: hidden; cursor: pointer; border: 1px solid var(--border); background: var(--card); }
+.poster-card.rank-1 { border-color: var(--gold); }
+.poster-card.rank-2 { border-color: #8a8a7a; }
+.poster-card.rank-3 { border-color: #c07840; }
+.poster-card.seen-card { opacity: 0.4; }
+.poster-bg { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 26px; }
+.rank-badge { position: absolute; top: 5px; left: 5px; font-family: 'Rubik', sans-serif; font-size: 11px; font-weight: 700; border-radius: 5px; padding: 2px 5px; line-height: 1; }
+.rank-badge.gold { background: var(--gold); color: var(--dark); }
+.rank-badge.silver { background: #aaa; color: var(--dark); }
+.rank-badge.bronze { background: #c07840; color: var(--dark); }
+.rank-badge.normal { background: rgba(26,20,10,0.85); color: var(--muted); }
+.score-badge { position: absolute; top: 5px; right: 5px; background: rgba(26,20,10,0.88); color: var(--gold); font-size: 9px; font-weight: 700; font-family: 'Rubik', sans-serif; border-radius: 4px; padding: 2px 4px; }
+.poster-overlay { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(20,16,8,0.97)); padding: 14px 6px 5px; }
+.poster-title { font-size: 9px; font-weight: 700; color: var(--text); font-family: 'Rubik', sans-serif; line-height: 1.2; }
+.f-avatars { display: flex; align-items: center; margin-top: 3px; }
+.f-av { width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 6px; font-weight: 700; color: var(--dark); font-family: 'Rubik', sans-serif; border: 1px solid var(--dark); margin-left: -3px; flex-shrink: 0; }
+.f-av:first-child { margin-left: 0; }
+.f-more { font-size: 7px; color: #7a6e55; font-family: 'Saira', sans-serif; margin-left: 4px; }
+.seen-badge { position: absolute; bottom: 5px; right: 5px; background: rgba(255,182,0,0.15); border: 1px solid var(--gold); border-radius: 4px; padding: 2px 5px; font-size: 8px; font-family: 'Rubik', sans-serif; color: var(--gold); }
+.filter-btn { display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 20px; cursor: pointer; background: var(--card); border: 1px solid var(--border); font-size: 11px; font-family: 'Rubik', sans-serif; font-weight: 700; color: #7a6e55; }
+
+/* Rating sheet */
+.sheet-movie { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.sheet-poster { width: 40px; height: 56px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.sheet-movie-title { font-family: 'Rubik', sans-serif; font-size: 14px; font-weight: 700; color: var(--text); }
+.sheet-movie-meta { font-size: 11px; color: #7a6e55; font-family: 'Saira', sans-serif; margin-top: 2px; }
+.sheet-body { padding: 18px 18px 0; }
+.sheet-question { font-family: 'Rubik', sans-serif; font-size: 13px; font-weight: 700; color: var(--text); text-align: center; margin-bottom: 18px; }
+.thumb-row { display: flex; gap: 12px; margin-bottom: 18px; }
+.thumb-btn { flex: 1; padding: 14px; border-radius: 14px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; border: 1.5px solid var(--border) !important; background: var(--dark) !important; font-family: 'Rubik', sans-serif; font-size: 11px; font-weight: 700; color: var(--dim); }
+.thumb-btn.up.sel { border-color: var(--gold) !important; background: rgba(255,182,0,0.1) !important; color: var(--gold); }
+.thumb-btn.dn.sel { border-color: #c07840 !important; background: rgba(192,120,64,0.1) !important; color: #c07840; }
+.expand-toggle { text-align: center; margin-bottom: 14px; cursor: pointer; }
+.expand-text { font-size: 11px; color: var(--dim); font-family: 'Saira', sans-serif; border-bottom: 1px dashed var(--border); display: inline; }
+.opt-section { display: none; }
+.opt-section.open { display: block; }
+.star-row { display: flex; justify-content: center; gap: 8px; margin-bottom: 14px; }
+.star { font-size: 26px; cursor: pointer; color: var(--border); }
+.star.lit { color: var(--gold); }
+.txt-input { width: 100%; background: var(--dark) !important; border: 1px solid var(--border) !important; border-radius: 10px; padding: 10px 12px; font-size: 12px; font-family: 'Saira', sans-serif; color: var(--text) !important; resize: none; outline: none; margin-bottom: 14px; }
+.txt-input::placeholder { color: #4a4232; }
+.submit-btn { width: 100%; padding: 13px; border-radius: 30px; background: var(--gold) !important; color: var(--dark) !important; font-size: 13px; font-weight: 700; font-family: 'Rubik', sans-serif; letter-spacing: 1.5px; border: none !important; cursor: pointer; display: none; }
+.submit-btn.vis { display: block; }
+
+/* ── SCREEN 3: DETALLE ── */
+.hero { position: relative; height: 200px; overflow: hidden; flex-shrink: 0; }
+.hero-bg { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 60px; }
+.hero-grad { position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(38,35,27,0.3) 0%, rgba(38,35,27,0.95) 100%); }
+.hero-back { position: absolute; top: 10px; left: 16px; width: 30px; height: 30px; border-radius: 50%; background: rgba(26,20,10,0.7); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.title-block { padding: 0 16px 14px; border-bottom: 1px solid var(--border); }
+.movie-title { font-family: 'Rubik', sans-serif; font-size: 20px; font-weight: 700; color: var(--text); line-height: 1.2; margin-bottom: 6px; }
+.movie-meta-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.meta-pill { font-size: 10px; color: #7a6e55; font-family: 'Saira', sans-serif; }
+.meta-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--border); }
+.section-pad { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.cta-block { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.btn-seen { width: 100%; padding: 13px; border-radius: 30px; background: var(--gold) !important; color: var(--dark) !important; font-size: 13px; font-weight: 700; font-family: 'Rubik', sans-serif; letter-spacing: 1.5px; border: none !important; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px; }
+.btn-seen.done { background: var(--card) !important; color: var(--gold) !important; border: 1.5px solid var(--gold) !important; }
+.icon-actions { display: flex; justify-content: center; gap: 32px; }
+.icon-action-btn { display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; background: none; border: none; }
+.icon-circle { width: 40px; height: 40px; border-radius: 50%; background: var(--card); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.icon-circle.active-ic { background: rgba(255,182,0,0.1); border-color: var(--gold); }
+.icon-action-label { font-size: 9px; font-family: 'Saira', sans-serif; color: var(--dim); white-space: nowrap; }
+.icon-action-label.ic-active { color: var(--gold); }
+.platform-pill { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); cursor: pointer; }
+.platform-icon { width: 20px; height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0; }
+.platform-name { font-size: 11px; font-family: 'Rubik', sans-serif; font-weight: 700; color: #c8b87a; }
+.score-comparison { display: flex; gap: 8px; margin-bottom: 14px; }
+.score-box { flex: 1; background: var(--card); border-radius: 10px; padding: 10px 12px; border: 1px solid var(--border); text-align: center; }
+.score-box.hl { border-color: var(--gold); background: rgba(255,182,0,0.05); }
+.score-num { font-family: 'Rubik', sans-serif; font-size: 26px; font-weight: 700; color: var(--gold); line-height: 1; }
+.score-num.gl { color: var(--muted); }
+.score-lbl { font-size: 9px; color: var(--dim); font-family: 'Saira', sans-serif; margin-top: 3px; }
+.score-sub { font-size: 8px; color: var(--border); font-family: 'Saira', sans-serif; margin-top: 1px; }
+.bar-wrap { margin-bottom: 6px; }
+.bar-lbl { display: flex; justify-content: space-between; font-size: 9px; color: var(--dim); font-family: 'Saira', sans-serif; margin-bottom: 3px; }
+.bar { height: 4px; background: var(--border); border-radius: 2px; }
+.bar-fill { height: 100%; border-radius: 2px; background: var(--gold); }
+.who-row { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.who-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--dark); font-family: 'Rubik', sans-serif; border: 2px solid var(--dark); }
+.who-name { font-size: 9px; color: #7a6e55; font-family: 'Saira', sans-serif; margin-top: 2px; text-align: center; }
+.who-item { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.synopsis { font-size: 12px; color: var(--muted); font-family: 'Saira', sans-serif; line-height: 1.7; }
+.syn-toggle { font-size: 11px; color: var(--gold); font-family: 'Rubik', sans-serif; font-weight: 700; cursor: pointer; margin-top: 6px; display: inline-block; }
+.spoiler-gate { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; text-align: center; }
+.spoiler-title { font-family: 'Rubik', sans-serif; font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.spoiler-sub { font-size: 11px; color: var(--dim); font-family: 'Saira', sans-serif; line-height: 1.5; margin-bottom: 12px; }
+.spoiler-btn { padding: 8px 20px; border-radius: 20px; background: transparent !important; border: 1.5px solid var(--gold) !important; color: var(--gold) !important; font-size: 11px; font-weight: 700; font-family: 'Rubik', sans-serif; cursor: pointer; }
+.review-card { background: var(--card); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--border); }
+.review-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.review-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--dark); font-family: 'Rubik', sans-serif; flex-shrink: 0; }
+.review-name { font-size: 11px; font-weight: 700; color: var(--text); font-family: 'Rubik', sans-serif; }
+.review-thumb { font-size: 13px; margin-left: auto; }
+.review-text { font-size: 11px; color: #7a6e55; font-family: 'Saira', sans-serif; line-height: 1.6; }
+.cast-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.cast-row::-webkit-scrollbar { display: none; }
+.cast-item { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+.cast-av { width: 48px; height: 48px; border-radius: 50%; background: var(--card); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+.cast-name { font-size: 9px; font-weight: 700; color: #c8b87a; font-family: 'Rubik', sans-serif; text-align: center; max-width: 52px; line-height: 1.2; }
+.cast-role { font-size: 8px; color: var(--dim); font-family: 'Saira', sans-serif; text-align: center; max-width: 52px; }
+.tech-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tech-item { background: var(--card); border-radius: 8px; padding: 8px 10px; border: 1px solid var(--border); }
+.tech-label { font-size: 9px; color: var(--dim); font-family: 'Saira', sans-serif; margin-bottom: 3px; }
+.tech-value { font-size: 11px; font-weight: 700; color: #c8b87a; font-family: 'Rubik', sans-serif; }
+
+/* ── SCREEN 4: PERFIL ── */
+.profile-header { padding: 0 20px 16px; border-bottom: 1px solid var(--border); }
+.profile-top { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.avatar { width: 72px; height: 72px; border-radius: 50%; background: linear-gradient(135deg,var(--gold),#c8940a); display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; color: var(--dark); font-family: 'Rubik', sans-serif; border: 3px solid var(--dark); }
+.profile-name { font-family: 'Rubik', sans-serif; font-size: 18px; font-weight: 700; color: var(--text); }
+.profile-handle { font-size: 11px; color: var(--dim); font-family: 'Saira', sans-serif; margin-top: 2px; }
+.profile-bio { font-size: 12px; color: var(--muted); font-family: 'Saira', sans-serif; margin-top: 6px; line-height: 1.5; }
+.stats-row { display: flex; margin-top: 16px; }
+.stat-item { flex: 1; text-align: center; }
+.stat-item:not(:last-child) { border-right: 1px solid var(--border); }
+.stat-num { font-family: 'Rubik', sans-serif; font-size: 18px; font-weight: 700; color: var(--text); }
+.stat-lbl { font-size: 9px; color: var(--dim); font-family: 'Saira', sans-serif; margin-top: 2px; }
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+.stat-card { background: var(--card); border-radius: 10px; padding: 10px 12px; border: 1px solid var(--border); }
+.stat-card-lbl { font-size: 9px; color: var(--dim); font-family: 'Saira', sans-serif; margin-bottom: 4px; }
+.stat-card-val { font-size: 13px; font-weight: 700; color: var(--text); font-family: 'Rubik', sans-serif; }
+.stat-card-sub { font-size: 9px; color: #7a6e55; font-family: 'Saira', sans-serif; margin-top: 2px; }
+.genre-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.genre-name { font-size: 10px; color: var(--muted); font-family: 'Saira', sans-serif; width: 60px; flex-shrink: 0; }
+.genre-bar { flex: 1; height: 5px; background: var(--border); border-radius: 3px; }
+.genre-bar-fill { height: 100%; border-radius: 3px; background: var(--gold); }
+.genre-pct { font-size: 9px; color: var(--dim); font-family: 'Rubik', sans-serif; width: 28px; text-align: right; flex-shrink: 0; }
+.activity-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.activity-item:last-child { border-bottom: none; }
+.act-av { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg,var(--gold),#c8940a); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--dark); font-family: 'Rubik', sans-serif; flex-shrink: 0; margin-top: 2px; }
+.act-text { font-size: 11px; color: #c8b87a; font-family: 'Saira', sans-serif; line-height: 1.5; flex: 1; }
+.act-text strong { color: var(--text); font-family: 'Rubik', sans-serif; font-weight: 700; }
+.act-time { font-size: 9px; color: var(--very-dim); font-family: 'Saira', sans-serif; margin-top: 2px; }
+
+/* ── SCREEN 5: EXPLORAR ── */
+.search-wrap { position: relative; padding: 0 16px 8px; }
+.search-bar { width: 100%; padding: 10px 36px; border-radius: 12px; background: var(--card) !important; border: 1px solid var(--border) !important; font-size: 13px; font-family: 'Saira', sans-serif; color: var(--text) !important; outline: none; }
+.search-bar::placeholder { color: #4a4232; }
+.search-icon { position: absolute; left: 28px; top: 50%; transform: translateY(-50%); pointer-events: none; }
+.genre-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px 14px; }
+.genre-card { border-radius: 12px; overflow: hidden; position: relative; height: 70px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.genre-card-bg { position: absolute; inset: 0; }
+.genre-card-ov { position: absolute; inset: 0; background: rgba(0,0,0,0.35); }
+.genre-nm { position: relative; z-index: 1; font-family: 'Rubik', sans-serif; font-size: 13px; font-weight: 700; color: #fff; letter-spacing: 1px; }
+.coll-row { display: flex; gap: 10px; overflow-x: auto; padding: 0 16px 16px; }
+.coll-row::-webkit-scrollbar { display: none; }
+.coll-card { flex-shrink: 0; width: 130px; background: var(--card); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; cursor: pointer; }
+.coll-cover { height: 70px; display: flex; align-items: center; justify-content: center; font-size: 26px; }
+.coll-info { padding: 8px 10px 10px; }
+.coll-title { font-size: 10px; font-weight: 700; color: var(--text); font-family: 'Rubik', sans-serif; line-height: 1.3; }
+.coll-count { font-size: 9px; color: var(--dim); font-family: 'Saira', sans-serif; margin-top: 3px; }
+
+/* ── SCREEN 6: PARA VOS ── */
+.rec-card { background: var(--card); border-radius: 14px; border: 1px solid var(--border); margin-bottom: 12px; overflow: hidden; }
+.rec-card.unread { border-color: rgba(255,182,0,0.3); }
+.rec-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0; }
+.rec-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--dark); font-family: 'Rubik', sans-serif; flex-shrink: 0; }
+.rec-from { flex: 1; }
+.rec-from-name { font-size: 12px; font-weight: 700; color: var(--text); font-family: 'Rubik', sans-serif; }
+.rec-from-act { font-size: 10px; color: var(--dim); font-family: 'Saira', sans-serif; }
+.rec-time { font-size: 9px; color: var(--very-dim); font-family: 'Saira', sans-serif; }
+.unread-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
+.rec-body { display: flex; gap: 10px; padding: 10px 12px; }
+.rec-poster { width: 52px; height: 72px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+.rec-info { flex: 1; min-width: 0; }
+.rec-title { font-size: 13px; font-weight: 700; color: var(--text); font-family: 'Rubik', sans-serif; }
+.rec-meta { font-size: 10px; color: #7a6e55; font-family: 'Saira', sans-serif; margin-top: 2px; }
+.rec-stars { font-size: 9px; color: var(--gold); }
+.rec-msg { font-size: 11px; color: var(--muted); font-family: 'Saira', sans-serif; font-style: italic; margin-top: 5px; line-height: 1.4; background: var(--dark); border-radius: 8px; padding: 7px 9px; border-left: 2px solid var(--gold); }
+.rec-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 0 12px 10px; align-items: center; }
+.rec-divider { flex: 1; }
+.ic-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; background: none; border: none; }
+.ic-btn .ic { width: 36px; height: 36px; border-radius: 50%; background: var(--dark); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.ic-btn .ic.on { background: rgba(255,182,0,0.12); border-color: var(--gold); }
+.ic-btn .ic-lbl { font-size: 8px; font-family: 'Saira', sans-serif; color: var(--dim); white-space: nowrap; }
+.ic-btn .ic-lbl.on { color: var(--gold); }
+.sugg-card { background: var(--card); border-radius: 14px; border: 1px solid var(--border); margin-bottom: 10px; display: flex; gap: 10px; padding: 10px 12px; cursor: pointer; }
+.sugg-poster { width: 44px; height: 62px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.sugg-info { flex: 1; min-width: 0; }
+.sugg-title { font-size: 12px; font-weight: 700; color: var(--text); font-family: 'Rubik', sans-serif; }
+.sugg-reason { font-size: 10px; color: #7a6e55; font-family: 'Saira', sans-serif; margin-top: 3px; line-height: 1.4; }
+.sugg-score { font-size: 11px; font-weight: 700; color: var(--gold); font-family: 'Rubik', sans-serif; flex-shrink: 0; align-self: center; }
+.reply-sent { display: none; padding: 0 12px 8px; align-items: center; gap: 6px; }
+.reply-sent.vis { display: flex; }
+.reply-sent-text { font-size: 10px; color: var(--gold); font-family: 'Saira', sans-serif; }
+.act-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.act-item:last-child { border-bottom: none; }
+.act-item .act-av2 { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--dark); font-family: 'Rubik', sans-serif; flex-shrink: 0; }
+.act-item .act-body { flex: 1; }
+.act-item .act-txt { font-size: 12px; color: #c8b87a; font-family: 'Saira', sans-serif; line-height: 1.5; }
+.act-item .act-txt strong { color: var(--text); font-family: 'Rubik', sans-serif; font-weight: 700; }
+.act-item .act-tm { font-size: 9px; color: var(--very-dim); font-family: 'Saira', sans-serif; margin-top: 3px; }
+.act-poster-sm { width: 32px; height: 44px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; align-self: center; }
+.act-unread { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); flex-shrink: 0; margin-top: 5px; }
+.tab-badge { position: absolute; top: 8px; right: 12px; width: 16px; height: 16px; border-radius: 50%; background: var(--gold); color: var(--dark); font-size: 8px; font-weight: 700; font-family: 'Rubik', sans-serif; display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+
+<div class="screen-nav" id="screenNav">
+  <div class="nav-pill active" onclick="goTo('s-onboarding')">Onboarding</div>
+  <div class="nav-pill" onclick="goTo('s-home')">Home</div>
+  <div class="nav-pill" onclick="goTo('s-detalle')">Detalle</div>
+  <div class="nav-pill" onclick="goTo('s-perfil')">Perfil</div>
+  <div class="nav-pill" onclick="goTo('s-explorar')">Explorar</div>
+  <div class="nav-pill" onclick="goTo('s-paravos')">Para vos</div>
+</div>
+
+<div class="device-frame">
+  <!-- STATUS BAR -->
+  <div class="status-bar">
+    <span>9:41</span>
+    <span style="display:flex;gap:4px;align-items:center;">
+      <svg width="14" height="10" viewBox="0 0 14 10"><rect x="0" y="3" width="3" height="7" rx="1" fill="#7a6e55"/><rect x="4" y="2" width="3" height="8" rx="1" fill="#7a6e55"/><rect x="8" y="0" width="3" height="10" rx="1" fill="#7a6e55"/></svg>
+      <svg width="16" height="10" viewBox="0 0 16 10"><rect x="0" y="1" width="13" height="8" rx="2" fill="none" stroke="#7a6e55" stroke-width="1"/><rect x="14" y="3" width="2" height="4" rx="1" fill="#7a6e55"/><rect x="1" y="2" width="9" height="6" rx="1" fill="#7a6e55"/></svg>
+    </span>
+  </div>
+
+  <!-- ═══════════════════════════════ S1: ONBOARDING ═══ -->
+  <div class="screen active" id="s-onboarding">
+    <div style="flex:1;overflow-y:auto;padding-bottom:32px;">
+      <div class="onb-logo">CINERIAN</div>
+      <div class="onb-sub">by your people</div>
+      <div class="onb-dots" id="onb-dots">
+        <div class="onb-dot active"></div><div class="onb-dot"></div><div class="onb-dot"></div>
+      </div>
+      <!-- Slide 1 -->
+      <div class="onb-slide active" id="onb-s0">
+        <div class="onb-illustration">
+          <div class="mini-feed">
+            <div class="mini-item"><div class="mini-av" style="background:#ffb600;">MG</div><div style="flex:1"><div class="mini-name">Martina G.</div><div class="mini-movie">Oppenheimer</div></div><div class="mini-stars">★★★★★</div></div>
+            <div class="mini-item"><div class="mini-av" style="background:#c8940a;">JR</div><div style="flex:1"><div class="mini-name">Juan R.</div><div class="mini-movie">Succession S4</div></div><div class="mini-stars">★★★★☆</div></div>
+            <div class="mini-item"><div class="mini-av" style="background:#a07808;">LP</div><div style="flex:1"><div class="mini-name">Lau P.</div><div class="mini-movie">Poor Things</div></div><div class="mini-stars">★★★★★</div></div>
+          </div>
+        </div>
+        <div class="onb-title">MIRÁ LO QUE VEN TUS AMIGOS</div>
+        <div class="onb-desc">Un feed de películas y series recomendadas por las personas que más confiás.</div>
+      </div>
+      <!-- Slide 2 -->
+      <div class="onb-slide" id="onb-s1">
+        <div class="onb-illustration">
+          <svg width="200" height="120" viewBox="0 0 200 120">
+            <rect x="18" y="15" width="58" height="82" rx="6" fill="#1c1a14" stroke="#3a3528" stroke-width="1"/>
+            <rect x="24" y="62" width="32" height="4" rx="2" fill="#ffb600" opacity="0.9"/>
+            <circle cx="138" cy="58" r="28" fill="#1c1a14" stroke="#3a3528" stroke-width="1"/>
+            <text x="138" y="50" text-anchor="middle" font-size="9" fill="#7a6e55" font-family="sans-serif">Tu entorno</text>
+            <text x="138" y="64" text-anchor="middle" font-size="20" font-weight="bold" fill="#ffb600" font-family="sans-serif">8.4</text>
+            <text x="138" y="74" text-anchor="middle" font-size="8" fill="#5a5240" font-family="sans-serif">promedio</text>
+          </svg>
+        </div>
+        <div class="onb-title">LAS CRÍTICAS QUE IMPORTAN</div>
+        <div class="onb-desc">No Rotten Tomatoes. El puntaje de tu círculo cercano.</div>
+      </div>
+      <!-- Slide 3 -->
+      <div class="onb-slide" id="onb-s2">
+        <div class="onb-illustration">
+          <svg width="200" height="120" viewBox="0 0 200 120">
+            <circle cx="60" cy="60" r="20" fill="#1c1a14" stroke="#ffb600" stroke-width="1.5"/>
+            <text x="60" y="64" text-anchor="middle" font-size="10" fill="#ffb600" font-family="sans-serif" font-weight="bold">Vos</text>
+            <circle cx="130" cy="38" r="15" fill="#1c1a14" stroke="#3a3528" stroke-width="1"/>
+            <text x="130" y="42" text-anchor="middle" font-size="9" fill="#8a7e60" font-family="sans-serif">Ana</text>
+            <circle cx="152" cy="72" r="13" fill="#1c1a14" stroke="#3a3528" stroke-width="1"/>
+            <text x="152" y="76" text-anchor="middle" font-size="9" fill="#8a7e60" font-family="sans-serif">Carlos</text>
+            <line x1="78" y1="52" x2="117" y2="42" stroke="#ffb600" stroke-width="1" opacity="0.5"/>
+            <line x1="79" y1="65" x2="140" y2="68" stroke="#ffb600" stroke-width="1" opacity="0.5"/>
+          </svg>
+        </div>
+        <div class="onb-title">TU RED, TU ALGORITMO</div>
+        <div class="onb-desc">Sin IA genérica — solo las recomendaciones de tu entorno real.</div>
+      </div>
+      <div style="padding:24px 24px 0;">
+        <button class="btn-primary" id="onb-next-btn" onclick="onbNext()">CONTINUAR</button>
+        <button class="btn-ghost" id="onb-skip-btn" onclick="showLogin()">Saltear</button>
+      </div>
+
+      <!-- LOGIN (hidden initially) -->
+      <div id="login-section" style="display:none;padding:0 24px;">
+        <div style="margin:28px 0 6px;text-align:center;">
+          <div style="font-family:'Rubik',sans-serif;font-size:22px;font-weight:700;color:#ffb600;letter-spacing:4px;">CINERIAN</div>
+        </div>
+        <div class="login-title" style="margin-top:20px;">Bienvenido</div>
+        <div class="login-sub">Unite a tu comunidad cinéfila</div>
+        <button class="social-btn">
+          <div style="width:20px;height:20px;border-radius:4px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="14" height="14" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          </div>
+          Continuar con Google
+        </button>
+        <button class="social-btn">
+          <div style="width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#c8b87a"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+          </div>
+          Continuar con Apple
+        </button>
+        <div class="divider"><div class="divider-line"></div><div class="divider-text">o</div><div class="divider-line"></div></div>
+        <button class="btn-outline" style="margin-bottom:16px;">CONTINUAR CON EMAIL</button>
+        <div style="text-align:center;font-size:11px;color:#4a4232;font-family:'Saira',sans-serif;">¿Ya tenés cuenta? <span style="color:#ffb600;cursor:pointer;">Iniciá sesión</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ S2: HOME ═══ -->
+  <div class="screen" id="s-home">
+    <div class="header">
+      <div class="header-logo">CINERIAN</div>
+      <div style="display:flex;gap:10px;">
+        <div class="filter-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg> FILTROS</div>
+        <div class="icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+      </div>
+    </div>
+    <div class="tab-bar">
+      <div class="tab active" id="h-tab-m" onclick="hTab('m')">PELÍCULAS</div>
+      <div class="tab" id="h-tab-s" onclick="hTab('s')">SERIES</div>
+    </div>
+    <div class="controls-bar">
+      <div class="toggle-wrap" onclick="homeToggle()">
+        <div class="toggle-track" id="h-toggle"><div class="toggle-thumb"></div></div>
+        <div class="toggle-label" id="h-toggle-lbl">Solo no vistas</div>
+      </div>
+      <div class="hint-text">← Deslizá para marcar visto</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;">
+      <div class="poster-grid" id="h-content-m">
+        <div class="poster-wrap"><div class="poster-card rank-1" onclick="openRating('Oppenheimer','2023 · Drama','🎬','linear-gradient(160deg,#1e2e1e,#0d1a0d)')"><div class="poster-bg" style="background:linear-gradient(160deg,#1e2e1e,#0d1a0d);">🎬</div><div class="rank-badge gold">1</div><div class="score-badge">9.2</div><div class="poster-overlay"><div class="poster-title">Oppenheimer</div><div class="f-avatars"><div class="f-av" style="background:#ffb600;">M</div><div class="f-av" style="background:#c8940a;">J</div><div class="f-av" style="background:#a07808;">S</div><div class="f-more">+1</div></div></div></div></div>
+        <div class="poster-wrap"><div class="poster-card rank-2" onclick="openRating('Poor Things','2023 · Comedia','🎥','linear-gradient(160deg,#2e1e10,#1a0d08)')"><div class="poster-bg" style="background:linear-gradient(160deg,#2e1e10,#1a0d08);">🎥</div><div class="rank-badge silver">2</div><div class="score-badge">8.7</div><div class="poster-overlay"><div class="poster-title">Poor Things</div><div class="f-avatars"><div class="f-av" style="background:#5a5240;">L</div><div class="f-av" style="background:#a07808;">S</div></div></div></div></div>
+        <div class="poster-wrap"><div class="poster-card rank-3 seen-card" onclick="openRating('Dune: Part Two','2024 · Sci-Fi','📽️','linear-gradient(160deg,#1a1a2e,#0d0d1a)')"><div class="poster-bg" style="background:linear-gradient(160deg,#1a1a2e,#0d0d1a);">📽️</div><div class="rank-badge bronze">3</div><div class="score-badge">8.3</div><div class="poster-overlay"><div class="poster-title">Dune: Part Two</div><div class="f-avatars"><div class="f-av" style="background:#c8940a;">J</div></div></div><div class="seen-badge">✓ Vista</div></div></div>
+        <div class="poster-wrap"><div class="poster-card" onclick="openRating('Past Lives','2023 · Romance','🎞️','linear-gradient(160deg,#1a2e2e,#0d1a1a)')"><div class="poster-bg" style="background:linear-gradient(160deg,#1a2e2e,#0d1a1a);">🎞️</div><div class="rank-badge normal">4</div><div class="score-badge">8.1</div><div class="poster-overlay"><div class="poster-title">Past Lives</div><div class="f-avatars"><div class="f-av" style="background:#ffb600;">M</div></div></div></div></div>
+        <div class="poster-wrap"><div class="poster-card seen-card" onclick="openRating('Aftersun','2022 · Drama','🎭','linear-gradient(160deg,#2e1a2e,#1a0d1a)')"><div class="poster-bg" style="background:linear-gradient(160deg,#2e1a2e,#1a0d1a);">🎭</div><div class="rank-badge normal">5</div><div class="score-badge">7.9</div><div class="poster-overlay"><div class="poster-title">Aftersun</div><div class="f-avatars"><div class="f-av" style="background:#a07808;">S</div></div></div><div class="seen-badge">✓ Vista</div></div></div>
+        <div class="poster-wrap"><div class="poster-card" onclick="openRating('The Holdovers','2023 · Comedia','🎦','linear-gradient(160deg,#2e2e1a,#1a1a0d)')"><div class="poster-bg" style="background:linear-gradient(160deg,#2e2e1a,#1a1a0d);">🎦</div><div class="rank-badge normal">6</div><div class="score-badge">7.6</div><div class="poster-overlay"><div class="poster-title">The Holdovers</div><div class="f-avatars"><div class="f-av" style="background:#c8940a;">J</div></div></div></div></div>
+      </div>
+      <div class="poster-grid" id="h-content-s" style="display:none;">
+        <div class="poster-wrap"><div class="poster-card rank-1" onclick="openRating('Succession S4','2023 · Drama','📺','linear-gradient(160deg,#2e1e10,#1a0d08)')"><div class="poster-bg" style="background:linear-gradient(160deg,#2e1e10,#1a0d08);">📺</div><div class="rank-badge gold">1</div><div class="score-badge">9.4</div><div class="poster-overlay"><div class="poster-title">Succession S4</div><div class="f-avatars"><div class="f-av" style="background:#c8940a;">J</div><div class="f-av" style="background:#a07808;">S</div></div></div></div></div>
+        <div class="poster-wrap"><div class="poster-card rank-2" onclick="openRating('The Bear S2','2023 · Drama','🎬','linear-gradient(160deg,#1e2e1e,#0d1a0d)')"><div class="poster-bg" style="background:linear-gradient(160deg,#1e2e1e,#0d1a0d);">🎬</div><div class="rank-badge silver">2</div><div class="score-badge">8.9</div><div class="poster-overlay"><div class="poster-title">The Bear S2</div><div class="f-avatars"><div class="f-av" style="background:#a07808;">S</div><div class="f-av" style="background:#5a5240;">L</div></div></div></div></div>
+        <div class="poster-wrap"><div class="poster-card rank-3" onclick="openRating('The Last of Us','2023 · Thriller','📡','linear-gradient(160deg,#1a1a2e,#0d0d1a)')"><div class="poster-bg" style="background:linear-gradient(160deg,#1a1a2e,#0d0d1a);">📡</div><div class="rank-badge bronze">3</div><div class="score-badge">8.5</div><div class="poster-overlay"><div class="poster-title">The Last of Us</div><div class="f-avatars"><div class="f-av" style="background:#3a3020;">T</div><div class="f-av" style="background:#ffb600;">M</div></div></div></div></div>
+        <div class="poster-wrap"><div class="poster-card" onclick="openRating('Shrinking S1','2023 · Comedia','🎭','linear-gradient(160deg,#2e2e1a,#1a1a0d)')"><div class="poster-bg" style="background:linear-gradient(160deg,#2e2e1a,#1a1a0d);">🎭</div><div class="rank-badge normal">4</div><div class="score-badge">7.8</div><div class="poster-overlay"><div class="poster-title">Shrinking S1</div><div class="f-avatars"><div class="f-av" style="background:#5a5240;">L</div></div></div></div></div>
+      </div>
+    </div>
+    <!-- Rating sheet -->
+    <div class="sheet-overlay" id="h-overlay" onclick="closeRating()"></div>
+    <div class="bottom-sheet" id="h-rating-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-movie"><div class="sheet-poster" id="h-sheet-poster">🎬</div><div><div class="sheet-movie-title" id="h-sheet-title"></div><div class="sheet-movie-meta" id="h-sheet-meta"></div></div></div>
+      <div class="sheet-body">
+        <div class="sheet-question">¿Qué te pareció?</div>
+        <div class="thumb-row">
+          <button class="thumb-btn up" id="h-thumb-up" onclick="selThumb('up')"><span style="font-size:24px;">👍</span><span>Me gustó</span></button>
+          <button class="thumb-btn dn" id="h-thumb-dn" onclick="selThumb('dn')"><span style="font-size:24px;">👎</span><span>No me gustó</span></button>
+        </div>
+        <div class="expand-toggle" id="h-expand" onclick="toggleOpt()"><span class="expand-text">+ Dejar reseña detallada (opcional)</span></div>
+        <div class="opt-section" id="h-opt">
+          <div class="star-row"><span class="star" onclick="setStar(1)">★</span><span class="star" onclick="setStar(2)">★</span><span class="star" onclick="setStar(3)">★</span><span class="star" onclick="setStar(4)">★</span><span class="star" onclick="setStar(5)">★</span></div>
+          <textarea class="txt-input" rows="2" placeholder="¿Querés agregar algo? (opcional)"></textarea>
+        </div>
+        <button class="submit-btn" id="h-submit" onclick="closeRating()">GUARDAR</button>
+      </div>
+    </div>
+    <!-- Bottom nav -->
+    <div class="bottom-nav">
+      <div class="bnav-item active" onclick="goTo('s-home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div class="bnav-label" style="color:#ffb600;">Inicio</div></div>
+      <div class="bnav-item" onclick="goTo('s-explorar')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><div class="bnav-label">Explorar</div></div>
+      <div class="bnav-item" onclick="goTo('s-paravos')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><div class="bnav-label">Para vos</div></div>
+      <div class="bnav-item" onclick="goTo('s-perfil')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><div class="bnav-label">Perfil</div></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ S3: DETALLE ═══ -->
+  <div class="screen" id="s-detalle">
+    <div class="scroll-body" style="padding-bottom:32px;">
+      <div class="hero"><div class="hero-bg" style="background:linear-gradient(160deg,#1e2e1e,#0d1a0d);">🎬</div><div class="hero-grad"></div><div class="hero-back" onclick="goTo('s-home')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></div></div>
+      <div class="title-block"><div class="movie-title">Oppenheimer</div><div class="movie-meta-row"><span class="meta-pill">2023</span><div class="meta-dot"></div><span class="meta-pill">3h</span><div class="meta-dot"></div><span class="meta-pill">Drama · Historia</span><div class="meta-dot"></div><span class="meta-pill" style="color:#ffb600;">PG-13</span></div></div>
+      <div class="cta-block">
+        <button class="btn-seen" id="d-seen-btn" onclick="dToggleSeen()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#26231b" stroke-width="2.5" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>MARCAR COMO VISTA</button>
+        <div class="icon-actions">
+          <div class="icon-action-btn" onclick="dToggleWatchlist(this)"><div class="icon-circle" id="d-wl-circle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" id="d-wl-svg"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><div class="icon-action-label" id="d-wl-lbl">Agregar a lista</div></div>
+          <div class="icon-action-btn" onclick="dRecommend()"><div class="icon-circle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="icon-action-label">Recomendar</div></div>
+        </div>
+      </div>
+      <div class="section-pad"><div class="section-title">DÓNDE VERLA</div><div style="display:flex;gap:8px;flex-wrap:wrap;"><div class="platform-pill"><div class="platform-icon" style="background:#e50914;">N</div><div class="platform-name">Netflix</div></div><div class="platform-pill"><div class="platform-icon" style="background:#00a8e0;">M</div><div class="platform-name">Mubi</div></div><div class="platform-pill"><div class="platform-icon" style="background:#1c6ef3;">P</div><div class="platform-name">Prime</div></div></div></div>
+      <div class="section-pad"><div class="section-title">CALIFICACIONES</div><div class="score-comparison"><div class="score-box hl"><div class="score-num">9.2</div><div class="score-lbl">Tus amigos</div><div class="score-sub">5 valoraciones</div></div><div class="score-box"><div class="score-num gl">8.1</div><div class="score-lbl">Cinerian global</div><div class="score-sub">42k valoraciones</div></div></div><div class="bar-wrap"><div class="bar-lbl"><span>👍 Me gustó</span><span style="color:#ffb600;">4</span></div><div class="bar"><div class="bar-fill" style="width:80%;"></div></div></div><div class="bar-wrap"><div class="bar-lbl"><span>👎 No me gustó</span><span>1</span></div><div class="bar"><div class="bar-fill" style="width:20%;background:#5a5240;"></div></div></div><div class="who-row"><div class="who-item"><div class="who-av" style="background:#ffb600;">M</div><div class="who-name">Martina</div></div><div class="who-item"><div class="who-av" style="background:#c8940a;">J</div><div class="who-name">Juan</div></div><div class="who-item"><div class="who-av" style="background:#a07808;">S</div><div class="who-name">Sofi</div></div><div class="who-item"><div class="who-av" style="background:#5a5240;">L</div><div class="who-name">Laura</div></div></div></div>
+      <div class="section-pad"><div class="section-title">SINOPSIS</div><div class="synopsis" id="d-syn">El físico J. Robert Oppenheimer trabaja con el Ejército de los Estados Unidos en el Proyecto Manhattan durante la Segunda Guerra Mundial...</div><span class="syn-toggle" onclick="dToggleSyn()">Ver más</span></div>
+      <div class="section-pad"><div class="section-title">RESEÑAS DE AMIGOS</div><div class="spoiler-gate" id="d-spoiler"><div style="font-size:22px;margin-bottom:6px;">🙈</div><div class="spoiler-title">¿Ya la viste?</div><div class="spoiler-sub">Las reseñas pueden contener spoilers.</div><button class="spoiler-btn" onclick="dReveal()">SÍ, MOSTRAR RESEÑAS</button></div><div id="d-reviews" style="display:none;"><div class="review-card"><div class="review-header"><div class="review-avatar" style="background:#ffb600;">M</div><div><div class="review-name">Martina G.</div><div style="font-size:9px;color:#5a5240;font-family:'Saira',sans-serif;">hace 2 días</div></div><div class="review-thumb">👍</div></div><div class="review-text">"Una obra maestra. Nolan en su mejor momento."</div><div style="margin-top:6px;font-size:10px;color:#ffb600;">★★★★★</div></div><div class="review-card"><div class="review-header"><div class="review-avatar" style="background:#c8940a;">J</div><div><div class="review-name">Juan R.</div><div style="font-size:9px;color:#5a5240;font-family:'Saira',sans-serif;">hace 1 semana</div></div><div class="review-thumb">👍</div></div><div class="review-text">"Larga pero vale cada minuto."</div><div style="margin-top:6px;font-size:10px;color:#ffb600;">★★★★☆</div></div></div></div>
+      <div class="section-pad"><div class="section-title">ELENCO</div><div class="cast-row"><div class="cast-item"><div class="cast-av">👨</div><div class="cast-name">Cillian Murphy</div><div class="cast-role">Oppenheimer</div></div><div class="cast-item"><div class="cast-av">🧔</div><div class="cast-name">Matt Damon</div><div class="cast-role">Groves</div></div><div class="cast-item"><div class="cast-av">👩</div><div class="cast-name">Emily Blunt</div><div class="cast-role">Katherine</div></div><div class="cast-item"><div class="cast-av">🧑</div><div class="cast-name">Robert Downey Jr.</div><div class="cast-role">Strauss</div></div></div></div>
+      <div class="section-pad" style="border-bottom:none;"><div class="section-title">DATOS TÉCNICOS</div><div class="tech-grid"><div class="tech-item"><div class="tech-label">Director</div><div class="tech-value">Christopher Nolan</div></div><div class="tech-item"><div class="tech-label">País</div><div class="tech-value">Estados Unidos</div></div><div class="tech-item"><div class="tech-label">Idioma</div><div class="tech-value">Inglés</div></div><div class="tech-item"><div class="tech-label">Duración</div><div class="tech-value">3h 0min</div></div><div class="tech-item"><div class="tech-label">Estreno</div><div class="tech-value">21 jul. 2023</div></div><div class="tech-item"><div class="tech-label">Presupuesto</div><div class="tech-value">$100M USD</div></div></div></div>
+    </div>
+    <!-- Recommend sheet -->
+    <div class="sheet-overlay" id="d-overlay" onclick="dCloseSheets()"></div>
+    <div class="bottom-sheet" id="d-rec-sheet">
+      <div class="sheet-handle"></div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-family:'Rubik',sans-serif;font-size:14px;font-weight:700;color:var(--text);">Recomendar a un amigo</div>
+      <div style="padding:14px 18px 0;">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="frToggle(this)"><div style="width:36px;height:36px;border-radius:50%;background:#ffb600;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#26231b;font-family:'Rubik',sans-serif;">MG</div><div style="flex:1;font-size:13px;font-weight:700;color:var(--text);font-family:'Rubik',sans-serif;">Martina G.</div><div class="fr-check" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;"></div></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="frToggle(this)"><div style="width:36px;height:36px;border-radius:50%;background:#c8940a;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#26231b;font-family:'Rubik',sans-serif;">JR</div><div style="flex:1;font-size:13px;font-weight:700;color:var(--text);font-family:'Rubik',sans-serif;">Juan R.</div><div class="fr-check" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;"></div></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;cursor:pointer;" onclick="frToggle(this)"><div style="width:36px;height:36px;border-radius:50%;background:#a07808;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#26231b;font-family:'Rubik',sans-serif;">SC</div><div style="flex:1;font-size:13px;font-weight:700;color:var(--text);font-family:'Rubik',sans-serif;">Sofi C.</div><div class="fr-check" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;"></div></div>
+        <textarea class="txt-input" rows="2" placeholder="Agregá un mensaje (opcional)..." style="margin-top:12px;"></textarea>
+        <button class="btn-primary" onclick="dCloseSheets()">ENVIAR RECOMENDACIÓN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ S4: PERFIL ═══ -->
+  <div class="screen" id="s-perfil">
+    <div class="header"><div style="font-family:'Rubik',sans-serif;font-size:14px;font-weight:700;color:var(--text);letter-spacing:1px;">MI PERFIL</div><div class="icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div></div>
+    <div class="scroll-body" style="padding-bottom:80px;">
+      <div class="profile-header">
+        <div class="profile-top"><div style="position:relative;flex-shrink:0;"><div class="avatar">MR</div><div style="position:absolute;bottom:0;right:0;width:22px;height:22px;border-radius:50%;background:#ffb600;border:2px solid #26231b;display:flex;align-items:center;justify-content:center;cursor:pointer;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#26231b" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></div></div><div><div class="profile-name">Martina R.</div><div class="profile-handle">@martinar</div><div class="profile-bio">Cinéfila empedernida. Si no la vio Nolan, no existe 🎬</div></div></div>
+        <div class="stats-row"><div class="stat-item"><div class="stat-num">142</div><div class="stat-lbl">Vistas</div></div><div class="stat-item"><div class="stat-num">38</div><div class="stat-lbl">Seguidores</div></div><div class="stat-item"><div class="stat-num">24</div><div class="stat-lbl">Siguiendo</div></div><div class="stat-item"><div class="stat-num">67</div><div class="stat-lbl">Reseñas</div></div></div>
+      </div>
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);"><div class="section-title">MIS ESTADÍSTICAS</div><div class="stats-grid"><div class="stat-card"><div class="stat-card-lbl">Género favorito</div><div class="stat-card-val">Drama</div><div class="stat-card-sub">48 películas</div></div><div class="stat-card"><div class="stat-card-lbl">Director favorito</div><div class="stat-card-val">C. Nolan</div><div class="stat-card-sub">9 vistas</div></div><div class="stat-card"><div class="stat-card-lbl">Promedio que doy</div><div class="stat-card-val">★ 3.8 / 5</div><div class="stat-card-sub">Sos exigente 👀</div></div><div class="stat-card"><div class="stat-card-lbl">Horas vistas</div><div class="stat-card-val">312 hs</div><div class="stat-card-sub">13 días de tu vida</div></div></div><div class="genre-row"><div class="genre-name">Drama</div><div class="genre-bar"><div class="genre-bar-fill" style="width:75%;"></div></div><div class="genre-pct">75%</div></div><div class="genre-row"><div class="genre-name">Thriller</div><div class="genre-bar"><div class="genre-bar-fill" style="width:52%;"></div></div><div class="genre-pct">52%</div></div><div class="genre-row"><div class="genre-name">Sci-Fi</div><div class="genre-bar"><div class="genre-bar-fill" style="width:38%;"></div></div><div class="genre-pct">38%</div></div><div class="genre-row"><div class="genre-name">Comedia</div><div class="genre-bar"><div class="genre-bar-fill" style="width:24%;"></div></div><div class="genre-pct">24%</div></div></div>
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);"><div class="section-title">ACTIVIDAD RECIENTE</div><div class="activity-item"><div class="act-av">MR</div><div><div class="act-text"><strong>Martina</strong> marcó <strong>Oppenheimer</strong> como vista 👍</div><div class="act-time">hace 2 horas</div></div></div><div class="activity-item"><div class="act-av">MR</div><div><div class="act-text"><strong>Martina</strong> recomendó <strong>Past Lives</strong> a Juan R.</div><div class="act-time">hace 1 día</div></div></div><div class="activity-item"><div class="act-av">MR</div><div><div class="act-text"><strong>Martina</strong> agregó <strong>The Brutalist</strong> a su lista</div><div class="act-time">hace 3 días</div></div></div></div>
+      <div class="tab-bar" style="position:sticky;top:0;z-index:2;background:var(--dark);"><div class="tab active" id="p-tab-v" onclick="pTab('v')">VISTAS</div><div class="tab" id="p-tab-l" onclick="pTab('l')">MI LISTA</div><div class="tab" id="p-tab-r" onclick="pTab('r')">RESEÑAS</div></div>
+      <div class="tab-content active" id="p-c-v"><div class="poster-grid" style="padding:10px 14px 20px;"><div class="poster-wrap"><div class="poster-card rank-1"><div class="poster-bg" style="background:linear-gradient(160deg,#1e2e1e,#0d1a0d);">🎬</div><div class="rank-badge gold">1</div><div class="poster-overlay"><div class="poster-title">Oppenheimer</div><div style="font-size:8px;color:#ffb600;">★★★★★</div></div></div></div><div class="poster-wrap"><div class="poster-card rank-2"><div class="poster-bg" style="background:linear-gradient(160deg,#2e1e10,#1a0d08);">🎥</div><div class="rank-badge silver">2</div><div class="poster-overlay"><div class="poster-title">Poor Things</div><div style="font-size:8px;color:#ffb600;">★★★★☆</div></div></div></div><div class="poster-wrap"><div class="poster-card"><div class="poster-bg" style="background:linear-gradient(160deg,#1a2e2e,#0d1a1a);">🎞️</div><div class="rank-badge normal">3</div><div class="poster-overlay"><div class="poster-title">Past Lives</div><div style="font-size:8px;color:#ffb600;">★★★★★</div></div></div></div></div></div>
+      <div class="tab-content" id="p-c-l"><div class="poster-grid" style="padding:10px 14px 20px;"><div class="poster-wrap"><div class="poster-card"><div class="poster-bg" style="background:linear-gradient(160deg,#2e2a1a,#1a160d);">🎬</div><div class="poster-overlay"><div class="poster-title">The Brutalist</div></div></div></div><div class="poster-wrap"><div class="poster-card"><div class="poster-bg" style="background:linear-gradient(160deg,#1a2e1a,#0d1a0d);">🎥</div><div class="poster-overlay"><div class="poster-title">Anora</div></div></div></div><div class="poster-wrap"><div class="poster-card"><div class="poster-bg" style="background:linear-gradient(160deg,#2e1a1a,#1a0d0d);">📽️</div><div class="poster-overlay"><div class="poster-title">Conclave</div></div></div></div></div></div>
+      <div class="tab-content" id="p-c-r" style="padding:12px 14px 20px;"><div class="review-card" style="display:flex;gap:10px;"><div style="width:36px;height:50px;border-radius:5px;background:linear-gradient(160deg,#1e2e1e,#0d1a0d);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🎬</div><div><div style="font-size:12px;font-weight:700;color:var(--text);font-family:'Rubik',sans-serif;">Oppenheimer</div><div style="font-size:9px;color:var(--dim);font-family:'Saira',sans-serif;">hace 2 días</div><div style="font-size:10px;color:#7a6e55;font-family:'Saira',sans-serif;margin-top:4px;line-height:1.5;">"Una obra maestra. Nolan en su mejor momento."</div><div style="font-size:9px;color:#ffb600;margin-top:3px;">👍 ★★★★★</div></div></div></div>
+    </div>
+    <div class="bottom-nav">
+      <div class="bnav-item" onclick="goTo('s-home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div class="bnav-label">Inicio</div></div>
+      <div class="bnav-item" onclick="goTo('s-explorar')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><div class="bnav-label">Explorar</div></div>
+      <div class="bnav-item" onclick="goTo('s-paravos')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><div class="bnav-label">Para vos</div></div>
+      <div class="bnav-item active" onclick="goTo('s-perfil')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><div class="bnav-label" style="color:#ffb600;">Perfil</div></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ S5: EXPLORAR ═══ -->
+  <div class="screen" id="s-explorar">
+    <div style="padding:10px 16px 0;"><div style="font-family:'Rubik',sans-serif;font-size:18px;font-weight:700;color:#ffb600;letter-spacing:4px;margin-bottom:10px;">EXPLORAR</div><div class="search-wrap" style="padding:0 0 8px;"><div class="search-icon" style="left:12px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4a4232" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><input class="search-bar" placeholder="Buscar título, director, actor..."/></div></div>
+    <div class="scroll-body" style="padding-bottom:80px;">
+      <div style="padding:14px 16px 0;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><div class="section-title" style="margin-bottom:0;">BÚSQUEDAS RECIENTES</div><span style="font-size:10px;color:#5a5240;font-family:'Saira',sans-serif;cursor:pointer;">Limpiar</span></div><div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4a4232" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><div style="font-size:13px;color:#8a7e60;font-family:'Saira',sans-serif;flex:1;">Christopher Nolan</div></div><div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4a4232" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><div style="font-size:13px;color:#8a7e60;font-family:'Saira',sans-serif;flex:1;">Thriller psicológico</div></div></div>
+      <div style="padding:14px 16px 10px;"><div class="section-title">GÉNEROS</div></div>
+      <div class="genre-grid">
+        <div class="genre-card"><div class="genre-card-bg" style="background:linear-gradient(135deg,#1a0d2e,#2e1a4a);"></div><div class="genre-card-ov"></div><div class="genre-nm">DRAMA</div></div>
+        <div class="genre-card"><div class="genre-card-bg" style="background:linear-gradient(135deg,#2e1a0a,#4a2e0d);"></div><div class="genre-card-ov"></div><div class="genre-nm">THRILLER</div></div>
+        <div class="genre-card"><div class="genre-card-bg" style="background:linear-gradient(135deg,#0a1a2e,#0d2e4a);"></div><div class="genre-card-ov"></div><div class="genre-nm">SCI-FI</div></div>
+        <div class="genre-card"><div class="genre-card-bg" style="background:linear-gradient(135deg,#1a2e0a,#2e4a0d);"></div><div class="genre-card-ov"></div><div class="genre-nm">COMEDIA</div></div>
+        <div class="genre-card"><div class="genre-card-bg" style="background:linear-gradient(135deg,#2e0a0a,#4a0d0d);"></div><div class="genre-card-ov"></div><div class="genre-nm">TERROR</div></div>
+        <div class="genre-card"><div class="genre-card-bg" style="background:linear-gradient(135deg,#2e1a0a,#4a2a1a);"></div><div class="genre-card-ov"></div><div class="genre-nm">ROMANCE</div></div>
+      </div>
+      <div style="padding:14px 16px 10px;"><div class="section-title">COLECCIONES</div></div>
+      <div class="coll-row">
+        <div class="coll-card"><div class="coll-cover" style="background:linear-gradient(135deg,#ffb600,#c8940a);">🏆</div><div class="coll-info"><div class="coll-title">Lo más visto esta semana</div><div class="coll-count">Top 20 en Cinerian</div></div></div>
+        <div class="coll-card"><div class="coll-cover" style="background:linear-gradient(135deg,#1a2e1a,#0d1a0d);">⚡</div><div class="coll-info"><div class="coll-title">Cortas y buenas</div><div class="coll-count">Menos de 90 min</div></div></div>
+        <div class="coll-card"><div class="coll-cover" style="background:linear-gradient(135deg,#1a1a2e,#0d0d1a);">🎭</div><div class="coll-info"><div class="coll-title">Clásicos imperdibles</div><div class="coll-count">Antes de morir, velas</div></div></div>
+        <div class="coll-card"><div class="coll-cover" style="background:linear-gradient(135deg,#2e1a1a,#1a0d0d);">😰</div><div class="coll-info"><div class="coll-title">Para ver solo de noche</div><div class="coll-count">Terror y suspenso</div></div></div>
+        <div class="coll-card"><div class="coll-cover" style="background:linear-gradient(135deg,#1a2e2e,#0d1a1a);">🌍</div><div class="coll-info"><div class="coll-title">Cine internacional</div><div class="coll-count">Más allá de Hollywood</div></div></div>
+      </div>
+    </div>
+    <div class="bottom-nav">
+      <div class="bnav-item" onclick="goTo('s-home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div class="bnav-label">Inicio</div></div>
+      <div class="bnav-item active" onclick="goTo('s-explorar')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><div class="bnav-label" style="color:#ffb600;">Explorar</div></div>
+      <div class="bnav-item" onclick="goTo('s-paravos')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><div class="bnav-label">Para vos</div></div>
+      <div class="bnav-item" onclick="goTo('s-perfil')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><div class="bnav-label">Perfil</div></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ S6: PARA VOS ═══ -->
+  <div class="screen" id="s-paravos">
+    <div style="padding:10px 20px 8px;"><div style="font-family:'Rubik',sans-serif;font-size:18px;font-weight:700;color:#ffb600;letter-spacing:4px;">PARA VOS</div></div>
+    <div class="tab-bar">
+      <div class="tab active" id="pv-tab-r" onclick="pvTab('r')">RECOMENDACIONES<div class="tab-badge" id="pv-badge">3</div></div>
+      <div class="tab" id="pv-tab-a" onclick="pvTab('a')">ACTIVIDAD</div>
+    </div>
+    <div class="scroll-body" style="padding-bottom:80px;">
+      <div class="tab-content active" id="pv-c-r" style="padding:12px 16px 0;">
+        <div class="rec-card unread" id="pv-rec1">
+          <div class="rec-header"><div class="rec-av" style="background:#ffb600;">MG</div><div class="rec-from"><div class="rec-from-name">Martina G.</div><div class="rec-from-act">te recomendó una película</div></div><div class="rec-time">hace 2h</div><div class="unread-dot"></div></div>
+          <div class="rec-body"><div class="rec-poster" style="background:linear-gradient(160deg,#2e1a2e,#1a0d1a);">🎭</div><div class="rec-info"><div class="rec-title">Aftersun</div><div class="rec-meta">2022 · Drama · A24</div><div style="display:flex;align-items:center;gap:4px;margin-top:4px;"><span style="font-size:12px;">👍</span><span class="rec-stars">★★★★★</span></div><div class="rec-msg">"Acordate que te dije que la veas 🥺"</div></div></div>
+          <div class="rec-actions"><div class="rec-divider"></div>
+            <div class="ic-btn" onclick="pvToggleSeen(this,'pv-rs1','Martina')"><div class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" class="ic-svg"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div><div class="ic-lbl">Ya la vi</div></div>
+            <div class="ic-btn" onclick="pvToggleList(this)"><div class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" class="ic-svg"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><div class="ic-lbl">Guardar</div></div>
+            <div class="ic-btn" onclick="pvOpenReply('Martina','Aftersun','pv-rs1')"><div class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></div><div class="ic-lbl">Responder</div></div>
+            <div class="ic-btn" onclick="pvDismiss('pv-rec1')"><div class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div><div class="ic-lbl">Ignorar</div></div>
+          </div>
+          <div class="reply-sent" id="pv-rs1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><div class="reply-sent-text">Respuesta enviada a Martina</div></div>
+        </div>
+        <div class="rec-card unread" id="pv-rec2">
+          <div class="rec-header"><div class="rec-av" style="background:#c8940a;">JR</div><div class="rec-from"><div class="rec-from-name">Juan R.</div><div class="rec-from-act">te recomendó una película</div></div><div class="rec-time">ayer</div><div class="unread-dot"></div></div>
+          <div class="rec-body"><div class="rec-poster" style="background:linear-gradient(160deg,#2e2e1a,#1a1a0d);">🎦</div><div class="rec-info"><div class="rec-title">The Holdovers</div><div class="rec-meta">2023 · Comedia</div><div style="display:flex;align-items:center;gap:4px;margin-top:4px;"><span style="font-size:12px;">👍</span><span class="rec-stars">★★★★☆</span></div><div class="rec-msg">"Perfecta para ver en invierno"</div></div></div>
+          <div class="rec-actions"><div class="rec-divider"></div>
+            <div class="ic-btn" onclick="pvToggleSeen(this,'pv-rs2','Juan')"><div class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" class="ic-svg"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div><div class="ic-lbl">Ya la vi</div></div>
+            <div class="ic-btn" onclick="pvToggleList(this)"><div class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" class="ic-svg"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><div class="ic-lbl">Guardar</div></div>
+            <div class="ic-btn" onclick="pvOpenReply('Juan','The Holdovers','pv-rs2')"><div class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></div><div class="ic-lbl">Responder</div></div>
+            <div class="ic-btn" onclick="pvDismiss('pv-rec2')"><div class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div><div class="ic-lbl">Ignorar</div></div>
+          </div>
+          <div class="reply-sent" id="pv-rs2"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><div class="reply-sent-text">Respuesta enviada a Juan</div></div>
+        </div>
+        <div class="rec-card unread" id="pv-rec3">
+          <div class="rec-header"><div class="rec-av" style="background:#a07808;">SC</div><div class="rec-from"><div class="rec-from-name">Sofi C.</div><div class="rec-from-act">te recomendó una serie</div></div><div class="rec-time">hace 3 días</div><div class="unread-dot"></div></div>
+          <div class="rec-body"><div class="rec-poster" style="background:linear-gradient(160deg,#2e1e10,#1a0d08);">📺</div><div class="rec-info"><div class="rec-title">The Bear S2</div><div class="rec-meta">2023 · Drama · FX</div><div style="display:flex;align-items:center;gap:4px;margin-top:4px;"><span style="font-size:12px;">👍</span><span class="rec-stars">★★★★★</span></div><div class="rec-msg">"Necesito hablar esto con alguien"</div></div></div>
+          <div class="rec-actions"><div class="rec-divider"></div>
+            <div class="ic-btn" onclick="pvToggleSeen(this,'pv-rs3','Sofi')"><div class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" class="ic-svg"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div><div class="ic-lbl">Ya la vi</div></div>
+            <div class="ic-btn" onclick="pvToggleList(this)"><div class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" class="ic-svg"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><div class="ic-lbl">Guardar</div></div>
+            <div class="ic-btn" onclick="pvOpenReply('Sofi','The Bear S2','pv-rs3')"><div class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a6e55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></div><div class="ic-lbl">Responder</div></div>
+            <div class="ic-btn" onclick="pvDismiss('pv-rec3')"><div class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div><div class="ic-lbl">Ignorar</div></div>
+          </div>
+          <div class="reply-sent" id="pv-rs3"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><div class="reply-sent-text">Respuesta enviada a Sofi</div></div>
+        </div>
+        <div style="font-family:'Rubik',sans-serif;font-size:11px;font-weight:700;color:#8a7e60;letter-spacing:1.5px;margin:8px 0 12px;">BASADO EN TU RED</div>
+        <div class="sugg-card"><div class="sugg-poster" style="background:linear-gradient(160deg,#1a1a2e,#0d0d1a);">📽️</div><div class="sugg-info"><div class="sugg-title">Interstellar</div><div class="sugg-reason">A Juan le encantó y tienen 78% de compatibilidad</div></div><div class="sugg-score">8.9 ★</div></div>
+        <div class="sugg-card"><div class="sugg-poster" style="background:linear-gradient(160deg,#1a2e2e,#0d1a1a);">🎞️</div><div class="sugg-info"><div class="sugg-title">All of Us Strangers</div><div class="sugg-reason">3 amigos la vieron y todos dieron 👍</div></div><div class="sugg-score">9.0 ★</div></div>
+      </div>
+      <div class="tab-content" id="pv-c-a" style="padding:12px 16px 0;">
+        <div class="act-item"><div class="act-av2" style="background:#ffb600;">MG</div><div class="act-body"><div class="act-txt"><strong>Martina</strong> vio <strong>Poor Things</strong> y la calificó 👍</div><div class="act-tm">hace 1 hora</div></div><div class="act-poster-sm" style="background:linear-gradient(160deg,#2e1e10,#1a0d08);">🎥</div><div class="act-unread"></div></div>
+        <div class="act-item"><div class="act-av2" style="background:#c8940a;">JR</div><div class="act-body"><div class="act-txt"><strong>Juan</strong> empezó a seguirte</div><div class="act-tm">hace 3 horas</div></div><div class="act-unread"></div></div>
+        <div class="act-item"><div class="act-av2" style="background:#a07808;">SC</div><div class="act-body"><div class="act-txt"><strong>Sofi</strong> y vos tienen <strong>5 películas en común</strong> esta semana</div><div class="act-tm">hace 6 horas</div></div><div class="act-unread"></div></div>
+        <div class="act-item"><div class="act-av2" style="background:#5a5240;">LP</div><div class="act-body"><div class="act-txt"><strong>Laura</strong> agregó <strong>Nosferatu</strong> a su lista — vos también la tenés</div><div class="act-tm">ayer</div></div><div class="act-poster-sm" style="background:linear-gradient(160deg,#1a1a2e,#0d0d1a);">🎞️</div></div>
+      </div>
+    </div>
+    <!-- Reply sheet -->
+    <div class="sheet-overlay" id="pv-overlay" onclick="pvCloseReply()"></div>
+    <div class="bottom-sheet" id="pv-reply-sheet">
+      <div class="sheet-handle"></div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);"><div style="font-family:'Rubik',sans-serif;font-size:13px;font-weight:700;color:var(--text);" id="pv-sheet-title">Responderle a Martina</div><div style="font-size:11px;color:var(--dim);font-family:'Saira',sans-serif;margin-top:3px;" id="pv-sheet-sub">sobre Aftersun</div></div>
+      <div style="padding:14px 18px 0;"><textarea class="txt-input" rows="3" placeholder="¿Qué te pareció? Contale..."></textarea><button class="btn-primary" onclick="pvSendReply()">ENVIAR RESPUESTA</button><button class="btn-ghost" onclick="pvCloseReply()">Ahora no</button></div>
+    </div>
+    <div class="bottom-nav">
+      <div class="bnav-item" onclick="goTo('s-home')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div class="bnav-label">Inicio</div></div>
+      <div class="bnav-item" onclick="goTo('s-explorar')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><div class="bnav-label">Explorar</div></div>
+      <div class="bnav-item active" onclick="goTo('s-paravos')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><div class="bnav-label" style="color:#ffb600;">Para vos</div></div>
+      <div class="bnav-item" onclick="goTo('s-perfil')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a5240" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><div class="bnav-label">Perfil</div></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── NAVIGATION ──
+function goTo(id) {
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav-pill').forEach(function(p){ p.classList.remove('active'); });
+  var map = {'s-onboarding':'Onboarding','s-home':'Home','s-detalle':'Detalle','s-perfil':'Perfil','s-explorar':'Explorar','s-paravos':'Para vos'};
+  document.querySelectorAll('.nav-pill').forEach(function(p){ if(p.textContent===map[id]) p.classList.add('active'); });
+}
+
+// ── ONBOARDING ──
+var onbCur = 0;
+function onbNext() {
+  if (document.getElementById('login-section').style.display === 'block') return;
+  document.getElementById('onb-s'+onbCur).classList.remove('active');
+  onbCur++;
+  if (onbCur < 3) {
+    document.getElementById('onb-s'+onbCur).classList.add('active');
+    document.querySelectorAll('.onb-dot').forEach(function(d,i){ d.classList.toggle('active',i===onbCur); });
+    if (onbCur===2) { document.getElementById('onb-next-btn').textContent='EMPEZAR'; document.getElementById('onb-skip-btn').style.display='none'; }
+  } else { showLogin(); }
+}
+function showLogin() {
+  document.getElementById('onb-s0').classList.remove('active');
+  document.getElementById('onb-s1').classList.remove('active');
+  document.getElementById('onb-s2').classList.remove('active');
+  document.getElementById('onb-dots').style.display='none';
+  document.getElementById('onb-next-btn').style.display='none';
+  document.getElementById('onb-skip-btn').style.display='none';
+  document.getElementById('login-section').style.display='block';
+}
+
+// ── HOME ──
+function hTab(t) {
+  document.getElementById('h-tab-m').classList.toggle('active',t==='m');
+  document.getElementById('h-tab-s').classList.toggle('active',t==='s');
+  document.getElementById('h-content-m').style.display=t==='m'?'grid':'none';
+  document.getElementById('h-content-s').style.display=t==='s'?'grid':'none';
+}
+var homeTogOn=false;
+function homeToggle() {
+  homeTogOn=!homeTogOn;
+  document.getElementById('h-toggle').classList.toggle('on',homeTogOn);
+  document.getElementById('h-toggle-lbl').classList.toggle('on',homeTogOn);
+  document.querySelectorAll('.seen-card').forEach(function(c){ c.closest('.poster-wrap').style.display=homeTogOn?'none':''; });
+}
+function openRating(title,meta,emoji,bg) {
+  document.getElementById('h-sheet-title').textContent=title;
+  document.getElementById('h-sheet-meta').textContent=meta;
+  document.getElementById('h-sheet-poster').textContent=emoji;
+  document.getElementById('h-sheet-poster').style.background=bg;
+  document.getElementById('h-overlay').style.display='block';
+  document.getElementById('h-rating-sheet').style.display='block';
+  document.getElementById('h-thumb-up').classList.remove('sel');
+  document.getElementById('h-thumb-dn').classList.remove('sel');
+  document.getElementById('h-submit').classList.remove('vis');
+  document.getElementById('h-opt').classList.remove('open');
+  document.querySelectorAll('.star').forEach(function(s){ s.classList.remove('lit'); });
+}
+function closeRating() {
+  document.getElementById('h-overlay').style.display='none';
+  document.getElementById('h-rating-sheet').style.display='none';
+}
+function selThumb(t) {
+  document.getElementById('h-thumb-up').classList.toggle('sel',t==='up');
+  document.getElementById('h-thumb-dn').classList.toggle('sel',t==='dn');
+  document.getElementById('h-submit').classList.add('vis');
+}
+function toggleOpt() { document.getElementById('h-opt').classList.toggle('open'); document.getElementById('h-expand').style.display='none'; }
+function setStar(n) { document.querySelectorAll('.star').forEach(function(s,i){ s.classList.toggle('lit',i<n); }); }
+
+// ── DETALLE ──
+var dSeenOn=false, dWlOn=false, dSynOpen=false;
+function dToggleSeen() {
+  dSeenOn=!dSeenOn;
+  var btn=document.getElementById('d-seen-btn');
+  btn.classList.toggle('done',dSeenOn);
+  btn.innerHTML=dSeenOn?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffb600" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> YA LA VISTE':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#26231b" stroke-width="2.5" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>MARCAR COMO VISTA';
+}
+function dToggleWatchlist(btn) {
+  dWlOn=!dWlOn;
+  document.getElementById('d-wl-circle').classList.toggle('active-ic',dWlOn);
+  document.getElementById('d-wl-svg').setAttribute('stroke',dWlOn?'#ffb600':'#7a6e55');
+  document.getElementById('d-wl-lbl').textContent=dWlOn?'En tu lista':'Agregar a lista';
+  document.getElementById('d-wl-lbl').classList.toggle('ic-active',dWlOn);
+}
+function dRecommend() {
+  document.getElementById('d-overlay').style.display='block';
+  document.getElementById('d-rec-sheet').style.display='block';
+}
+function dCloseSheets() {
+  document.getElementById('d-overlay').style.display='none';
+  document.getElementById('d-rec-sheet').style.display='none';
+}
+function frToggle(row) {
+  var check=row.querySelector('.fr-check');
+  var on=check.style.background==='rgb(255, 182, 0)';
+  check.style.background=on?'':'#ffb600';
+  check.style.borderColor=on?'var(--border)':'#ffb600';
+  check.innerHTML=on?'':'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#26231b" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
+}
+function dToggleSyn() {
+  dSynOpen=!dSynOpen;
+  document.getElementById('d-syn').textContent=dSynOpen?'El físico J. Robert Oppenheimer trabaja con el Ejército de los Estados Unidos en el Proyecto Manhattan durante la Segunda Guerra Mundial, con el objetivo de desarrollar la primera bomba atómica. El film explora la complejidad moral de este científico brillante y torturado que cambió el mundo para siempre.':'El físico J. Robert Oppenheimer trabaja con el Ejército de los Estados Unidos en el Proyecto Manhattan durante la Segunda Guerra Mundial...';
+  document.querySelector('.syn-toggle').textContent=dSynOpen?'Ver menos':'Ver más';
+}
+function dReveal() {
+  document.getElementById('d-spoiler').style.display='none';
+  document.getElementById('d-reviews').style.display='block';
+}
+
+// ── PERFIL ──
+function pTab(t) {
+  ['v','l','r'].forEach(function(x){ document.getElementById('p-tab-'+x).classList.toggle('active',x===t); document.getElementById('p-c-'+x).classList.toggle('active',x===t); });
+}
+
+// ── PARA VOS ──
+function pvTab(t) {
+  ['r','a'].forEach(function(x){ document.getElementById('pv-tab-'+x).classList.toggle('active',x===t); document.getElementById('pv-c-'+x).classList.toggle('active',x===t); });
+}
+var pvReplySentId=null;
+function pvToggleSeen(btn, sentId, name) {
+  var ic=btn.querySelector('.ic'), lbl=btn.querySelector('.ic-lbl'), svg=btn.querySelector('.ic-svg');
+  var on=ic.classList.toggle('on');
+  svg.setAttribute('stroke',on?'#ffb600':'#7a6e55');
+  lbl.textContent=on?'✓ Vista':'Ya la vi';
+  lbl.classList.toggle('on',on);
+  if(on) setTimeout(function(){ pvOpenReply(name, btn.closest('.rec-card').querySelector('.rec-title').textContent, sentId); },400);
+}
+function pvToggleList(btn) {
+  var ic=btn.querySelector('.ic'), lbl=btn.querySelector('.ic-lbl'), svg=btn.querySelector('.ic-svg');
+  var on=ic.classList.toggle('on');
+  svg.setAttribute('stroke',on?'#ffb600':'#7a6e55');
+  lbl.textContent=on?'✓ Guardado':'Guardar';
+  lbl.classList.toggle('on',on);
+}
+function pvOpenReply(name, movie, sentId) {
+  pvReplySentId=sentId;
+  document.getElementById('pv-sheet-title').textContent='Responderle a '+name;
+  document.getElementById('pv-sheet-sub').textContent='sobre '+movie;
+  document.getElementById('pv-overlay').style.display='block';
+  document.getElementById('pv-reply-sheet').style.display='block';
+}
+function pvCloseReply() {
+  document.getElementById('pv-overlay').style.display='none';
+  document.getElementById('pv-reply-sheet').style.display='none';
+}
+function pvSendReply() {
+  pvCloseReply();
+  if(pvReplySentId) { var el=document.getElementById(pvReplySentId); if(el) el.classList.add('vis'); }
+}
+function pvDismiss(id) {
+  var c=document.getElementById(id);
+  c.style.transition='all 0.3s'; c.style.opacity='0'; c.style.maxHeight='0'; c.style.marginBottom='0';
+  setTimeout(function(){ c.style.display='none'; pvUpdateBadge(); },300);
+}
+function pvUpdateBadge() {
+  var count=0; ['pv-rec1','pv-rec2','pv-rec3'].forEach(function(id){ var c=document.getElementById(id); if(c&&c.style.display!=='none') count++; });
+  var badge=document.getElementById('pv-badge');
+  if(count>0) badge.textContent=count; else badge.style.display='none';
+}
+</script>
+</body>
+</html>

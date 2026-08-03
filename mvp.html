@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cinerian MVP</title>
+    <meta
+      name="description"
+      content="MVP de relanzamiento para Cinerian: buscador, feed y recomendaciones sociales de peliculas y series."
+    >
+    <link rel="icon" href="images/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="mvp.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div class="brand-lockup">
+          <img src="images/logosolo.png" alt="Cinerian" class="brand-mark">
+          <div>
+            <p class="eyebrow">Relanzamiento MVP</p>
+            <h1>Cinerian vuelve como red social de peliculas y series</h1>
+            <p class="hero-copy">
+              Esta version aterriza la idea central: descubrir que ver, compartir lo que viste
+              y entrenar recomendaciones con tus gustos.
+            </p>
+          </div>
+        </div>
+        <div class="hero-stats">
+          <div class="stat-card">
+            <span class="stat-label">Buscador</span>
+            <strong id="searchCount">0 resultados</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Feed</span>
+            <strong id="feedCount">0 posteos</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Perfil</span>
+            <strong id="profileCount">0 ratings</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel panel-search">
+          <div class="panel-heading">
+            <p class="panel-kicker">1. Buscador</p>
+            <h2>Busca una peli o serie y encontra info rapido</h2>
+          </div>
+
+          <label class="search-box" for="searchInputMvp">
+            <span>Buscar</span>
+            <input
+              id="searchInputMvp"
+              type="search"
+              placeholder="Ej: Interstellar, The Bear, Parasite"
+              autocomplete="off"
+            >
+          </label>
+
+          <div id="searchStatus" class="status-text">Escribi para buscar en TMDB.</div>
+          <div id="searchResults" class="results-grid"></div>
+        </section>
+
+        <section class="panel panel-recs">
+          <div class="panel-heading">
+            <p class="panel-kicker">2. Recomendacion</p>
+            <h2>Discovery con gesto tipo swipe</h2>
+            <p class="panel-copy">
+              En este MVP usamos botones, pero el modelo ya es el correcto:
+              me gusta, paso, ya la vi y puntuar.
+            </p>
+          </div>
+
+          <div id="recommendationCard" class="recommendation-card"></div>
+          <div class="recommendation-actions">
+            <button type="button" class="ghost-button" data-action="skip">Paso</button>
+            <button type="button" class="ghost-button" data-action="like">Me gusta</button>
+            <button type="button" class="primary-button" data-action="watched">Ya la vi</button>
+          </div>
+
+          <div class="rating-box">
+            <label for="ratingSelect">Si ya la viste, puntuacion:</label>
+            <select id="ratingSelect">
+              <option value="5">5</option>
+              <option value="4">4</option>
+              <option value="3" selected>3</option>
+              <option value="2">2</option>
+              <option value="1">1</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="panel panel-feed">
+          <div class="panel-heading">
+            <p class="panel-kicker">3. Feed Cineriano</p>
+            <h2>Tu actividad se transforma en posteos</h2>
+          </div>
+
+          <form id="manualPostForm" class="post-form">
+            <label for="manualPostText">Comparte una recomendacion</label>
+            <textarea
+              id="manualPostText"
+              rows="3"
+              placeholder="Ej: Acabo de ver una joyita sci-fi, totalmente recomendada."
+            ></textarea>
+            <button type="submit" class="primary-button">Publicar</button>
+          </form>
+
+          <div id="feedList" class="feed-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="text/javascript" src="app/mvp.js" defer></script>
+  </body>
+</html>
