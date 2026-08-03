@@ -5,12 +5,11 @@ type WatchReviewModalProps = {
   item: DiscoveryItem | null;
   isSaving?: boolean;
   onClose: () => void;
-  onSubmit: (input: { liked: boolean; rating: number; comment: string }) => void;
+  onSubmit: (input: { liked: boolean; comment: string }) => void;
 };
 
 export function WatchReviewModal({ item, isSaving = false, onClose, onSubmit }: WatchReviewModalProps) {
   const [liked, setLiked] = useState<boolean | null>(true);
-  const [rating, setRating] = useState(4);
   const [comment, setComment] = useState("");
 
   useEffect(() => {
@@ -19,7 +18,6 @@ export function WatchReviewModal({ item, isSaving = false, onClose, onSubmit }: 
     }
 
     setLiked(true);
-    setRating(4);
     setComment("");
   }, [item]);
 
@@ -61,20 +59,6 @@ export function WatchReviewModal({ item, isSaving = false, onClose, onSubmit }: 
           </button>
         </div>
 
-        <div className="review-modal__stars" aria-label={`Puntaje ${rating} de 5`}>
-          {[1, 2, 3, 4, 5].map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={`review-modal__star ${value <= rating ? "is-active" : ""}`}
-              onClick={() => setRating(value)}
-              aria-label={`${value} estrellas`}
-            >
-              ★
-            </button>
-          ))}
-        </div>
-
         <textarea
           className="review-modal__textarea"
           value={comment}
@@ -89,7 +73,7 @@ export function WatchReviewModal({ item, isSaving = false, onClose, onSubmit }: 
           <button
             type="button"
             className="primary-button"
-            onClick={() => onSubmit({ liked: liked !== false, rating, comment })}
+            onClick={() => onSubmit({ liked: liked !== false, comment })}
             disabled={isSaving}
           >
             Publicar reseña

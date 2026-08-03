@@ -111,7 +111,7 @@ export function SearchPanel({ userId }: SearchPanelProps) {
     }
   }
 
-  async function handleReviewSubmit(input: { liked: boolean; rating: number; comment: string }) {
+  async function handleReviewSubmit(input: { liked: boolean; comment: string }) {
     if (!reviewItem) {
       return;
     }
@@ -122,8 +122,7 @@ export function SearchPanel({ userId }: SearchPanelProps) {
       await saveStoredReaction({
         userId,
         item: reviewItem,
-        reaction: "watched",
-        rating: input.rating
+        reaction: "watched"
       });
       await createFeedPost({
         userId,
@@ -131,7 +130,6 @@ export function SearchPanel({ userId }: SearchPanelProps) {
         body: buildWatchedPostBody({
           item: reviewItem,
           liked: input.liked,
-          rating: input.rating,
           comment: input.comment
         }),
         tmdbId: reviewItem.id,
@@ -142,8 +140,7 @@ export function SearchPanel({ userId }: SearchPanelProps) {
         {
           tmdbId: reviewItem.id,
           mediaType: reviewItem.mediaType,
-          reaction: "watched",
-          rating: input.rating
+          reaction: "watched"
         },
         ...current.filter((entry) => entry.tmdbId !== reviewItem.id)
       ]);

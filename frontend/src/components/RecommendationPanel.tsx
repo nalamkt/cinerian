@@ -3,6 +3,7 @@ import { useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { demoDiscovery } from "../data/demoData";
 import { createFeedPost } from "../lib/feed";
+import { shareMediaLink } from "../lib/share";
 import {
   fetchStoredReactions,
   removeStoredLike,
@@ -158,6 +159,19 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     void registerReaction("liked");
   }
 
+  async function handleShare() {
+    if (!spotlight) {
+      return;
+    }
+
+    try {
+      await shareMediaLink(spotlight);
+      setSyncMessage("Listo para enviar.");
+    } catch {
+      setSyncMessage("No pude preparar el envio.");
+    }
+  }
+
   function handleWatched() {
     setReviewItem(spotlight);
   }
@@ -185,7 +199,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     }
   }
 
-  async function handleReviewSubmit(input: { liked: boolean; rating: number; comment: string }) {
+  async function handleReviewSubmit(input: { liked: boolean; comment: string }) {
     if (!reviewItem) {
       return;
     }
@@ -196,8 +210,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       await saveStoredReaction({
         userId,
         item: reviewItem,
-        reaction: "watched",
-        rating: input.rating
+        reaction: "watched"
       });
       await createFeedPost({
         userId,
@@ -205,7 +218,6 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
         body: buildWatchedPostBody({
           item: reviewItem,
           liked: input.liked,
-          rating: input.rating,
           comment: input.comment
         }),
         tmdbId: reviewItem.id,
@@ -215,8 +227,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
         {
           tmdbId: reviewItem.id,
           mediaType: reviewItem.mediaType,
-          reaction: "watched",
-          rating: input.rating
+          reaction: "watched"
         },
         ...current.filter((entry) => entry.tmdbId !== reviewItem.id)
       ]);
@@ -268,19 +279,53 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
               <p className="recommendation-overview">{spotlight.overview}</p>
 
               <div className="recommendation-actions">
-                <button type="button" className="ghost-button" onClick={handleSkip} disabled={isSyncing}>
-                  Paso
-                </button>
-                <button type="button" className="ghost-button" onClick={handleLike} disabled={isSyncing}>
-                  Me gusta
+                <button
+                  type="button"
+                  className="recommendation-action-button"
+                  onClick={handleSkip}
+                  disabled={isSyncing}
+                  data-tooltip="Ignorar"
+                  aria-label="Ignorar"
+                >
+                  <span aria-hidden="true">✕</span>
                 </button>
                 <button
                   type="button"
-                  className="primary-button"
+                  className="recommendation-action-button"
+                  onClick={() => void handleShare()}
+                  disabled={isSyncing}
+                  data-tooltip="Enviar"
+                  aria-label="Enviar a un amigo"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M21 3 10 14" />
+                    <path d="m21 3-7 18-4-7-7-4 18-7Z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="recommendation-action-button recommendation-action-button--primary"
                   onClick={handleWatched}
                   disabled={isSyncing}
+                  data-tooltip="Ya la vi"
+                  aria-label="Ya la vi"
                 >
-                  Ya la vi
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                    <circle cx="12" cy="12" r="2.5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="recommendation-action-button"
+                  onClick={handleLike}
+                  disabled={isSyncing}
+                  data-tooltip="Guardar"
+                  aria-label="Guardar en watchlist"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z" />
+                  </svg>
                 </button>
               </div>
             </>
@@ -297,8 +342,8 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       </div>
 
       <aside className="recommendation-side panel">
-        <p className="section-eyebrow">Tus likes</p>
-        <h2>Lo que fuiste marcando</h2>
+        <p className="section-eyebrow">Tu watchlist</p>
+        <h2>Lo que queres ver despues</h2>
 
         <div className="recommendation-like-list">
           {likedItems.length ? (
@@ -338,7 +383,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
             ))
           ) : (
             <div className="empty-like-state">
-              Marca algunas recomendaciones con <strong>Me gusta</strong> y te las voy guardando aca.
+              Guarda algunos titulos y te los voy armando en tu <strong>Watchlist</strong>.
             </div>
           )}
         </div>

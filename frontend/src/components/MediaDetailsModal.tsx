@@ -15,14 +15,21 @@ const MediaDetailsContext = createContext<MediaDetailsContextValue | null>(null)
 
 function parseFeedReview(body: string) {
   const match = body.match(/^(Le gusto|No le gusto) (.+?)(, le dio| y le dio) (\d)\/5(?: y dijo: "([\s\S]+)")?\.?$/);
-  if (!match) {
+  if (match) {
+    return {
+      sentiment: match[1],
+      quote: match[5] ?? ""
+    };
+  }
+
+  const matchWithoutStars = body.match(/^(Le gusto|No le gusto) (.+?)(?: y dijo: "([\s\S]+)")?\.?$/);
+  if (!matchWithoutStars) {
     return null;
   }
 
   return {
-    sentiment: match[1],
-    rating: Number(match[4]),
-    quote: match[5] ?? ""
+    sentiment: matchWithoutStars[1],
+    quote: matchWithoutStars[3] ?? ""
   };
 }
 
@@ -215,13 +222,6 @@ export function MediaDetailsSheet({
                       <strong>{post.author}</strong>
                       <span className="media-modal__review-meta">{post.createdAtLabel}</span>
                       <p>{review?.quote || post.body}</p>
-                      {review ? (
-                        <div className="media-modal__review-stars">
-                          {Array.from({ length: review.rating }).map((_, index) => (
-                            <span key={`${post.id}-active-${index}`}>★</span>
-                          ))}
-                        </div>
-                      ) : null}
                     </article>
                   );
                 })}

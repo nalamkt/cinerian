@@ -22,7 +22,7 @@ type TabId = "watched" | "liked" | "recommendations" | "posts";
 
 const tabLabels: Record<TabId, string> = {
   watched: "Vistas",
-  liked: "Me gusta",
+  liked: "Watchlist",
   recommendations: "Mis recomendaciones",
   posts: "Posts"
 };
@@ -32,7 +32,6 @@ function parseRatingPost(body: string) {
   if (fullReviewMatch) {
     return {
       title: fullReviewMatch[1],
-      rating: Number(fullReviewMatch[2]),
       quote: fullReviewMatch[3],
       liked: true
     };
@@ -42,9 +41,26 @@ function parseRatingPost(body: string) {
   if (shortReviewMatch) {
     return {
       title: shortReviewMatch[2],
-      rating: Number(shortReviewMatch[3]),
       quote: "",
       liked: shortReviewMatch[1] === "Le gusto"
+    };
+  }
+
+  const fullReviewWithoutStarsMatch = body.match(/^(Le gusto|No le gusto) (.+?) y dijo: "([\s\S]+)"\.?$/);
+  if (fullReviewWithoutStarsMatch) {
+    return {
+      title: fullReviewWithoutStarsMatch[2],
+      quote: fullReviewWithoutStarsMatch[3],
+      liked: fullReviewWithoutStarsMatch[1] === "Le gusto"
+    };
+  }
+
+  const shortReviewWithoutStarsMatch = body.match(/^(Le gusto|No le gusto) (.+?)\.?$/);
+  if (shortReviewWithoutStarsMatch) {
+    return {
+      title: shortReviewWithoutStarsMatch[2],
+      quote: "",
+      liked: shortReviewWithoutStarsMatch[1] === "Le gusto"
     };
   }
 
@@ -280,14 +296,6 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
 
                       {parsedRating ? (
                         <>
-                          <div className="profile-post-card__rating" aria-label={`${parsedRating.rating} de 5 estrellas`}>
-                            {Array.from({ length: parsedRating.rating }).map((_, index) => (
-                              <span key={`${post.id}-active-${index}`}>★</span>
-                            ))}
-                            {Array.from({ length: 5 - parsedRating.rating }).map((_, index) => (
-                              <span key={`${post.id}-inactive-${index}`} className="is-muted">★</span>
-                            ))}
-                          </div>
                           <p className="profile-post-card__text">
                             {parsedRating.quote || (parsedRating.liked ? "Te gusto y la marcaste como vista." : "No te gusto, pero la dejaste puntuadа como vista.")}
                           </p>
@@ -414,7 +422,7 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
         <div className="profile-grid__empty">
           {activeTab === "watched"
             ? "Todavia no marcaste titulos como vistos."
-            : "Todavia no guardaste titulos en Me gusta."}
+            : "Todavia no guardaste titulos en Watchlist."}
         </div>
       )}
     </section>

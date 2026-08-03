@@ -35,7 +35,24 @@ function parseRatingPost(body: string) {
     return {
       sentiment: shortReviewMatch[1],
       title: shortReviewMatch[2],
-      rating: Number(shortReviewMatch[3]),
+      quote: ""
+    };
+  }
+
+  const fullReviewWithoutStarsMatch = body.match(/^(Le gusto|No le gusto) (.+?) y dijo: "([\s\S]+)"\.?$/);
+  if (fullReviewWithoutStarsMatch) {
+    return {
+      sentiment: fullReviewWithoutStarsMatch[1],
+      title: fullReviewWithoutStarsMatch[2],
+      quote: fullReviewWithoutStarsMatch[3]
+    };
+  }
+
+  const shortReviewWithoutStarsMatch = body.match(/^(Le gusto|No le gusto) (.+?)\.?$/);
+  if (shortReviewWithoutStarsMatch) {
+    return {
+      sentiment: shortReviewWithoutStarsMatch[1],
+      title: shortReviewWithoutStarsMatch[2],
       quote: ""
     };
   }
@@ -237,18 +254,6 @@ export function FeedPanel({ userId, profile }: FeedPanelProps) {
                           "{parsedRating.quote}"
                         </p>
                       ) : null}
-                      <div className="timeline-card__rating" aria-label={`${parsedRating.rating} de 5 estrellas`}>
-                        {Array.from({ length: parsedRating.rating }).map((_, index) => (
-                          <span key={`filled-${entry.id}-${index}`} className="timeline-card__star is-active">
-                            ★
-                          </span>
-                        ))}
-                        {Array.from({ length: 5 - parsedRating.rating }).map((_, index) => (
-                          <span key={`empty-${entry.id}-${index}`} className="timeline-card__star">
-                            ★
-                          </span>
-                        ))}
-                      </div>
                     </>
                   ) : (
                     <p className="timeline-card__text">{entry.body}</p>

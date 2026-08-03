@@ -47,7 +47,7 @@ export function ProfilePanel({ session, profile }: ProfilePanelProps) {
           <div className="profile-stats">
             <div className="profile-stat">
               <strong>{stats.likes}</strong>
-              <span>Me gusta</span>
+              <span>Watchlist</span>
             </div>
             <div className="profile-stat">
               <strong>{stats.watched}</strong>
@@ -61,7 +61,7 @@ export function ProfilePanel({ session, profile }: ProfilePanelProps) {
 
           <p className="profile-bio">
             Tu perfil va juntando automaticamente lo que marcaste como visto y lo que guardaste en
-            Me gusta.
+            Watchlist.
           </p>
         </div>
       </div>

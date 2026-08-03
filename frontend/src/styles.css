@@ -436,22 +436,6 @@ textarea {
   line-height: 1.5;
 }
 
-.timeline-card__rating {
-  display: flex;
-  gap: 6px;
-  margin-top: 12px;
-}
-
-.timeline-card__star {
-  color: rgba(255, 255, 255, 0.12);
-  font-size: 1.68rem;
-  line-height: 1;
-}
-
-.timeline-card__star.is-active {
-  color: #ffbf00;
-}
-
 .timeline-card__media {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);
@@ -644,6 +628,72 @@ textarea {
   justify-content: center;
   flex-wrap: wrap;
   padding-top: 6px;
+}
+
+.recommendation-action-button {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.recommendation-action-button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%) translateY(4px);
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(15, 15, 15, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 90ms ease, transform 90ms ease;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.recommendation-action-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 187, 54, 0.28);
+}
+
+.recommendation-action-button:hover::after,
+.recommendation-action-button:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.recommendation-action-button span {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.recommendation-action-button svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.recommendation-action-button--primary {
+  background: linear-gradient(135deg, var(--accent), #ffd66a);
+  color: #201507;
+  border-color: transparent;
 }
 
 .recommendation-side {
@@ -854,17 +904,6 @@ textarea {
   color: var(--muted);
 }
 
-.profile-post-card__rating {
-  display: flex;
-  gap: 4px;
-  color: #ffbf00;
-  font-size: 1.1rem;
-}
-
-.profile-post-card__rating .is-muted {
-  color: rgba(255, 255, 255, 0.16);
-}
-
 .profile-post-card__text {
   margin: 0;
   line-height: 1.6;
@@ -956,25 +995,6 @@ textarea {
   border-color: rgba(255, 187, 54, 0.42);
   background: rgba(255, 187, 54, 0.1);
   color: var(--text);
-}
-
-.review-modal__stars {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-}
-
-.review-modal__star {
-  border: 0;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.14);
-  font-size: 3.2rem;
-  line-height: 1;
-  padding: 0;
-}
-
-.review-modal__star.is-active {
-  color: #ffbf00;
 }
 
 .review-modal__textarea {
