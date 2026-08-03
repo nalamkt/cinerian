@@ -11,12 +11,25 @@ import {
   type StoredReaction
 } from "../lib/reactions";
 import { buildWatchedPostBody } from "../lib/reviews";
-import { getRecommendationTitlesByPage } from "../lib/tmdb";
-import type { DiscoveryItem } from "../types";
+import { getRecommendationTitlesByPage, getTitleDetails } from "../lib/tmdb";
+import type { DiscoveryItem, MediaDetails } from "../types";
 
 type RecommendationPanelProps = {
   userId: string;
 };
+
+function truncateOverview(text: string, maxLength = 150) {
+  if (text.length <= maxLength) {
+    return { text, truncated: false };
+  }
+
+  const sliced = text.slice(0, maxLength);
+  const safeSlice = sliced.includes(" ") ? sliced.slice(0, sliced.lastIndexOf(" ")) : sliced;
+  return {
+    text: `${safeSlice.trim()}...`,
+    truncated: true
+  };
+}
 
 export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const { openMediaDetails } = useMediaDetails();
@@ -27,6 +40,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
+  const [spotlightDetails, setSpotlightDetails] = useState<MediaDetails | null>(null);
 
   const likedIds = useMemo(
     () => storedReactions.filter((entry) => entry.reaction === "liked").map((entry) => entry.tmdbId),
@@ -50,6 +64,10 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       return unique.filter((item) => likedIds.includes(item.id));
     },
     [items, likedIds]
+  );
+  const overviewPreview = useMemo(
+    () => (spotlight ? truncateOverview(spotlight.overview) : { text: "", truncated: false }),
+    [spotlight]
   );
 
   useEffect(() => {
@@ -107,6 +125,31 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   useEffect(() => {
     setCurrentIndex(0);
   }, [reactedIds, items]);
+
+  useEffect(() => {
+    if (!spotlight) {
+      setSpotlightDetails(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    void getTitleDetails(spotlight.id, spotlight.mediaType)
+      .then((details) => {
+        if (isMounted) {
+          setSpotlightDetails(details);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSpotlightDetails(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [spotlight]);
 
   function goNext() {
     if (!availableItems.length) {
@@ -263,6 +306,9 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                 className="recommendation-card recommendation-card--interactive"
                 onClick={() => openMediaDetails(spotlight)}
               >
+                <span className="detail-poster__hint detail-poster__hint--card" aria-hidden="true">
+                  Ver detalles
+                </span>
                 <img
                   src={spotlight.posterUrl}
                   alt={spotlight.title}
@@ -270,13 +316,33 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                 />
               </article>
 
-              <div className="token-row">
-                {spotlight.genres.map((genre) => (
-                  <span key={genre}>{genre}</span>
-                ))}
-              </div>
+              <p className="recommendation-facts">
+                {(spotlightDetails?.genres.length ? spotlightDetails.genres : spotlight.genres).join(" · ")}
+                {spotlightDetails?.runtimeLabel
+                  ? `${(spotlightDetails?.genres.length ? spotlightDetails.genres : spotlight.genres).length ? " · " : ""}${spotlightDetails.runtimeLabel}`
+                  : ""}
+              </p>
 
-              <p className="recommendation-overview">{spotlight.overview}</p>
+              {(spotlightDetails?.providers.length ? spotlightDetails.providers : spotlight.providers).length ? (
+                <div className="token-row token-row--providers">
+                  {(spotlightDetails?.providers.length ? spotlightDetails.providers : spotlight.providers).map((provider) => (
+                    <span key={provider}>{provider}</span>
+                  ))}
+                </div>
+              ) : null}
+
+              <p className="recommendation-overview">
+                {overviewPreview.text}{" "}
+                {overviewPreview.truncated ? (
+                  <button
+                    type="button"
+                    className="recommendation-overview__more"
+                    onClick={() => openMediaDetails(spotlight)}
+                  >
+                    Ver más
+                  </button>
+                ) : null}
+              </p>
 
               <div className="recommendation-actions">
                 <button
@@ -349,12 +415,16 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
           {likedItems.length ? (
             likedItems.map((item) => (
               <article className="liked-card" key={item.id}>
-                <img
-                  src={item.posterUrl}
-                  alt={item.title}
-                  className="liked-card__poster liked-card__poster--interactive"
-                  onClick={() => openMediaDetails(item)}
-                />
+                <div className="detail-poster detail-poster--compact" onClick={() => openMediaDetails(item)}>
+                  <img
+                    src={item.posterUrl}
+                    alt={item.title}
+                    className="liked-card__poster liked-card__poster--interactive"
+                  />
+                  <span className="detail-poster__hint" aria-hidden="true">
+                    Ver detalles
+                  </span>
+                </div>
                 <div className="liked-card__copy">
                   <strong className="media-linklike" onClick={() => openMediaDetails(item)}>
                     {item.title}
@@ -365,17 +435,24 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                   <div className="liked-card__actions">
                     <button
                       type="button"
-                      className="liked-card__action liked-card__action--primary"
+                      className="recommendation-action-button recommendation-action-button--primary recommendation-action-button--small"
                       onClick={() => void handleMarkLikedAsWatched(item)}
+                      data-tooltip="Ya la vi"
+                      aria-label="Ya la vi"
                     >
-                      Ya la vi
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                        <circle cx="12" cy="12" r="2.5" />
+                      </svg>
                     </button>
                     <button
                       type="button"
-                      className="liked-card__action"
+                      className="recommendation-action-button recommendation-action-button--small"
                       onClick={() => void handleRemoveLike(item)}
+                      data-tooltip="Eliminar"
+                      aria-label="Eliminar"
                     >
-                      Eliminar
+                      <span aria-hidden="true">✕</span>
                     </button>
                   </div>
                 </div>

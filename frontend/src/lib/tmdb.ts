@@ -138,6 +138,19 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
       : typeof item.first_air_date === "string"
         ? item.first_air_date
         : "";
+  const genres =
+    Array.isArray(item.genres)
+      ? item.genres
+          .map((genre) =>
+            typeof genre === "object" &&
+            genre !== null &&
+            "name" in genre &&
+            typeof genre.name === "string"
+              ? genre.name
+              : null
+          )
+          .filter((genre): genre is string => Boolean(genre))
+      : [];
 
   return {
     id: Number(item.id),
@@ -151,7 +164,7 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
       (typeof item.overview === "string" && item.overview) ||
       "Todavia no tenemos descripcion para este titulo.",
     posterUrl: posterPath ? `${imageBase}${posterPath}` : "/images/base.png",
-    genres: [],
+    genres,
     providers: [],
     score: typeof item.vote_average === "number" ? Number(item.vote_average.toFixed(1)) : 0
   };

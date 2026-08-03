@@ -188,7 +188,12 @@ export function SearchPanel({ userId }: SearchPanelProps) {
             key={`${item.mediaType}-${item.id}`}
             onClick={() => openMediaDetails(item)}
           >
-            <img src={item.posterUrl} alt={item.title} className="media-poster" />
+            <div className="detail-poster">
+              <img src={item.posterUrl} alt={item.title} className="media-poster" />
+              <span className="detail-poster__hint" aria-hidden="true">
+                Ver detalles
+              </span>
+            </div>
             <div className="media-copy">
               <div className="media-copy__meta-row">
                 <p className="meta-line">

@@ -447,6 +447,67 @@ textarea {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.detail-poster {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.detail-poster img,
+.detail-poster .poster-stack__item,
+.recommendation-card__image {
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.detail-poster__hint {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(8, 8, 8, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.detail-poster__hint--card {
+  bottom: 16px;
+  z-index: 2;
+}
+
+.detail-poster--compact .detail-poster__hint,
+.detail-poster--stack .detail-poster__hint {
+  font-size: 0.74rem;
+  padding: 6px 10px;
+  bottom: 8px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .detail-poster:hover img,
+  .detail-poster:hover .poster-stack__item,
+  .recommendation-card:hover .recommendation-card__image {
+    transform: scale(1.04);
+    filter: brightness(0.72);
+  }
+
+  .detail-poster:hover .detail-poster__hint,
+  .recommendation-card:hover .detail-poster__hint {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-2px);
+  }
+}
+
 .timeline-card__media--interactive,
 .media-card--interactive,
 .recommendation-card--interactive,
@@ -532,6 +593,7 @@ textarea {
   aspect-ratio: 2 / 3;
   border-radius: 16px;
   object-fit: cover;
+  display: block;
 }
 
 .media-linklike {
@@ -606,7 +668,25 @@ textarea {
   max-width: 56ch;
 }
 
+.recommendation-overview__more {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  padding: 0;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.recommendation-facts {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 .recommendation-card {
+  position: relative;
   border-radius: 26px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -628,6 +708,11 @@ textarea {
   justify-content: center;
   flex-wrap: wrap;
   padding-top: 6px;
+}
+
+.token-row--providers {
+  justify-content: center;
+  margin-top: -6px;
 }
 
 .recommendation-action-button {
@@ -696,6 +781,20 @@ textarea {
   border-color: transparent;
 }
 
+.recommendation-action-button--small {
+  width: 46px;
+  height: 46px;
+}
+
+.recommendation-action-button--small span {
+  font-size: 1.35rem;
+}
+
+.recommendation-action-button--small svg {
+  width: 20px;
+  height: 20px;
+}
+
 .recommendation-side {
   display: grid;
   align-content: start;
@@ -734,21 +833,7 @@ textarea {
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 4px;
-}
-
-.liked-card__action {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.liked-card__action--primary {
-  background: linear-gradient(135deg, var(--accent), #ffd66a);
-  color: #201507;
+  align-items: center;
 }
 
 .liked-card p,
@@ -1638,6 +1723,16 @@ textarea {
   .sidebar-media,
   .liked-card {
     grid-template-columns: 1fr;
+  }
+
+  .detail-poster__hint,
+  .recommendation-card .detail-poster__hint {
+    opacity: 1;
+    transform: translateX(-50%);
+    bottom: 10px;
+    font-size: 0.76rem;
+    padding: 6px 10px;
+    background: rgba(8, 8, 8, 0.72);
   }
 
   .composer-card,

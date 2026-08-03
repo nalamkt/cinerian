@@ -278,12 +278,16 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
 
                   <div className="profile-post-card__media-layout">
                     {item ? (
-                      <img
-                        src={item.posterUrl}
-                        alt={item.title}
-                        className="profile-post-card__poster"
-                        onClick={() => openMediaDetails(item)}
-                      />
+                      <div className="detail-poster detail-poster--profile" onClick={() => openMediaDetails(item)}>
+                        <img
+                          src={item.posterUrl}
+                          alt={item.title}
+                          className="profile-post-card__poster"
+                        />
+                        <span className="detail-poster__hint" aria-hidden="true">
+                          Ver detalles
+                        </span>
+                      </div>
                     ) : null}
 
                     <div className="profile-post-card__media-copy">
@@ -395,12 +399,16 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
         <div className="profile-grid">
           {tabItems.map((item) => (
             <article className="profile-grid__item" key={`${item.mediaType}-${item.id}`}>
-              <img
-                src={item.posterUrl}
-                alt={item.title}
-                className="profile-grid__poster profile-grid__poster--interactive"
-                onClick={() => openMediaDetails(item)}
-              />
+              <div className="detail-poster detail-poster--grid" onClick={() => openMediaDetails(item)}>
+                <img
+                  src={item.posterUrl}
+                  alt={item.title}
+                  className="profile-grid__poster profile-grid__poster--interactive"
+                />
+                <span className="detail-poster__hint" aria-hidden="true">
+                  Ver detalles
+                </span>
+              </div>
               <div className="profile-grid__meta">
                 <strong className="media-linklike" onClick={() => openMediaDetails(item)}>{item.title}</strong>
                 <span>
