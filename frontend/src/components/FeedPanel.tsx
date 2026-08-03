@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { demoDiscovery, demoFeed } from "../data/demoData";
+import { useMediaDetails } from "./MediaDetailsModal";
 import { createFeedPost, fetchFeedPosts } from "../lib/feed";
 import { getTitleById } from "../lib/tmdb";
 import type { Profile } from "../lib/auth";
@@ -43,6 +44,7 @@ function parseRatingPost(body: string) {
 }
 
 export function FeedPanel({ userId, profile }: FeedPanelProps) {
+  const { openMediaDetails } = useMediaDetails();
   const [entries, setEntries] = useState<FeedEntry[]>(demoFeed);
   const [mediaMap, setMediaMap] = useState<Record<string, DiscoveryItem>>({});
   const [composerText, setComposerText] = useState("");
@@ -195,10 +197,6 @@ export function FeedPanel({ userId, profile }: FeedPanelProps) {
               placeholder="¿Que peli o serie te volo la cabeza hoy?"
             />
             <div className="composer-card__footer">
-              <div className="composer-card__tools">
-                <span>Post libre</span>
-                <span>Se publica en tu perfil</span>
-              </div>
               <button
                 type="button"
                 className="primary-button"
@@ -257,7 +255,7 @@ export function FeedPanel({ userId, profile }: FeedPanelProps) {
                   )}
 
                   {media ? (
-                    <div className="timeline-card__media">
+                    <div className="timeline-card__media timeline-card__media--interactive" onClick={() => openMediaDetails(media)}>
                       <img src={media.posterUrl} alt={media.title} className="timeline-card__poster" />
                       <div className="timeline-card__media-copy">
                         <p className="meta-line">
@@ -289,9 +287,14 @@ export function FeedPanel({ userId, profile }: FeedPanelProps) {
             {conversationItems.length ? (
               conversationItems.map(({ media, posts }) => (
                 <article className="sidebar-media" key={media.id}>
-                  <img src={media.posterUrl} alt={media.title} className="sidebar-media__poster" />
+                  <img
+                    src={media.posterUrl}
+                    alt={media.title}
+                    className="sidebar-media__poster sidebar-media__poster--interactive"
+                    onClick={() => openMediaDetails(media)}
+                  />
                   <div>
-                    <strong>{media.title}</strong>
+                    <strong className="media-linklike" onClick={() => openMediaDetails(media)}>{media.title}</strong>
                     <p>
                       {posts} {posts === 1 ? "posteo" : "posteos"} en el feed
                     </p>
@@ -308,7 +311,13 @@ export function FeedPanel({ userId, profile }: FeedPanelProps) {
           <p className="section-eyebrow">Recomendados para vos</p>
           <div className="poster-stack">
             {demoDiscovery.map((item) => (
-              <img key={item.id} src={item.posterUrl} alt={item.title} className="poster-stack__item" />
+              <img
+                key={item.id}
+                src={item.posterUrl}
+                alt={item.title}
+                className="poster-stack__item poster-stack__item--interactive"
+                onClick={() => openMediaDetails(item)}
+              />
             ))}
           </div>
         </section>

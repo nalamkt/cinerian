@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMediaDetails } from "./MediaDetailsModal";
 import {
   deleteFeedPost,
+  fetchUserMediaPosts,
   fetchUserTextPosts,
   updateFeedPost
 } from "../lib/feed";
@@ -16,19 +18,46 @@ type ProfileTabsProps = {
   userId: string;
 };
 
-type TabId = "watched" | "liked" | "posts";
+type TabId = "watched" | "liked" | "recommendations" | "posts";
 
 const tabLabels: Record<TabId, string> = {
   watched: "Vistas",
   liked: "Me gusta",
+  recommendations: "Mis recomendaciones",
   posts: "Posts"
 };
 
+function parseRatingPost(body: string) {
+  const fullReviewMatch = body.match(/^Le gusto (.+?), le dio (\d)\/5 y dijo: "([\s\S]+)"\.?$/);
+  if (fullReviewMatch) {
+    return {
+      title: fullReviewMatch[1],
+      rating: Number(fullReviewMatch[2]),
+      quote: fullReviewMatch[3],
+      liked: true
+    };
+  }
+
+  const shortReviewMatch = body.match(/^(Le gusto|No le gusto) (.+?)(?:,| y) le dio (\d)\/5\.?$/);
+  if (shortReviewMatch) {
+    return {
+      title: shortReviewMatch[2],
+      rating: Number(shortReviewMatch[3]),
+      quote: "",
+      liked: shortReviewMatch[1] === "Le gusto"
+    };
+  }
+
+  return null;
+}
+
 export function ProfileTabs({ userId }: ProfileTabsProps) {
+  const { openMediaDetails } = useMediaDetails();
   const [activeTab, setActiveTab] = useState<TabId>("watched");
   const [reactions, setReactions] = useState<StoredReaction[]>([]);
   const [titles, setTitles] = useState<Record<string, DiscoveryItem>>({});
   const [posts, setPosts] = useState<FeedEntry[]>([]);
+  const [mediaPosts, setMediaPosts] = useState<FeedEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -42,9 +71,10 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
       setIsLoading(true);
 
       try {
-        const [results, ownPosts] = await Promise.all([
+        const [results, ownPosts, ownMediaPosts] = await Promise.all([
           fetchStoredReactions(userId),
-          fetchUserTextPosts(userId)
+          fetchUserTextPosts(userId),
+          fetchUserMediaPosts(userId)
         ]);
         if (!isMounted) {
           return;
@@ -52,11 +82,17 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
 
         setReactions(results);
         setPosts(ownPosts);
+        setMediaPosts(ownMediaPosts);
 
         const detailed = await Promise.all(
-          results
-            .filter((entry) => entry.reaction === "liked" || entry.reaction === "watched")
-            .map(async (entry) => {
+          [
+            ...results
+              .filter((entry) => entry.reaction === "liked" || entry.reaction === "watched")
+              .map((entry) => ({ tmdbId: entry.tmdbId, mediaType: entry.mediaType })),
+            ...ownMediaPosts
+              .filter((post): post is FeedEntry & { tmdbId: number; mediaType: DiscoveryItem["mediaType"] } => Boolean(post.tmdbId && post.mediaType))
+              .map((post) => ({ tmdbId: post.tmdbId, mediaType: post.mediaType }))
+          ].map(async (entry) => {
               const title = await getTitleById(entry.tmdbId, entry.mediaType);
               if (!title) {
                 return null;
@@ -103,7 +139,7 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
   }, [activeTab, reactions, titles]);
 
   async function handleRemove(item: DiscoveryItem) {
-    if (activeTab === "posts") {
+    if (activeTab !== "watched" && activeTab !== "liked") {
       return;
     }
 
@@ -175,6 +211,7 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
         userId
       });
       setPosts((current) => current.filter((post) => post.id !== postId));
+      setMediaPosts((current) => current.filter((post) => post.id !== postId));
       if (editingPostId === postId) {
         setEditingPostId(null);
         setEditingBody("");
@@ -189,7 +226,7 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
   return (
     <section className="profile-tabs">
       <div className="profile-tabs__switcher">
-        {(["watched", "liked", "posts"] as TabId[]).map((tab) => (
+        {(["watched", "liked", "recommendations", "posts"] as TabId[]).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -205,6 +242,77 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
 
       {isLoading ? (
         <div className="profile-grid__empty">Cargando tu videoteca...</div>
+      ) : activeTab === "recommendations" ? (
+        mediaPosts.filter((post) => post.type === "rating").length ? (
+          <div className="profile-posts">
+            {mediaPosts.filter((post) => post.type === "rating").map((post) => {
+              if (!post.tmdbId || !post.mediaType) {
+                return null;
+              }
+
+              const item = titles[`${post.mediaType}-${post.tmdbId}`];
+              const parsedRating = post.type === "rating" ? parseRatingPost(post.body) : null;
+
+              return (
+                <article className="profile-post-card profile-post-card--media" key={post.id}>
+                  <div className="profile-post-card__topline">
+                    <strong>Puntuaste este titulo</strong>
+                    <span>{post.createdAtLabel}</span>
+                  </div>
+
+                  <div className="profile-post-card__media-layout">
+                    {item ? (
+                      <img
+                        src={item.posterUrl}
+                        alt={item.title}
+                        className="profile-post-card__poster"
+                        onClick={() => openMediaDetails(item)}
+                      />
+                    ) : null}
+
+                    <div className="profile-post-card__media-copy">
+                      <strong className="media-linklike" onClick={() => item ? openMediaDetails(item) : undefined}>
+                        {item?.title ?? parsedRating?.title ?? "Titulo"}
+                      </strong>
+                      <span>
+                        {item?.mediaType === "tv" ? "Serie" : "Pelicula"}{item?.year ? ` • ${item.year}` : ""}
+                      </span>
+
+                      {parsedRating ? (
+                        <>
+                          <div className="profile-post-card__rating" aria-label={`${parsedRating.rating} de 5 estrellas`}>
+                            {Array.from({ length: parsedRating.rating }).map((_, index) => (
+                              <span key={`${post.id}-active-${index}`}>★</span>
+                            ))}
+                            {Array.from({ length: 5 - parsedRating.rating }).map((_, index) => (
+                              <span key={`${post.id}-inactive-${index}`} className="is-muted">★</span>
+                            ))}
+                          </div>
+                          <p className="profile-post-card__text">
+                            {parsedRating.quote || (parsedRating.liked ? "Te gusto y la marcaste como vista." : "No te gusto, pero la dejaste puntuadа como vista.")}
+                          </p>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="profile-post-card__actions">
+                    <button
+                      type="button"
+                      className="profile-grid__remove"
+                      disabled={isSyncing}
+                      onClick={() => void handleDeletePost(post.id)}
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="profile-grid__empty">Todavia no tenes titulos puntuados desde Ya la vi.</div>
+        )
       ) : activeTab === "posts" ? (
         posts.length ? (
           <div className="profile-posts">
@@ -279,9 +387,14 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
         <div className="profile-grid">
           {tabItems.map((item) => (
             <article className="profile-grid__item" key={`${item.mediaType}-${item.id}`}>
-              <img src={item.posterUrl} alt={item.title} className="profile-grid__poster" />
+              <img
+                src={item.posterUrl}
+                alt={item.title}
+                className="profile-grid__poster profile-grid__poster--interactive"
+                onClick={() => openMediaDetails(item)}
+              />
               <div className="profile-grid__meta">
-                <strong>{item.title}</strong>
+                <strong className="media-linklike" onClick={() => openMediaDetails(item)}>{item.title}</strong>
                 <span>
                   {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {item.year}
                 </span>

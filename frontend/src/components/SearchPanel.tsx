@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { useDiscovery } from "../hooks/useDiscovery";
 import { createFeedPost } from "../lib/feed";
@@ -17,6 +18,7 @@ type SearchPanelProps = {
 };
 
 export function SearchPanel({ userId }: SearchPanelProps) {
+  const { openMediaDetails } = useMediaDetails();
   const [query, setQuery] = useState("");
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -184,7 +186,11 @@ export function SearchPanel({ userId }: SearchPanelProps) {
 
       <div className="card-list">
         {results.map((item) => (
-          <article className="media-card" key={`${item.mediaType}-${item.id}`}>
+          <article
+            className="media-card media-card--interactive"
+            key={`${item.mediaType}-${item.id}`}
+            onClick={() => openMediaDetails(item)}
+          >
             <img src={item.posterUrl} alt={item.title} className="media-poster" />
             <div className="media-copy">
               <div className="media-copy__meta-row">
@@ -205,7 +211,10 @@ export function SearchPanel({ userId }: SearchPanelProps) {
                   type="button"
                   className="ghost-button"
                   disabled={isSyncing || reactionMap[`${item.mediaType}-${item.id}`] === "liked"}
-                  onClick={() => void handleReaction(item, "liked")}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleReaction(item, "liked");
+                  }}
                 >
                   {reactionMap[`${item.mediaType}-${item.id}`] === "liked" ? "Ya te gusto" : "Me gusta"}
                 </button>
@@ -213,7 +222,10 @@ export function SearchPanel({ userId }: SearchPanelProps) {
                   type="button"
                   className="primary-button"
                   disabled={isSyncing}
-                  onClick={() => void handleWatchedToggle(item)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleWatchedToggle(item);
+                  }}
                 >
                   {reactionMap[`${item.mediaType}-${item.id}`] === "watched" ? "Ya la viste" : "Ya la vi"}
                 </button>

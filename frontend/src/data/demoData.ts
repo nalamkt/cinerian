@@ -28,14 +28,14 @@ export const demoDiscovery: DiscoveryItem[] = [
     score: 8.4
   },
   {
-    id: 8422,
+    id: 136315,
     title: "The Bear",
     year: "2022",
     mediaType: "tv",
     overview:
       "Caos de cocina, ansiedad hermosa y personajes con muchisima humanidad.",
     posterUrl:
-      "https://image.tmdb.org/t/p/w500/sHFlbKS3WLqMnp9t2ghADIJFnuQ.jpg",
+      "https://image.tmdb.org/t/p/w500/5TZnk9ryzfcNlsCOghURfZsBong.jpg",
     genres: ["Drama", "Comedia"],
     providers: ["Disney+"],
     score: 8.3

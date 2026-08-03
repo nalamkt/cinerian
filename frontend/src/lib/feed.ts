@@ -131,6 +131,25 @@ export async function fetchUserTextPosts(userId: string): Promise<FeedEntry[]> {
   return ((data ?? []) as FeedPostRow[]).map(mapFeedRow);
 }
 
+export async function fetchUserMediaPosts(userId: string): Promise<FeedEntry[]> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("feed_posts")
+    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username)")
+    .eq("user_id", userId)
+    .not("tmdb_id", "is", null)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as FeedPostRow[]).map(mapFeedRow);
+}
+
 export async function updateFeedPost(input: { postId: string; userId: string; body: string }) {
   if (!supabase) {
     return;

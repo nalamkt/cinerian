@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { demoDiscovery } from "../data/demoData";
 import { createFeedPost } from "../lib/feed";
@@ -17,6 +18,7 @@ type RecommendationPanelProps = {
 };
 
 export function RecommendationPanel({ userId }: RecommendationPanelProps) {
+  const { openMediaDetails } = useMediaDetails();
   const [items, setItems] = useState<DiscoveryItem[]>(demoDiscovery);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [page, setPage] = useState(1);
@@ -246,7 +248,10 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                 <div className="recommendation-score">TMDB {spotlight.score}</div>
               </div>
 
-              <article className="recommendation-card">
+              <article
+                className="recommendation-card recommendation-card--interactive"
+                onClick={() => openMediaDetails(spotlight)}
+              >
                 <img
                   src={spotlight.posterUrl}
                   alt={spotlight.title}
@@ -299,9 +304,16 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
           {likedItems.length ? (
             likedItems.map((item) => (
               <article className="liked-card" key={item.id}>
-                <img src={item.posterUrl} alt={item.title} className="liked-card__poster" />
+                <img
+                  src={item.posterUrl}
+                  alt={item.title}
+                  className="liked-card__poster liked-card__poster--interactive"
+                  onClick={() => openMediaDetails(item)}
+                />
                 <div className="liked-card__copy">
-                  <strong>{item.title}</strong>
+                  <strong className="media-linklike" onClick={() => openMediaDetails(item)}>
+                    {item.title}
+                  </strong>
                   <p>
                     {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {item.year}
                   </p>

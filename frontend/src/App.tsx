@@ -1,6 +1,7 @@
 import { AuthPanel } from "./components/AuthPanel";
 import { CinerianLogo } from "./components/CinerianLogo";
 import { FeedPanel } from "./components/FeedPanel";
+import { MediaDetailsProvider } from "./components/MediaDetailsModal";
 import { ProfilePanel } from "./components/ProfilePanel";
 import { RecommendationPanel } from "./components/RecommendationPanel";
 import { SearchPanel } from "./components/SearchPanel";
@@ -105,49 +106,51 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell app-shell--immersive">
-      {error ? <div className="app-alert app-alert--floating">{error}</div> : null}
-      {isLoading ? <div className="app-alert app-alert--floating">Cargando sesion...</div> : null}
+    <MediaDetailsProvider>
+      <div className="app-shell app-shell--immersive">
+        {error ? <div className="app-alert app-alert--floating">{error}</div> : null}
+        {isLoading ? <div className="app-alert app-alert--floating">Cargando sesion...</div> : null}
 
-      <main className="workspace-grid workspace-grid--immersive">
-        <nav className="dock">
-          <div className="dock__items">
-            <div className="dock__brand">
-              <CinerianLogo className="dock__brand-logo" />
+        <main className="workspace-grid workspace-grid--immersive">
+          <nav className="dock">
+            <div className="dock__items">
+              <div className="dock__brand">
+                <CinerianLogo className="dock__brand-logo" />
+              </div>
+              <div className="dock__nav">
+                {dockItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`dock__button ${activeView === item.id ? "is-active" : ""}`}
+                    onClick={() => setActiveView(item.id)}
+                    aria-label={item.label}
+                  >
+                    <span className="dock__icon">
+                      <DockIcon id={item.id} />
+                    </span>
+                    <span className="dock__label">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="dock__button dock__button--logout"
+                onClick={() => void signOut()}
+                aria-label="Cerrar sesion"
+              >
+                <span className="dock__icon">
+                  <LogoutIcon />
+                </span>
+                <span className="dock__label">Salir</span>
+              </button>
             </div>
-            <div className="dock__nav">
-              {dockItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`dock__button ${activeView === item.id ? "is-active" : ""}`}
-                  onClick={() => setActiveView(item.id)}
-                  aria-label={item.label}
-                >
-                  <span className="dock__icon">
-                    <DockIcon id={item.id} />
-                  </span>
-                  <span className="dock__label">{item.label}</span>
-                </button>
-              ))}
-            </div>
+          </nav>
 
-            <button
-              type="button"
-              className="dock__button dock__button--logout"
-              onClick={() => void signOut()}
-              aria-label="Cerrar sesion"
-            >
-              <span className="dock__icon">
-                <LogoutIcon />
-              </span>
-              <span className="dock__label">Salir</span>
-            </button>
-          </div>
-        </nav>
-
-        <section className="workspace-content">{renderActiveView()}</section>
-      </main>
-    </div>
+          <section className="workspace-content">{renderActiveView()}</section>
+        </main>
+      </div>
+    </MediaDetailsProvider>
   );
 }
