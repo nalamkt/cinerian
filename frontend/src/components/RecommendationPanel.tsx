@@ -402,6 +402,8 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
             </div>
           )}
 
+          {syncMessage ? <div className="inline-status">{syncMessage}</div> : null}
+
         </div>
       </div>
 
