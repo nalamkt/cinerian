@@ -50,6 +50,19 @@ export async function signInWithEmail(input: { email: string; password: string }
   return supabase.auth.signInWithPassword(input);
 }
 
+export async function signInWithGoogle() {
+  if (!supabase) {
+    throw new Error("Supabase no esta configurado.");
+  }
+
+  return supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin
+    }
+  });
+}
+
 export async function signOut() {
   if (!supabase) {
     return;
@@ -83,16 +96,22 @@ export async function ensureProfile({
     buildFallbackUsername(email, user.id);
   const safeDisplayName =
     displayName ||
+    (typeof user.user_metadata.full_name === "string"
+      ? user.user_metadata.full_name
+      : undefined) ||
+    (typeof user.user_metadata.name === "string" ? user.user_metadata.name : undefined) ||
     (typeof user.user_metadata.display_name === "string"
       ? user.user_metadata.display_name
       : undefined) ||
     safeUsername;
+  const safeAvatarUrl =
+    typeof user.user_metadata.avatar_url === "string" ? user.user_metadata.avatar_url : null;
 
   const payload = {
     id: user.id,
     username: safeUsername,
     display_name: safeDisplayName,
-    avatar_url: null,
+    avatar_url: safeAvatarUrl,
     bio: null
   };
 

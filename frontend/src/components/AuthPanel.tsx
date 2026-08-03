@@ -1,9 +1,27 @@
 import { useState } from "react";
-import { signInWithEmail, signUpWithEmail } from "../lib/auth";
+import { signInWithEmail, signInWithGoogle, signUpWithEmail } from "../lib/auth";
 
 type AuthPanelProps = {
   isSupabaseReady: boolean;
 };
+
+function getAuthErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) {
+    return "No pude autenticarte.";
+  }
+
+  const normalizedMessage = error.message.toLowerCase();
+
+  if (normalizedMessage.includes("email rate limit exceeded")) {
+    return "Supabase bloqueo temporalmente el envio de emails. Si la confirmacion por email esta activa, espera al menos 60 segundos y revisa Authentication > Rate Limits y Authentication > Emails > SMTP en Supabase.";
+  }
+
+  if (normalizedMessage.includes("user already registered")) {
+    return "Ese email ya tiene una cuenta. Prueba iniciar sesion o recuperar la contrasena.";
+  }
+
+  return error.message;
+}
 
 export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
   const [mode, setMode] = useState<"login" | "register">("register");
@@ -16,6 +34,10 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSubmitting) {
+      return;
+    }
 
     if (!isSupabaseReady) {
       setMessage("Faltan las credenciales de Supabase.");
@@ -52,8 +74,32 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
         setMessage("Sesion iniciada.");
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No pude autenticarte.");
+      setMessage(getAuthErrorMessage(error));
     } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    if (isSubmitting) {
+      return;
+    }
+
+    if (!isSupabaseReady) {
+      setMessage("Faltan las credenciales de Supabase.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setMessage(null);
+
+      const { error } = await signInWithGoogle();
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      setMessage(getAuthErrorMessage(error));
       setIsSubmitting(false);
     }
   }
@@ -65,6 +111,10 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
       <p className="section-description">
         Crea tu cuenta o inicia sesion para entrar a la experiencia completa.
       </p>
+
+      <button type="button" className="ghost-button" onClick={() => void handleGoogleSignIn()}>
+        Continuar con Google
+      </button>
 
       <div className="auth-toggle">
         <button
