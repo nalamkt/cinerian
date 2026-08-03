@@ -1,30 +1,39 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  deleteFeedPost,
+  fetchUserTextPosts,
+  updateFeedPost
+} from "../lib/feed";
+import {
   fetchStoredReactions,
   removeStoredReaction,
   type StoredReaction
 } from "../lib/reactions";
 import { getTitleById } from "../lib/tmdb";
-import type { DiscoveryItem } from "../types";
+import type { DiscoveryItem, FeedEntry } from "../types";
 
 type ProfileTabsProps = {
   userId: string;
 };
 
-type TabId = "watched" | "liked";
+type TabId = "watched" | "liked" | "posts";
 
 const tabLabels: Record<TabId, string> = {
   watched: "Vistas",
-  liked: "Me gustan"
+  liked: "Me gusta",
+  posts: "Posts"
 };
 
 export function ProfileTabs({ userId }: ProfileTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("watched");
   const [reactions, setReactions] = useState<StoredReaction[]>([]);
   const [titles, setTitles] = useState<Record<string, DiscoveryItem>>({});
+  const [posts, setPosts] = useState<FeedEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editingBody, setEditingBody] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -33,12 +42,16 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
       setIsLoading(true);
 
       try {
-        const results = await fetchStoredReactions(userId);
+        const [results, ownPosts] = await Promise.all([
+          fetchStoredReactions(userId),
+          fetchUserTextPosts(userId)
+        ]);
         if (!isMounted) {
           return;
         }
 
         setReactions(results);
+        setPosts(ownPosts);
 
         const detailed = await Promise.all(
           results
@@ -90,6 +103,10 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
   }, [activeTab, reactions, titles]);
 
   async function handleRemove(item: DiscoveryItem) {
+    if (activeTab === "posts") {
+      return;
+    }
+
     try {
       setIsSyncing(true);
       setSyncMessage(null);
@@ -111,10 +128,68 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
     }
   }
 
+  function startEditing(post: FeedEntry) {
+    setEditingPostId(post.id);
+    setEditingBody(post.body);
+  }
+
+  async function handleSavePost(postId: string) {
+    const body = editingBody.trim();
+    if (!body) {
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      await updateFeedPost({
+        postId,
+        userId,
+        body
+      });
+      setPosts((current) =>
+        current.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                body
+              }
+            : post
+        )
+      );
+      setEditingPostId(null);
+      setEditingBody("");
+    } catch {
+      setSyncMessage("No pude editar este post.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function handleDeletePost(postId: string) {
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      await deleteFeedPost({
+        postId,
+        userId
+      });
+      setPosts((current) => current.filter((post) => post.id !== postId));
+      if (editingPostId === postId) {
+        setEditingPostId(null);
+        setEditingBody("");
+      }
+    } catch {
+      setSyncMessage("No pude eliminar este post.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
   return (
     <section className="profile-tabs">
       <div className="profile-tabs__switcher">
-        {(["watched", "liked"] as TabId[]).map((tab) => (
+        {(["watched", "liked", "posts"] as TabId[]).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -130,6 +205,76 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
 
       {isLoading ? (
         <div className="profile-grid__empty">Cargando tu videoteca...</div>
+      ) : activeTab === "posts" ? (
+        posts.length ? (
+          <div className="profile-posts">
+            {posts.map((post) => (
+              <article className="profile-post-card" key={post.id}>
+                <div className="profile-post-card__topline">
+                  <strong>Post propio</strong>
+                  <span>{post.createdAtLabel}</span>
+                </div>
+
+                {editingPostId === post.id ? (
+                  <textarea
+                    className="profile-post-card__textarea"
+                    value={editingBody}
+                    onChange={(event) => setEditingBody(event.target.value)}
+                  />
+                ) : (
+                  <p className="profile-post-card__text">{post.body}</p>
+                )}
+
+                <div className="profile-post-card__actions">
+                  {editingPostId === post.id ? (
+                    <>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        disabled={isSyncing || !editingBody.trim()}
+                        onClick={() => void handleSavePost(post.id)}
+                      >
+                        Guardar
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={isSyncing}
+                        onClick={() => {
+                          setEditingPostId(null);
+                          setEditingBody("");
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={isSyncing}
+                        onClick={() => startEditing(post)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="profile-grid__remove"
+                        disabled={isSyncing}
+                        onClick={() => void handleDeletePost(post.id)}
+                      >
+                        Eliminar
+                      </button>
+                    </>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="profile-grid__empty">Todavia no publicaste textos propios en el feed.</div>
+        )
       ) : tabItems.length ? (
         <div className="profile-grid">
           {tabItems.map((item) => (

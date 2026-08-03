@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { demoDiscovery, demoFeed } from "../data/demoData";
-import { fetchFeedPosts } from "../lib/feed";
+import { createFeedPost, fetchFeedPosts } from "../lib/feed";
 import { getTitleById } from "../lib/tmdb";
+import type { Profile } from "../lib/auth";
 import type { DiscoveryItem, FeedEntry } from "../types";
 
 function findMediaFromPost(body: string) {
@@ -9,9 +10,44 @@ function findMediaFromPost(body: string) {
   return demoDiscovery.find((item) => lowered.includes(item.title.toLowerCase()));
 }
 
-export function FeedPanel() {
+type FeedPanelProps = {
+  userId: string;
+  profile: Profile | null;
+};
+
+function parseRatingPost(body: string) {
+  const fullReviewMatch = body.match(
+    /^(Le gusto|No le gusto) (.+?), le dio (\d)\/5 y dijo: "([\s\S]+)"$/
+  );
+
+  if (fullReviewMatch) {
+    return {
+      sentiment: fullReviewMatch[1],
+      title: fullReviewMatch[2],
+      rating: Number(fullReviewMatch[3]),
+      quote: fullReviewMatch[4]
+    };
+  }
+
+  const shortReviewMatch = body.match(/^(Le gusto|No le gusto) (.+?) y le dio (\d)\/5\.$/);
+  if (shortReviewMatch) {
+    return {
+      sentiment: shortReviewMatch[1],
+      title: shortReviewMatch[2],
+      rating: Number(shortReviewMatch[3]),
+      quote: ""
+    };
+  }
+
+  return null;
+}
+
+export function FeedPanel({ userId, profile }: FeedPanelProps) {
   const [entries, setEntries] = useState<FeedEntry[]>(demoFeed);
   const [mediaMap, setMediaMap] = useState<Record<string, DiscoveryItem>>({});
+  const [composerText, setComposerText] = useState("");
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [composerMessage, setComposerMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchFeedPosts()
@@ -99,6 +135,42 @@ export function FeedPanel() {
     });
   }, [entries, mediaMap]);
 
+  async function handlePublish() {
+    const body = composerText.trim();
+    if (!body) {
+      return;
+    }
+
+    try {
+      setIsPublishing(true);
+      setComposerMessage(null);
+      await createFeedPost({
+        userId,
+        body,
+        postType: "watchlist"
+      });
+
+      setEntries((current) => [
+        {
+          id: `local-${Date.now()}`,
+          userId,
+          author: profile?.display_name ?? "Vos",
+          username: profile?.username ?? "vos",
+          body,
+          createdAtLabel: "Ahora",
+          type: "watchlist"
+        },
+        ...current
+      ]);
+      setComposerText("");
+      setComposerMessage("Tu post ya salio en el feed.");
+    } catch {
+      setComposerMessage("No pude publicar tu post.");
+    } finally {
+      setIsPublishing(false);
+    }
+  }
+
   return (
     <section className="feed-shell">
       <div className="feed-main">
@@ -112,28 +184,37 @@ export function FeedPanel() {
         </header>
 
         <section className="composer-card">
-          <div className="composer-card__avatar">C</div>
+          <div className="composer-card__avatar">
+            {(profile?.display_name ?? "Cinerian").slice(0, 1).toUpperCase()}
+          </div>
           <div className="composer-card__body">
-            <input
+            <textarea
               className="composer-card__input"
-              type="text"
+              value={composerText}
+              onChange={(event) => setComposerText(event.target.value)}
               placeholder="¿Que peli o serie te volo la cabeza hoy?"
             />
             <div className="composer-card__footer">
               <div className="composer-card__tools">
-                <span>Poster</span>
-                <span>Puntaje</span>
-                <span>Watchlist</span>
+                <span>Post libre</span>
+                <span>Se publica en tu perfil</span>
               </div>
-              <button type="button" className="primary-button">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => void handlePublish()}
+                disabled={isPublishing || !composerText.trim()}
+              >
                 Publicar
               </button>
             </div>
+            {composerMessage ? <div className="inline-status">{composerMessage}</div> : null}
           </div>
         </section>
 
         <div className="timeline-list">
           {postsWithMedia.map(({ entry, media }) => {
+            const parsedRating = entry.type === "rating" ? parseRatingPost(entry.body) : null;
 
             return (
               <article className="timeline-card" key={entry.id}>
@@ -143,12 +224,37 @@ export function FeedPanel() {
                   <div className="timeline-card__topline">
                     <div>
                       <strong>{entry.author}</strong>
-                      <span className="timeline-card__meta">@{entry.author.toLowerCase()}</span>
+                      <span className="timeline-card__meta">@{entry.username ?? entry.author.toLowerCase()}</span>
                       <span className="timeline-card__meta">· {entry.createdAtLabel}</span>
                     </div>
                   </div>
 
-                  <p className="timeline-card__text">{entry.body}</p>
+                  {parsedRating ? (
+                    <>
+                      <p className="timeline-card__text timeline-card__text--light">
+                        {parsedRating.sentiment} {parsedRating.title}
+                      </p>
+                      {parsedRating.quote ? (
+                        <p className="timeline-card__text timeline-card__text--featured">
+                          "{parsedRating.quote}"
+                        </p>
+                      ) : null}
+                      <div className="timeline-card__rating" aria-label={`${parsedRating.rating} de 5 estrellas`}>
+                        {Array.from({ length: parsedRating.rating }).map((_, index) => (
+                          <span key={`filled-${entry.id}-${index}`} className="timeline-card__star is-active">
+                            ★
+                          </span>
+                        ))}
+                        {Array.from({ length: 5 - parsedRating.rating }).map((_, index) => (
+                          <span key={`empty-${entry.id}-${index}`} className="timeline-card__star">
+                            ★
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="timeline-card__text">{entry.body}</p>
+                  )}
 
                   {media ? (
                     <div className="timeline-card__media">

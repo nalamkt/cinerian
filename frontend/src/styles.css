@@ -28,7 +28,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -102,6 +103,12 @@ button:disabled {
     linear-gradient(135deg, rgba(28, 22, 17, 0.95), rgba(36, 28, 21, 0.92));
 }
 
+.auth-logo {
+  display: block;
+  width: min(240px, 72%);
+  margin-bottom: 18px;
+}
+
 .auth-hero-card h1,
 .panel h2,
 .panel h3 {
@@ -162,13 +169,18 @@ button:disabled {
   font-weight: 700;
 }
 
-input {
+input,
+textarea {
   width: 100%;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(8, 8, 8, 0.35);
   color: var(--text);
   padding: 14px 16px;
+}
+
+textarea {
+  resize: vertical;
 }
 
 .auth-panel,
@@ -191,7 +203,8 @@ input {
 }
 
 .dock__items {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   padding: 20px 16px;
   border-radius: 28px;
@@ -199,12 +212,16 @@ input {
   background: rgba(24, 19, 15, 0.92);
   box-shadow: var(--shadow);
   min-height: 100%;
-  align-content: start;
+}
+
+.dock__nav {
+  display: grid;
+  gap: 10px;
 }
 
 .dock__brand {
   width: 100%;
-  height: 52px;
+  height: 68px;
   display: grid;
   place-items: center;
   margin-bottom: 6px;
@@ -214,6 +231,11 @@ input {
   color: var(--accent);
   font-size: 1.25rem;
   font-weight: 900;
+}
+
+.dock__brand-logo {
+  width: 82%;
+  display: block;
 }
 
 .dock__button {
@@ -226,6 +248,10 @@ input {
   color: var(--muted);
   border: 0;
   border-radius: 18px;
+}
+
+.dock__button--logout {
+  margin-top: auto;
 }
 
 .dock__button.is-active {
@@ -242,6 +268,16 @@ input {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   font-weight: 800;
+}
+
+.dock__icon svg {
+  width: 19px;
+  height: 19px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .dock__button.is-active .dock__icon {
@@ -333,6 +369,7 @@ input {
   padding: 6px 0 18px;
   background: transparent;
   font-size: 1.5rem;
+  min-height: 108px;
 }
 
 .composer-card__input:focus {
@@ -356,6 +393,12 @@ input {
   font-size: 0.92rem;
 }
 
+.composer-card__tools span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .timeline-list {
   display: grid;
 }
@@ -376,8 +419,36 @@ input {
 .timeline-card__text {
   margin: 8px 0 0;
   color: var(--text);
-  font-size: 1.18rem;
+  font-size: 1.06rem;
   line-height: 1.45;
+}
+
+.timeline-card__text--light {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.timeline-card__text--featured {
+  margin-top: 6px;
+  font-size: 1.12rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.timeline-card__rating {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.timeline-card__star {
+  color: rgba(255, 255, 255, 0.12);
+  font-size: 1.68rem;
+  line-height: 1;
+}
+
+.timeline-card__star.is-active {
+  color: #ffbf00;
 }
 
 .timeline-card__media {
@@ -714,6 +785,152 @@ input {
   background: linear-gradient(135deg, var(--accent), #ffd66a);
 }
 
+.profile-posts {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-post-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.profile-post-card__topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: var(--muted);
+}
+
+.profile-post-card__text {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.profile-post-card__textarea {
+  min-height: 120px;
+}
+
+.profile-post-card__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.review-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(7, 6, 5, 0.76);
+  backdrop-filter: blur(10px);
+}
+
+.review-modal {
+  width: min(100%, 680px);
+  display: grid;
+  gap: 20px;
+  padding: 28px;
+  border-radius: 32px;
+  border: 1px solid var(--panel-edge);
+  background: rgba(28, 22, 17, 0.97);
+  box-shadow: var(--shadow);
+}
+
+.review-modal__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.review-modal__close {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.review-modal__question {
+  margin: 0;
+  font-size: 1.9rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.review-modal__sentiment {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.review-modal__sentiment-button {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  padding: 28px 16px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+}
+
+.review-modal__sentiment-button span {
+  font-size: 2.2rem;
+}
+
+.review-modal__sentiment-button strong {
+  font-size: 1.15rem;
+}
+
+.review-modal__sentiment-button.is-active {
+  border-color: rgba(255, 187, 54, 0.42);
+  background: rgba(255, 187, 54, 0.1);
+  color: var(--text);
+}
+
+.review-modal__stars {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.review-modal__star {
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.14);
+  font-size: 3.2rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.review-modal__star.is-active {
+  color: #ffbf00;
+}
+
+.review-modal__textarea {
+  min-height: 118px;
+  border-radius: 22px;
+}
+
+.review-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .profile-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -776,6 +993,20 @@ input {
   gap: 16px;
   padding: 14px;
   border-radius: 20px;
+}
+
+.media-copy__meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.media-score {
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .media-poster {
@@ -912,11 +1143,16 @@ input {
   }
 
   .dock__items {
+    display: grid;
     padding: 10px;
     gap: 8px;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     min-height: auto;
     border-radius: 22px;
+  }
+
+  .dock__nav {
+    display: contents;
   }
 
   .dock__brand {
@@ -929,6 +1165,10 @@ input {
     padding: 10px 4px;
     gap: 6px;
     border-radius: 14px;
+  }
+
+  .dock__button--logout {
+    margin-top: 0;
   }
 
   .dock__label {
@@ -1100,6 +1340,11 @@ input {
     border-radius: 12px;
   }
 
+  .auth-logo,
+  .dock__brand-logo {
+    width: 100%;
+  }
+
   .dock__label {
     font-size: 0.68rem;
   }
@@ -1146,6 +1391,42 @@ input {
 
   .profile-stats {
     gap: 10px;
+  }
+
+  .profile-post-card {
+    padding: 14px;
+  }
+
+  .profile-post-card__topline,
+  .media-copy__meta-row {
+    flex-direction: column;
+    align-items: start;
+  }
+
+  .review-modal {
+    padding: 22px 18px;
+    border-radius: 24px;
+  }
+
+  .review-modal__question {
+    font-size: 1.5rem;
+  }
+
+  .review-modal__sentiment {
+    grid-template-columns: 1fr;
+  }
+
+  .review-modal__star {
+    font-size: 2.6rem;
+  }
+
+  .review-modal__actions {
+    justify-content: stretch;
+  }
+
+  .review-modal__actions .ghost-button,
+  .review-modal__actions .primary-button {
+    width: 100%;
   }
 
   .profile-grid {

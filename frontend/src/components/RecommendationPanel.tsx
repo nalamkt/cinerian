@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { WatchReviewModal } from "./WatchReviewModal";
 import { demoDiscovery } from "../data/demoData";
 import { createFeedPost } from "../lib/feed";
 import {
@@ -7,6 +8,7 @@ import {
   saveStoredReaction,
   type StoredReaction
 } from "../lib/reactions";
+import { buildWatchedPostBody } from "../lib/reviews";
 import { getRecommendationTitlesByPage } from "../lib/tmdb";
 import type { DiscoveryItem } from "../types";
 
@@ -21,6 +23,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
 
   const likedIds = useMemo(
     () => storedReactions.filter((entry) => entry.reaction === "liked").map((entry) => entry.tmdbId),
@@ -110,8 +113,9 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     setCurrentIndex((value) => (value + 1) % availableItems.length);
   }
 
-  async function registerReaction(reaction: StoredReaction["reaction"]) {
-    if (!spotlight) {
+  async function registerReaction(reaction: StoredReaction["reaction"], itemOverride?: DiscoveryItem) {
+    const target = itemOverride ?? spotlight;
+    if (!target) {
       return;
     }
 
@@ -120,7 +124,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       setSyncMessage(null);
       await saveStoredReaction({
         userId,
-        item: spotlight,
+        item: target,
         reaction
       });
 
@@ -128,25 +132,15 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
         await createFeedPost({
           userId,
           postType: "recommendation",
-          body: `Le gusto ${spotlight.title} y la guardo entre sus favoritas.`,
-          tmdbId: spotlight.id,
-          mediaType: spotlight.mediaType
-        });
-      }
-
-      if (reaction === "watched") {
-        await createFeedPost({
-          userId,
-          postType: "rating",
-          body: `Marco ${spotlight.title} como ya vista desde el recomendador.`,
-          tmdbId: spotlight.id,
-          mediaType: spotlight.mediaType
+          body: `Le gusto ${target.title} y la guardo entre sus favoritas.`,
+          tmdbId: target.id,
+          mediaType: target.mediaType
         });
       }
 
       setStoredReactions((current) => [
-        { tmdbId: spotlight.id, mediaType: spotlight.mediaType, reaction },
-        ...current.filter((entry) => entry.tmdbId !== spotlight.id)
+        { tmdbId: target.id, mediaType: target.mediaType, reaction },
+        ...current.filter((entry) => entry.tmdbId !== target.id)
       ]);
     } catch {
       setSyncMessage("No pude guardar esta reaccion.");
@@ -163,7 +157,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   }
 
   function handleWatched() {
-    void registerReaction("watched");
+    setReviewItem(spotlight);
   }
 
   function handleSkip() {
@@ -171,30 +165,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   }
 
   async function handleMarkLikedAsWatched(item: DiscoveryItem) {
-    try {
-      setIsSyncing(true);
-      setSyncMessage(null);
-      await saveStoredReaction({
-        userId,
-        item,
-        reaction: "watched"
-      });
-      await createFeedPost({
-        userId,
-        postType: "rating",
-        body: `Marco ${item.title} como ya vista desde sus likes guardados.`,
-        tmdbId: item.id,
-        mediaType: item.mediaType
-      });
-      setStoredReactions((current) => [
-        { tmdbId: item.id, mediaType: item.mediaType, reaction: "watched" },
-        ...current.filter((entry) => entry.tmdbId !== item.id)
-      ]);
-    } catch {
-      setSyncMessage("No pude mover este titulo a vistas.");
-    } finally {
-      setIsSyncing(false);
-    }
+    setReviewItem(item);
   }
 
   async function handleRemoveLike(item: DiscoveryItem) {
@@ -207,6 +178,53 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       );
     } catch {
       setSyncMessage("No pude eliminar este like.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function handleReviewSubmit(input: { liked: boolean; rating: number; comment: string }) {
+    if (!reviewItem) {
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      await saveStoredReaction({
+        userId,
+        item: reviewItem,
+        reaction: "watched",
+        rating: input.rating
+      });
+      await createFeedPost({
+        userId,
+        postType: "rating",
+        body: buildWatchedPostBody({
+          item: reviewItem,
+          liked: input.liked,
+          rating: input.rating,
+          comment: input.comment
+        }),
+        tmdbId: reviewItem.id,
+        mediaType: reviewItem.mediaType
+      });
+      setStoredReactions((current) => [
+        {
+          tmdbId: reviewItem.id,
+          mediaType: reviewItem.mediaType,
+          reaction: "watched",
+          rating: input.rating
+        },
+        ...current.filter((entry) => entry.tmdbId !== reviewItem.id)
+      ]);
+      setReviewItem(null);
+      if (spotlight && spotlight.id === reviewItem.id) {
+        goNext();
+      }
+      setSyncMessage("Tu reseña ya salió en el feed.");
+    } catch {
+      setSyncMessage("No pude guardar tu reseña.");
     } finally {
       setIsSyncing(false);
     }
@@ -313,6 +331,13 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
           )}
         </div>
       </aside>
+
+      <WatchReviewModal
+        item={reviewItem}
+        isSaving={isSyncing}
+        onClose={() => setReviewItem(null)}
+        onSubmit={(input) => void handleReviewSubmit(input)}
+      />
     </section>
   );
 }

@@ -15,8 +15,11 @@ export type DiscoveryItem = {
 export type FeedEntry = {
   id: string;
   author: string;
+  username?: string;
+  userId?: string;
   body: string;
   createdAtLabel: string;
+  createdAt?: string;
   type: "rating" | "recommendation" | "watchlist";
   tmdbId?: number;
   mediaType?: MediaType;

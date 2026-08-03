@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { signOut, type Profile } from "../lib/auth";
+import { type Profile } from "../lib/auth";
+import { fetchStoredReactions } from "../lib/reactions";
 import { ProfileTabs } from "./ProfileTabs";
 
 type ProfilePanelProps = {
@@ -8,9 +10,23 @@ type ProfilePanelProps = {
 };
 
 export function ProfilePanel({ session, profile }: ProfilePanelProps) {
-  const email = session.user.email ?? "sin-email";
   const displayName = profile?.display_name ?? "Cineriano activo";
   const username = profile?.username ?? "cargando";
+  const [stats, setStats] = useState({ likes: 0, watched: 0, followers: 0 });
+
+  useEffect(() => {
+    void fetchStoredReactions(session.user.id)
+      .then((results) => {
+        setStats({
+          likes: results.filter((entry) => entry.reaction === "liked").length,
+          watched: results.filter((entry) => entry.reaction === "watched").length,
+          followers: 0
+        });
+      })
+      .catch(() => {
+        setStats({ likes: 0, watched: 0, followers: 0 });
+      });
+  }, [session.user.id]);
 
   return (
     <section className="panel profile-panel">
@@ -26,24 +42,20 @@ export function ProfilePanel({ session, profile }: ProfilePanelProps) {
               <h2>{displayName}</h2>
               <p className="profile-handle">@{username}</p>
             </div>
-
-            <button type="button" className="ghost-button" onClick={() => void signOut()}>
-              Cerrar sesion
-            </button>
           </div>
 
           <div className="profile-stats">
             <div className="profile-stat">
-              <strong>{session.user.id.slice(0, 4)}</strong>
-              <span>ID corto</span>
+              <strong>{stats.likes}</strong>
+              <span>Me gusta</span>
             </div>
             <div className="profile-stat">
-              <strong>{email.split("@")[0]}</strong>
-              <span>Cuenta</span>
+              <strong>{stats.watched}</strong>
+              <span>Vistas</span>
             </div>
             <div className="profile-stat">
-              <strong>Cinerian</strong>
-              <span>Estado</span>
+              <strong>{stats.followers}</strong>
+              <span>Seguidores</span>
             </div>
           </div>
 

@@ -7,6 +7,7 @@ export type StoredReaction = {
   tmdbId: number;
   mediaType: MediaType;
   reaction: RecommendationReaction;
+  rating?: number | null;
 };
 
 export async function fetchStoredReactions(userId: string): Promise<StoredReaction[]> {
@@ -16,7 +17,7 @@ export async function fetchStoredReactions(userId: string): Promise<StoredReacti
 
   const { data, error } = await supabase
     .from("media_reactions")
-    .select("tmdb_id, media_type, reaction")
+    .select("tmdb_id, media_type, reaction, rating")
     .eq("user_id", userId)
     .in("reaction", ["liked", "watched", "disliked"]);
 
@@ -27,7 +28,8 @@ export async function fetchStoredReactions(userId: string): Promise<StoredReacti
   return (data ?? []).map((entry) => ({
     tmdbId: Number(entry.tmdb_id),
     mediaType: entry.media_type as MediaType,
-    reaction: entry.reaction as RecommendationReaction
+    reaction: entry.reaction as RecommendationReaction,
+    rating: typeof entry.rating === "number" ? entry.rating : null
   }));
 }
 
@@ -35,6 +37,7 @@ export async function saveStoredReaction(input: {
   userId: string;
   item: DiscoveryItem;
   reaction: RecommendationReaction;
+  rating?: number | null;
 }) {
   if (!supabase) {
     return;
@@ -57,7 +60,8 @@ export async function saveStoredReaction(input: {
     user_id: input.userId,
     tmdb_id: input.item.id,
     media_type: input.item.mediaType,
-    reaction: input.reaction
+    reaction: input.reaction,
+    rating: input.reaction === "watched" ? input.rating ?? null : null
   });
 
   if (insertError) {

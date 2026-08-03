@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { WatchReviewModal } from "./WatchReviewModal";
 import { useDiscovery } from "../hooks/useDiscovery";
 import { createFeedPost } from "../lib/feed";
-import { fetchStoredReactions, saveStoredReaction, type StoredReaction } from "../lib/reactions";
+import {
+  fetchStoredReactions,
+  removeStoredReaction,
+  saveStoredReaction,
+  type StoredReaction
+} from "../lib/reactions";
+import { buildWatchedPostBody } from "../lib/reviews";
 import { SectionHeader } from "./SectionHeader";
 import type { DiscoveryItem } from "../types";
 
@@ -14,6 +21,7 @@ export function SearchPanel({ userId }: SearchPanelProps) {
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
   const { results, isLoading, error } = useDiscovery(query);
 
   useEffect(() => {
@@ -75,6 +83,77 @@ export function SearchPanel({ userId }: SearchPanelProps) {
     }
   }
 
+  async function handleWatchedToggle(item: DiscoveryItem) {
+    const key = `${item.mediaType}-${item.id}`;
+    const isWatched = reactionMap[key] === "watched";
+
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+
+      if (isWatched) {
+        await removeStoredReaction(userId, item, "watched");
+        setStoredReactions((current) =>
+          current.filter(
+            (entry) =>
+              !(entry.tmdbId === item.id && entry.mediaType === item.mediaType && entry.reaction === "watched")
+          )
+        );
+        setSyncMessage("La saque de vistas.");
+        return;
+      }
+
+      setReviewItem(item);
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function handleReviewSubmit(input: { liked: boolean; rating: number; comment: string }) {
+    if (!reviewItem) {
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      await saveStoredReaction({
+        userId,
+        item: reviewItem,
+        reaction: "watched",
+        rating: input.rating
+      });
+      await createFeedPost({
+        userId,
+        postType: "rating",
+        body: buildWatchedPostBody({
+          item: reviewItem,
+          liked: input.liked,
+          rating: input.rating,
+          comment: input.comment
+        }),
+        tmdbId: reviewItem.id,
+        mediaType: reviewItem.mediaType
+      });
+
+      setStoredReactions((current) => [
+        {
+          tmdbId: reviewItem.id,
+          mediaType: reviewItem.mediaType,
+          reaction: "watched",
+          rating: input.rating
+        },
+        ...current.filter((entry) => entry.tmdbId !== reviewItem.id)
+      ]);
+      setReviewItem(null);
+      setSyncMessage("Tu reseña ya salió en el feed.");
+    } catch {
+      setSyncMessage("No pude guardar tu reseña.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
   return (
     <section className="panel">
       <SectionHeader
@@ -108,13 +187,15 @@ export function SearchPanel({ userId }: SearchPanelProps) {
           <article className="media-card" key={`${item.mediaType}-${item.id}`}>
             <img src={item.posterUrl} alt={item.title} className="media-poster" />
             <div className="media-copy">
-              <p className="meta-line">
-                {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {item.year}
-              </p>
+              <div className="media-copy__meta-row">
+                <p className="meta-line">
+                  {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {item.year}
+                </p>
+                <span className="media-score">TMDB {item.score}</span>
+              </div>
               <h3>{item.title}</h3>
               <p>{item.overview}</p>
               <div className="token-row">
-                <span>TMDB {item.score}</span>
                 {item.providers.map((provider) => (
                   <span key={provider}>{provider}</span>
                 ))}
@@ -131,8 +212,8 @@ export function SearchPanel({ userId }: SearchPanelProps) {
                 <button
                   type="button"
                   className="primary-button"
-                  disabled={isSyncing || reactionMap[`${item.mediaType}-${item.id}`] === "watched"}
-                  onClick={() => void handleReaction(item, "watched")}
+                  disabled={isSyncing}
+                  onClick={() => void handleWatchedToggle(item)}
                 >
                   {reactionMap[`${item.mediaType}-${item.id}`] === "watched" ? "Ya la viste" : "Ya la vi"}
                 </button>
@@ -141,6 +222,13 @@ export function SearchPanel({ userId }: SearchPanelProps) {
           </article>
         ))}
       </div>
+
+      <WatchReviewModal
+        item={reviewItem}
+        isSaving={isSyncing}
+        onClose={() => setReviewItem(null)}
+        onSubmit={(input) => void handleReviewSubmit(input)}
+      />
     </section>
   );
 }
