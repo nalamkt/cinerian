@@ -63,3 +63,63 @@ export async function searchTitles(query: string): Promise<DiscoveryItem[]> {
     .slice(0, 8)
     .map(normalizeItem);
 }
+
+export async function getRecommendationTitles(): Promise<DiscoveryItem[]> {
+  return getRecommendationTitlesByPage(1);
+}
+
+export async function getRecommendationTitlesByPage(page: number): Promise<DiscoveryItem[]> {
+  if (!apiKey) {
+    return demoDiscovery;
+  }
+
+  const movieUrl = new URL(`${baseUrl}/discover/movie`);
+  movieUrl.searchParams.set("api_key", apiKey);
+  movieUrl.searchParams.set("include_adult", "false");
+  movieUrl.searchParams.set("language", "es-MX");
+  movieUrl.searchParams.set("sort_by", "popularity.desc");
+  movieUrl.searchParams.set("page", String(page));
+
+  const tvUrl = new URL(`${baseUrl}/discover/tv`);
+  tvUrl.searchParams.set("api_key", apiKey);
+  tvUrl.searchParams.set("include_adult", "false");
+  tvUrl.searchParams.set("language", "es-MX");
+  tvUrl.searchParams.set("sort_by", "popularity.desc");
+  tvUrl.searchParams.set("page", String(page));
+
+  const [movieResponse, tvResponse] = await Promise.all([fetch(movieUrl.toString()), fetch(tvUrl.toString())]);
+
+  if (!movieResponse.ok || !tvResponse.ok) {
+    throw new Error("No pude traer recomendaciones de TMDB.");
+  }
+
+  const moviePayload = (await movieResponse.json()) as { results?: Record<string, unknown>[] };
+  const tvPayload = (await tvResponse.json()) as { results?: Record<string, unknown>[] };
+
+  const movieItems = (moviePayload.results ?? []).slice(0, 8).map((item) =>
+    normalizeItem({ ...item, media_type: "movie" })
+  );
+  const tvItems = (tvPayload.results ?? []).slice(0, 8).map((item) =>
+    normalizeItem({ ...item, media_type: "tv" })
+  );
+
+  return [...movieItems, ...tvItems];
+}
+
+export async function getTitleById(tmdbId: number, mediaType: MediaType): Promise<DiscoveryItem | null> {
+  if (!apiKey) {
+    return demoDiscovery.find((item) => item.id === tmdbId && item.mediaType === mediaType) ?? null;
+  }
+
+  const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("language", "es-MX");
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as Record<string, unknown>;
+  return normalizeItem({ ...payload, media_type: mediaType });
+}

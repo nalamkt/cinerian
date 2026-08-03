@@ -18,6 +18,8 @@ export type FeedEntry = {
   body: string;
   createdAtLabel: string;
   type: "rating" | "recommendation" | "watchlist";
+  tmdbId?: number;
+  mediaType?: MediaType;
 };
 
 export type UserTaste = {

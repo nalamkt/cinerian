@@ -1,10 +1,79 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDiscovery } from "../hooks/useDiscovery";
+import { createFeedPost } from "../lib/feed";
+import { fetchStoredReactions, saveStoredReaction, type StoredReaction } from "../lib/reactions";
 import { SectionHeader } from "./SectionHeader";
+import type { DiscoveryItem } from "../types";
 
-export function SearchPanel() {
+type SearchPanelProps = {
+  userId: string;
+};
+
+export function SearchPanel({ userId }: SearchPanelProps) {
   const [query, setQuery] = useState("");
+  const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const { results, isLoading, error } = useDiscovery(query);
+
+  useEffect(() => {
+    void fetchStoredReactions(userId)
+      .then((response) => {
+        setStoredReactions(response);
+      })
+      .catch(() => {
+        setSyncMessage("No pude sincronizar tus acciones guardadas.");
+      });
+  }, [userId]);
+
+  const reactionMap = useMemo(
+    () =>
+      Object.fromEntries(
+        storedReactions.map((entry) => [`${entry.mediaType}-${entry.tmdbId}`, entry.reaction] as const)
+      ),
+    [storedReactions]
+  );
+
+  async function handleReaction(item: DiscoveryItem, reaction: StoredReaction["reaction"]) {
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      await saveStoredReaction({
+        userId,
+        item,
+        reaction
+      });
+
+      if (reaction === "liked") {
+        await createFeedPost({
+          userId,
+          postType: "recommendation",
+          body: `Le gusto ${item.title} y la guardo desde el buscador.`,
+          tmdbId: item.id,
+          mediaType: item.mediaType
+        });
+      }
+
+      if (reaction === "watched") {
+        await createFeedPost({
+          userId,
+          postType: "rating",
+          body: `Marco ${item.title} como ya vista desde el buscador.`,
+          tmdbId: item.id,
+          mediaType: item.mediaType
+        });
+      }
+
+      setStoredReactions((current) => [
+        { tmdbId: item.id, mediaType: item.mediaType, reaction },
+        ...current.filter((entry) => entry.tmdbId !== item.id)
+      ]);
+    } catch {
+      setSyncMessage("No pude guardar esta accion.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
 
   return (
     <section className="panel">
@@ -25,7 +94,13 @@ export function SearchPanel() {
       </label>
 
       <div className="inline-status">
-        {isLoading ? "Buscando..." : error ? error : `${results.length} resultados listos`}
+        {isLoading
+          ? "Buscando..."
+          : syncMessage
+            ? syncMessage
+            : error
+              ? error
+              : `${results.length} resultados listos`}
       </div>
 
       <div className="card-list">
@@ -43,6 +118,24 @@ export function SearchPanel() {
                 {item.providers.map((provider) => (
                   <span key={provider}>{provider}</span>
                 ))}
+              </div>
+              <div className="action-row">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={isSyncing || reactionMap[`${item.mediaType}-${item.id}`] === "liked"}
+                  onClick={() => void handleReaction(item, "liked")}
+                >
+                  {reactionMap[`${item.mediaType}-${item.id}`] === "liked" ? "Ya te gusto" : "Me gusta"}
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={isSyncing || reactionMap[`${item.mediaType}-${item.id}`] === "watched"}
+                  onClick={() => void handleReaction(item, "watched")}
+                >
+                  {reactionMap[`${item.mediaType}-${item.id}`] === "watched" ? "Ya la viste" : "Ya la vi"}
+                </button>
               </div>
             </div>
           </article>

@@ -23,9 +23,9 @@ export default function App() {
   function renderActiveView() {
     switch (activeView) {
       case "search":
-        return <SearchPanel />;
+        return <SearchPanel userId={session!.user.id} />;
       case "recommendations":
-        return <RecommendationPanel />;
+        return <RecommendationPanel userId={session!.user.id} />;
       case "user":
         return <ProfilePanel session={session!} profile={profile} />;
       case "feed":

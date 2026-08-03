@@ -1,4 +1,8 @@
+import { useEffect, useMemo, useState } from "react";
 import { demoDiscovery, demoFeed } from "../data/demoData";
+import { fetchFeedPosts } from "../lib/feed";
+import { getTitleById } from "../lib/tmdb";
+import type { DiscoveryItem, FeedEntry } from "../types";
 
 function findMediaFromPost(body: string) {
   const lowered = body.toLowerCase();
@@ -6,6 +10,95 @@ function findMediaFromPost(body: string) {
 }
 
 export function FeedPanel() {
+  const [entries, setEntries] = useState<FeedEntry[]>(demoFeed);
+  const [mediaMap, setMediaMap] = useState<Record<string, DiscoveryItem>>({});
+
+  useEffect(() => {
+    void fetchFeedPosts()
+      .then((results) => {
+        if (results.length) {
+          setEntries(results);
+        }
+      })
+      .catch(() => {
+        setEntries(demoFeed);
+      });
+  }, []);
+
+  const postsWithMedia = useMemo(
+    () =>
+      entries.map((entry) => {
+        const fallbackMedia = findMediaFromPost(entry.body);
+        const key = entry.tmdbId && entry.mediaType ? `${entry.mediaType}-${entry.tmdbId}` : null;
+        const mappedMedia = key ? mediaMap[key] : undefined;
+        return {
+          entry,
+          media: mappedMedia ?? fallbackMedia ?? null
+        };
+      }),
+    [entries, mediaMap]
+  );
+
+  const conversationItems = useMemo(() => {
+    const counts = new Map<
+      string,
+      {
+        media: DiscoveryItem;
+        posts: number;
+      }
+    >();
+
+    postsWithMedia.forEach(({ media }) => {
+      if (!media) {
+        return;
+      }
+
+      const key = `${media.mediaType}-${media.id}`;
+      const current = counts.get(key);
+
+      if (current) {
+        current.posts += 1;
+        return;
+      }
+
+      counts.set(key, {
+        media,
+        posts: 1
+      });
+    });
+
+    return [...counts.values()].sort((a, b) => b.posts - a.posts).slice(0, 3);
+  }, [postsWithMedia]);
+
+  useEffect(() => {
+    const targets = entries.filter((entry) => entry.tmdbId && entry.mediaType);
+    const missing = targets.filter((entry) => !mediaMap[`${entry.mediaType}-${entry.tmdbId}`]);
+
+    if (!missing.length) {
+      return;
+    }
+
+    void Promise.all(
+      missing.map(async (entry) => {
+        const media = await getTitleById(entry.tmdbId!, entry.mediaType!);
+        return {
+          key: `${entry.mediaType}-${entry.tmdbId}`,
+          media
+        };
+      })
+    ).then((results) => {
+      setMediaMap((current) => {
+        const next = { ...current };
+        results.forEach((result) => {
+          if (result.media) {
+            next[result.key] = result.media;
+          }
+        });
+        return next;
+      });
+    });
+  }, [entries, mediaMap]);
+
   return (
     <section className="feed-shell">
       <div className="feed-main">
@@ -40,8 +133,7 @@ export function FeedPanel() {
         </section>
 
         <div className="timeline-list">
-          {demoFeed.map((entry) => {
-            const media = findMediaFromPost(entry.body);
+          {postsWithMedia.map(({ entry, media }) => {
 
             return (
               <article className="timeline-card" key={entry.id}>
@@ -88,17 +180,21 @@ export function FeedPanel() {
         <section className="sidebar-card">
           <p className="section-eyebrow">En conversacion</p>
           <div className="sidebar-list">
-            {demoDiscovery.slice(0, 3).map((item) => (
-              <article className="sidebar-media" key={item.id}>
-                <img src={item.posterUrl} alt={item.title} className="sidebar-media__poster" />
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>
-                    {item.mediaType === "tv" ? "Serie" : "Pelicula"} • TMDB {item.score}
-                  </p>
-                </div>
-              </article>
-            ))}
+            {conversationItems.length ? (
+              conversationItems.map(({ media, posts }) => (
+                <article className="sidebar-media" key={media.id}>
+                  <img src={media.posterUrl} alt={media.title} className="sidebar-media__poster" />
+                  <div>
+                    <strong>{media.title}</strong>
+                    <p>
+                      {posts} {posts === 1 ? "posteo" : "posteos"} en el feed
+                    </p>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <p className="sidebar-empty">Todavia no hay suficiente conversacion para armar tendencias.</p>
+            )}
           </div>
         </section>
 
