@@ -7,6 +7,8 @@ Fecha: 2026-08-03
 - Nueva app en `frontend/`
 - Base React + Vite + TypeScript
 - Cliente Supabase preparado en `frontend/src/lib/supabase.ts`
+- Auth real con Supabase en `frontend/src/lib/auth.ts`
+- Hook de sesion en `frontend/src/hooks/useAuth.ts`
 - Busqueda con TMDB opcional por `VITE_TMDB_API_KEY`
 - Modo demo para seguir trabajando aunque todavia no haya backend configurado
 - Schema inicial de Supabase en `supabase/schema.sql`
@@ -18,9 +20,14 @@ La app original sigue viva como referencia visual y funcional, pero la nueva arq
 - buscador,
 - feed,
 - recomendaciones,
+- autenticacion,
 - estado compartido,
 - variables de entorno,
 - integraciones desacopladas.
+
+## Legacy
+
+La app HTML/CSS/JS original fue movida a `legacy/classic-web/` para limpiar la raiz del repo sin perder referencia historica.
 
 ## Como correr la nueva app
 
@@ -35,7 +42,7 @@ La app original sigue viva como referencia visual y funcional, pero la nueva arq
 
 ## Proximo paso recomendado
 
-El paso 2 ideal es conectar Auth y perfiles de Supabase, porque eso desbloquea despues:
+El paso 3 ideal es conectar el feed y las reacciones reales, porque Auth y perfiles ya quedan listos con esta base:
 
 - ratings reales,
 - feed persistido,

@@ -27,7 +27,7 @@ export function ArchitecturePanel() {
       <div className="info-box">
         <strong>Modo actual</strong>
         <p>
-          React ya corre con datos demo y TMDB opcional por variable de entorno. Eso nos deja
+          React ya corre con datos demo, TMDB opcional y Auth real listo para probar. Eso nos deja
           iterar producto sin volver a tocar HTML suelto.
         </p>
       </div>

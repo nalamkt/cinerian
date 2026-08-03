@@ -21,7 +21,7 @@ Hoy existen estas piezas reutilizables:
 - No hay sesiones de usuario.
 
 2. Las claves estan expuestas en frontend
-- TMDB API key en `app/tmdb.js`, `search.html`, `prox.html` y `top.html`.
+- TMDB API key en `legacy/classic-web/app/tmdb.js`, `legacy/classic-web/search.html`, `legacy/classic-web/prox.html` y `legacy/classic-web/top.html`.
 - Bearer token de TMDB tambien expuesto en frontend.
 - Esto puede usarse para abuso de cuota y obliga a mover integraciones sensibles a backend antes de produccion.
 
@@ -117,8 +117,8 @@ Si, en cambio, recomiendo usar este repo para:
 ## Lo que deje en esta iteracion
 
 - Este documento de auditoria.
-- Un prototipo nuevo en `mvp.html`.
-- Logica nueva en `app/mvp.js`.
-- Estilos nuevos en `mvp.css`.
+- Un prototipo nuevo en `legacy/classic-web/mvp.html`.
+- Logica nueva en `legacy/classic-web/app/mvp.js`.
+- Estilos nuevos en `legacy/classic-web/mvp.css`.
 
 El prototipo no reemplaza la app final, pero si aterriza la vision de producto y nos da una base concreta para iterar.
