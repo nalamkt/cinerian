@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="cinerianGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffbb36" />
+      <stop offset="100%" stop-color="#ffd66a" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#1a1611" />
+  <circle cx="32" cy="32" r="25" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.08)" />
+  <text
+    x="32"
+    y="39"
+    text-anchor="middle"
+    font-family="Trebuchet MS, Segoe UI, sans-serif"
+    font-size="30"
+    font-weight="900"
+    fill="url(#cinerianGradient)"
+  >
+    C
+  </text>
+</svg>
