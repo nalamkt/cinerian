@@ -1,32 +1,56 @@
-import { useEffect, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
+import { useEffect, useState, type ReactNode } from "react";
 import { type Profile } from "../lib/auth";
+import { fetchFollowerCount } from "../lib/follows";
 import { fetchStoredReactions } from "../lib/reactions";
 import { ProfileTabs } from "./ProfileTabs";
 
 type ProfilePanelProps = {
-  session: Session;
+  userId: string;
   profile: Profile | null;
+  isOwnProfile?: boolean;
+  followerCountOverride?: number | null;
+  profileMessage?: string;
+  headerLabel?: string;
+  headerAction?: ReactNode;
+  readOnly?: boolean;
 };
 
-export function ProfilePanel({ session, profile }: ProfilePanelProps) {
+export function ProfilePanel({
+  userId,
+  profile,
+  isOwnProfile = true,
+  followerCountOverride = null,
+  profileMessage,
+  headerLabel = "Perfil",
+  headerAction,
+  readOnly = false
+}: ProfilePanelProps) {
   const displayName = profile?.display_name ?? "Cineriano activo";
   const username = profile?.username ?? "cargando";
   const [stats, setStats] = useState({ likes: 0, watched: 0, followers: 0 });
 
   useEffect(() => {
-    void fetchStoredReactions(session.user.id)
+    void Promise.allSettled([fetchStoredReactions(userId), fetchFollowerCount(userId)])
       .then((results) => {
+        const reactionsResult = results[0];
+        const followersResult = results[1];
+        const storedReactions = reactionsResult.status === "fulfilled" ? reactionsResult.value : [];
+        const followers = followersResult.status === "fulfilled" ? followersResult.value : 0;
+
         setStats({
-          likes: results.filter((entry) => entry.reaction === "liked").length,
-          watched: results.filter((entry) => entry.reaction === "watched").length,
-          followers: 0
+          likes: storedReactions.filter((entry) => entry.reaction === "liked").length,
+          watched: storedReactions.filter((entry) => entry.reaction === "watched").length,
+          followers: followerCountOverride ?? followers
         });
       })
       .catch(() => {
-        setStats({ likes: 0, watched: 0, followers: 0 });
+        setStats((current) => ({
+          likes: 0,
+          watched: 0,
+          followers: followerCountOverride ?? current.followers ?? 0
+        }));
       });
-  }, [session.user.id]);
+  }, [followerCountOverride, userId]);
 
   return (
     <section className="panel profile-panel">
@@ -38,10 +62,12 @@ export function ProfilePanel({ session, profile }: ProfilePanelProps) {
         <div className="profile-hero__copy">
           <div className="profile-hero__header">
             <div>
-              <p className="section-eyebrow">Perfil</p>
+              <p className="section-eyebrow">{headerLabel}</p>
               <h2>{displayName}</h2>
               <p className="profile-handle">@{username}</p>
             </div>
+
+            {headerAction ? <div className="profile-hero__action">{headerAction}</div> : null}
           </div>
 
           <div className="profile-stats">
@@ -60,13 +86,15 @@ export function ProfilePanel({ session, profile }: ProfilePanelProps) {
           </div>
 
           <p className="profile-bio">
-            Tu perfil va juntando automaticamente lo que marcaste como visto y lo que guardaste en
-            Watchlist.
+            {profileMessage ??
+              (isOwnProfile
+                ? "Tu perfil va juntando automaticamente lo que marcaste como visto y lo que guardaste en Watchlist."
+                : "Aca ves lo que esta persona ya miro, guardo para despues y publico dentro de Cinerian.")}
           </p>
         </div>
       </div>
 
-      <ProfileTabs userId={session.user.id} />
+      <ProfileTabs userId={userId} readOnly={readOnly} isOwnProfile={isOwnProfile} />
     </section>
   );
 }

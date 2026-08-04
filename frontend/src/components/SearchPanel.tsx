@@ -5,6 +5,7 @@ import { useDiscovery } from "../hooks/useDiscovery";
 import { createFeedPost } from "../lib/feed";
 import {
   fetchStoredReactions,
+  REACTIONS_UPDATED_EVENT,
   removeStoredReaction,
   saveStoredReaction,
   type StoredReaction
@@ -27,13 +28,30 @@ export function SearchPanel({ userId }: SearchPanelProps) {
   const { results, isLoading, error } = useDiscovery(query);
 
   useEffect(() => {
-    void fetchStoredReactions(userId)
-      .then((response) => {
+    async function loadStoredReactions() {
+      try {
+        const response = await fetchStoredReactions(userId);
         setStoredReactions(response);
-      })
-      .catch(() => {
+      } catch {
         setSyncMessage("No pude sincronizar tus acciones guardadas.");
-      });
+      }
+    }
+
+    function handleReactionsUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (detail?.userId && detail.userId !== userId) {
+        return;
+      }
+
+      void loadStoredReactions();
+    }
+
+    void loadStoredReactions();
+    window.addEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
+    };
   }, [userId]);
 
   const reactionMap = useMemo(
@@ -76,7 +94,14 @@ export function SearchPanel({ userId }: SearchPanelProps) {
 
       setStoredReactions((current) => [
         { tmdbId: item.id, mediaType: item.mediaType, reaction },
-        ...current.filter((entry) => entry.tmdbId !== item.id)
+        ...current.filter(
+          (entry) =>
+            !(
+              entry.tmdbId === item.id &&
+              entry.mediaType === item.mediaType &&
+              (entry.reaction === reaction || entry.reaction === "disliked")
+            )
+        )
       ]);
     } catch {
       setSyncMessage("No pude guardar esta accion.");
@@ -142,7 +167,14 @@ export function SearchPanel({ userId }: SearchPanelProps) {
           mediaType: reviewItem.mediaType,
           reaction: "watched"
         },
-        ...current.filter((entry) => entry.tmdbId !== reviewItem.id)
+        ...current.filter(
+          (entry) =>
+            !(
+              entry.tmdbId === reviewItem.id &&
+              entry.mediaType === reviewItem.mediaType &&
+              (entry.reaction === "watched" || entry.reaction === "disliked")
+            )
+        )
       ]);
       setReviewItem(null);
       setSyncMessage("Tu reseña ya salió en el feed.");
@@ -202,34 +234,53 @@ export function SearchPanel({ userId }: SearchPanelProps) {
                 <span className="media-score">TMDB {item.score}</span>
               </div>
               <h3>{item.title}</h3>
-              <p>{item.overview}</p>
-              <div className="token-row">
-                {item.providers.map((provider) => (
-                  <span key={provider}>{provider}</span>
-                ))}
-              </div>
               <div className="action-row">
                 <button
                   type="button"
-                  className="ghost-button"
-                  disabled={isSyncing || reactionMap[`${item.mediaType}-${item.id}`] === "liked"}
+                  className={`recommendation-action-button recommendation-action-button--small ${
+                    reactionMap[`${item.mediaType}-${item.id}`] === "liked"
+                      ? "recommendation-action-button--primary"
+                      : ""
+                  }`}
+                  disabled={isSyncing}
                   onClick={(event) => {
                     event.stopPropagation();
                     void handleReaction(item, "liked");
                   }}
+                  data-tooltip={
+                    reactionMap[`${item.mediaType}-${item.id}`] === "liked" ? "Guardada" : "Guardar"
+                  }
+                  aria-label={
+                    reactionMap[`${item.mediaType}-${item.id}`] === "liked" ? "Guardada" : "Guardar"
+                  }
                 >
-                  {reactionMap[`${item.mediaType}-${item.id}`] === "liked" ? "Ya te gusto" : "Me gusta"}
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z" />
+                  </svg>
                 </button>
                 <button
                   type="button"
-                  className="primary-button"
+                  className={`recommendation-action-button recommendation-action-button--small ${
+                    reactionMap[`${item.mediaType}-${item.id}`] === "watched"
+                      ? "recommendation-action-button--primary"
+                      : ""
+                  }`}
                   disabled={isSyncing}
                   onClick={(event) => {
                     event.stopPropagation();
                     void handleWatchedToggle(item);
                   }}
+                  data-tooltip={
+                    reactionMap[`${item.mediaType}-${item.id}`] === "watched" ? "Vista" : "Ya la vi"
+                  }
+                  aria-label={
+                    reactionMap[`${item.mediaType}-${item.id}`] === "watched" ? "Vista" : "Ya la vi"
+                  }
                 >
-                  {reactionMap[`${item.mediaType}-${item.id}`] === "watched" ? "Ya la viste" : "Ya la vi"}
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                    <circle cx="12" cy="12" r="2.5" />
+                  </svg>
                 </button>
               </div>
             </div>

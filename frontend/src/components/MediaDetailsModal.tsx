@@ -1,6 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { fetchFeedPosts } from "../lib/feed";
+import { SendRecommendationModal } from "./SendRecommendationModal";
+import { WatchReviewModal } from "./WatchReviewModal";
+import { createFeedPost, fetchFeedPosts } from "../lib/feed";
 import { getProviderSearchUrl } from "../lib/providerLinks";
+import { fetchStoredReactions, removeStoredReaction, saveStoredReaction } from "../lib/reactions";
+import { buildWatchedPostBody } from "../lib/reviews";
 import { buildSharedMediaUrl, shareMediaLink } from "../lib/share";
 import { getTitleDetails } from "../lib/tmdb";
 import type { FeedEntry, MediaDetails, DiscoveryItem } from "../types";
@@ -90,6 +94,12 @@ type MediaDetailsSheetProps = {
   onClose?: () => void;
   onShare?: () => void;
   shareLabel?: string;
+  onSave?: () => void;
+  saveLabel?: string;
+  onWatched?: () => void;
+  watchedLabel?: string;
+  canSave?: boolean;
+  canMarkWatched?: boolean;
   publicCta?: ReactNode;
   publicMode?: boolean;
 };
@@ -102,6 +112,12 @@ export function MediaDetailsSheet({
   onClose,
   onShare,
   shareLabel,
+  onSave,
+  saveLabel,
+  onWatched,
+  watchedLabel,
+  canSave = false,
+  canMarkWatched = false,
   publicCta,
   publicMode = false
 }: MediaDetailsSheetProps) {
@@ -135,7 +151,7 @@ export function MediaDetailsSheet({
           <div />
         )}
 
-        {onShare ? (
+        {onShare && publicMode ? (
           <button type="button" className="media-modal__share" onClick={onShare}>
             {shareLabel ?? "Compartir"}
           </button>
@@ -194,6 +210,58 @@ export function MediaDetailsSheet({
               </div>
             </div>
           </div>
+
+          {(canSave || canMarkWatched || onShare) && !publicMode ? (
+            <section className="media-modal__section media-modal__section--actions">
+              <div className="media-modal__actions-row">
+                {canMarkWatched && onWatched ? (
+                  <button
+                    type="button"
+                    className={`recommendation-action-button ${
+                      watchedLabel === "Vista" ? "recommendation-action-button--primary" : ""
+                    }`}
+                    onClick={onWatched}
+                    data-tooltip={watchedLabel ?? "Ya la vi"}
+                    aria-label={watchedLabel ?? "Ya la vi"}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
+                  </button>
+                ) : null}
+                {canSave && onSave ? (
+                  <button
+                    type="button"
+                    className={`recommendation-action-button ${
+                      saveLabel === "Guardado" ? "recommendation-action-button--primary" : ""
+                    }`}
+                    onClick={onSave}
+                    data-tooltip={saveLabel ?? "Guardar"}
+                    aria-label={saveLabel ?? "Guardar"}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z" />
+                    </svg>
+                  </button>
+                ) : null}
+                {onShare ? (
+                  <button
+                    type="button"
+                    className="recommendation-action-button"
+                    onClick={onShare}
+                    data-tooltip={shareLabel ?? "Enviar"}
+                    aria-label={shareLabel ?? "Enviar"}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M21 3 10 14" />
+                      <path d="m21 3-7 18-4-7-7-4 18-7Z" />
+                    </svg>
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
 
           <section className="media-modal__section">
             <p className="section-eyebrow">Sinopsis</p>
@@ -268,14 +336,21 @@ export function MediaDetailsSheet({
 }
 
 function MediaDetailsModal({
+  userId,
   item,
   onClose
 }: {
+  userId?: string;
   item: MediaReference | null;
   onClose: () => void;
 }) {
   const { details, feedPosts, isLoading } = useMediaDetailsData(item);
   const [shareLabel, setShareLabel] = useState("Compartir");
+  const [saveLabel, setSaveLabel] = useState("Guardar");
+  const [watchedLabel, setWatchedLabel] = useState("Ya la vi");
+  const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
+  const [isReviewSaving, setIsReviewSaving] = useState(false);
+  const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
 
   useEffect(() => {
     if (!item) {
@@ -298,14 +373,167 @@ function MediaDetailsModal({
     setShareLabel("Compartir");
   }, [item]);
 
+  useEffect(() => {
+    if (!item || !userId) {
+      setSaveLabel("Guardar");
+      setWatchedLabel("Ya la vi");
+      return;
+    }
+
+    let isMounted = true;
+
+    void fetchStoredReactions(userId)
+      .then((reactions) => {
+        if (!isMounted) {
+          return;
+        }
+
+        const isSaved = reactions.some(
+          (entry) =>
+            entry.tmdbId === item.id &&
+            entry.mediaType === item.mediaType &&
+            entry.reaction === "liked"
+        );
+        const isWatched = reactions.some(
+          (entry) =>
+            entry.tmdbId === item.id &&
+            entry.mediaType === item.mediaType &&
+            entry.reaction === "watched"
+        );
+
+        setSaveLabel(isSaved ? "Guardado" : "Guardar");
+        setWatchedLabel(isWatched ? "Vista" : "Ya la vi");
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSaveLabel("Guardar");
+          setWatchedLabel("Ya la vi");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [item, userId]);
+
   async function handleShare() {
     if (!item) {
       return;
     }
 
-    const result = await shareMediaLink(details ? { ...item, title: details.title } : item);
-    setShareLabel(result === "shared" ? "Compartido" : "Link copiado");
-    window.setTimeout(() => setShareLabel("Compartir"), 1800);
+    setSendItem({
+      id: item.id,
+      mediaType: item.mediaType,
+      title: details?.title ?? item.title,
+      year: details?.year ?? "",
+      overview: details?.overview ?? "",
+      posterUrl: details?.posterUrl ?? "",
+      genres: details?.genres ?? [],
+      providers: details?.providers ?? [],
+      score: details?.score ?? 0
+    });
+  }
+
+  async function handleSave() {
+    if (!item || !userId) {
+      return;
+    }
+
+    try {
+      const normalizedItem = {
+        id: item.id,
+        mediaType: item.mediaType,
+        title: details?.title ?? item.title,
+        year: details?.year ?? "",
+        overview: details?.overview ?? "",
+        posterUrl: details?.posterUrl ?? "",
+        genres: details?.genres ?? [],
+        providers: details?.providers ?? [],
+        score: details?.score ?? 0
+      };
+
+      if (saveLabel === "Guardado") {
+        await removeStoredReaction(userId, normalizedItem, "liked");
+        setSaveLabel("Quitado");
+        window.setTimeout(() => setSaveLabel("Guardar"), 1800);
+        return;
+      }
+
+      await saveStoredReaction({
+        userId,
+        item: normalizedItem,
+        reaction: "liked"
+      });
+      setSaveLabel("Guardado");
+    } catch {
+      setSaveLabel(saveLabel === "Guardado" ? "No pude quitar" : "No pude guardar");
+      window.setTimeout(() => setSaveLabel("Guardar"), 1800);
+    }
+  }
+
+  async function handleWatched() {
+    if (!item || !userId) {
+      return;
+    }
+
+    try {
+      const normalizedItem = {
+        id: item.id,
+        mediaType: item.mediaType,
+        title: details?.title ?? item.title,
+        year: details?.year ?? "",
+        overview: details?.overview ?? "",
+        posterUrl: details?.posterUrl ?? "",
+        genres: details?.genres ?? [],
+        providers: details?.providers ?? [],
+        score: details?.score ?? 0
+      };
+
+      if (watchedLabel === "Vista") {
+        await removeStoredReaction(userId, normalizedItem, "watched");
+        setWatchedLabel("Quitada");
+        window.setTimeout(() => setWatchedLabel("Ya la vi"), 1800);
+        return;
+      }
+
+      setReviewItem(normalizedItem);
+    } catch {
+      setWatchedLabel(watchedLabel === "Vista" ? "No pude quitar" : "No pude marcar");
+      window.setTimeout(() => setWatchedLabel("Ya la vi"), 1800);
+    }
+  }
+
+  async function handleReviewSubmit(input: { liked: boolean; comment: string }) {
+    if (!reviewItem || !userId) {
+      return;
+    }
+
+    try {
+      setIsReviewSaving(true);
+      await saveStoredReaction({
+        userId,
+        item: reviewItem,
+        reaction: "watched"
+      });
+      await createFeedPost({
+        userId,
+        postType: "rating",
+        body: buildWatchedPostBody({
+          item: reviewItem,
+          liked: input.liked,
+          comment: input.comment
+        }),
+        tmdbId: reviewItem.id,
+        mediaType: reviewItem.mediaType
+      });
+      setWatchedLabel("Vista");
+      setReviewItem(null);
+    } catch {
+      setWatchedLabel("No pude marcar");
+      window.setTimeout(() => setWatchedLabel("Ya la vi"), 1800);
+    } finally {
+      setIsReviewSaving(false);
+    }
   }
 
   if (!item) {
@@ -314,22 +542,53 @@ function MediaDetailsModal({
 
   return (
     <div className="media-modal__backdrop" role="presentation" onClick={onClose}>
-      <div className="media-modal__frame" role="presentation" onClick={(event) => event.stopPropagation()}>
-        <MediaDetailsSheet
-          item={item}
-          details={details}
-          feedPosts={feedPosts}
-          isLoading={isLoading}
-          onClose={onClose}
-          onShare={handleShare}
-          shareLabel={shareLabel}
+      <div className="media-modal__frame" role="presentation">
+        <div role="presentation" onClick={(event) => event.stopPropagation()}>
+          <MediaDetailsSheet
+            item={item}
+            details={details}
+            feedPosts={feedPosts}
+            isLoading={isLoading}
+            onClose={onClose}
+            onShare={handleShare}
+            shareLabel={shareLabel === "Compartir" ? "Enviar" : shareLabel}
+            onSave={handleSave}
+            saveLabel={saveLabel}
+            onWatched={handleWatched}
+            watchedLabel={watchedLabel}
+            canSave={Boolean(userId)}
+            canMarkWatched={Boolean(userId)}
+          />
+        </div>
+        <WatchReviewModal
+          item={reviewItem}
+          isSaving={isReviewSaving}
+          onClose={() => setReviewItem(null)}
+          onSubmit={(input) => void handleReviewSubmit(input)}
         />
+        {userId ? (
+          <SendRecommendationModal
+            userId={userId}
+            item={sendItem}
+            onClose={() => setSendItem(null)}
+            onSent={() => {
+              setShareLabel("Enviado");
+              window.setTimeout(() => setShareLabel("Compartir"), 1800);
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );
 }
 
-export function MediaDetailsProvider({ children }: { children: ReactNode }) {
+export function MediaDetailsProvider({
+  userId,
+  children
+}: {
+  userId?: string;
+  children: ReactNode;
+}) {
   const [activeItem, setActiveItem] = useState<MediaReference | null>(null);
 
   return (
@@ -339,7 +598,7 @@ export function MediaDetailsProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      <MediaDetailsModal item={activeItem} onClose={() => setActiveItem(null)} />
+      <MediaDetailsModal userId={userId} item={activeItem} onClose={() => setActiveItem(null)} />
     </MediaDetailsContext.Provider>
   );
 }

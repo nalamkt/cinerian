@@ -1,0 +1,225 @@
+import { getTitleById } from "./tmdb";
+import { listProfiles, type Profile } from "./auth";
+import { supabase } from "./supabase";
+import type { DiscoveryItem, MediaType, RecommendationMessage } from "../types";
+
+export const INBOX_UPDATED_EVENT = "cinerian:inbox-updated";
+
+type RecommendationMessageRow = {
+  id: string;
+  sender_id: string;
+  recipient_id: string;
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  poster_url: string | null;
+  year: string | null;
+  note: string | null;
+  created_at: string;
+  read_at: string | null;
+};
+
+function isMissingReadAtColumn(error: { message?: string; details?: string; hint?: string } | null) {
+  const haystack = `${error?.message ?? ""} ${error?.details ?? ""} ${error?.hint ?? ""}`.toLowerCase();
+  return haystack.includes("read_at") && (haystack.includes("column") || haystack.includes("schema cache"));
+}
+
+function dispatchInboxUpdate(userId: string) {
+  window.dispatchEvent(
+    new CustomEvent(INBOX_UPDATED_EVENT, {
+      detail: { userId }
+    })
+  );
+}
+
+function formatRelativeLabel(dateString: string) {
+  const created = new Date(dateString).getTime();
+  const diffMs = Date.now() - created;
+  const diffMin = Math.max(0, Math.round(diffMs / 60000));
+
+  if (diffMin < 1) {
+    return "Ahora";
+  }
+
+  if (diffMin < 60) {
+    return `Hace ${diffMin} min`;
+  }
+
+  const diffHours = Math.round(diffMin / 60);
+  if (diffHours < 24) {
+    return `Hace ${diffHours} h`;
+  }
+
+  const diffDays = Math.round(diffHours / 24);
+  return `Hace ${diffDays} d`;
+}
+
+function buildFallbackItem(row: RecommendationMessageRow): DiscoveryItem {
+  return {
+    id: row.tmdb_id,
+    title: row.title,
+    year: row.year ?? "Sin fecha",
+    mediaType: row.media_type,
+    overview: "",
+    posterUrl: row.poster_url ?? "/images/base.png",
+    genres: [],
+    providers: [],
+    score: 0
+  };
+}
+
+async function hydrateItem(row: RecommendationMessageRow) {
+  const fallback = buildFallbackItem(row);
+
+  try {
+    return (await getTitleById(row.tmdb_id, row.media_type)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function profileMapFromList(profiles: Profile[]) {
+  return new Map(profiles.map((profile) => [profile.id, profile]));
+}
+
+async function fetchMessagesByColumn(column: "sender_id" | "recipient_id", userId: string) {
+  if (!supabase) {
+    return [];
+  }
+
+  const primaryQuery = await supabase
+    .from("recommendation_messages")
+    .select("id, sender_id, recipient_id, tmdb_id, media_type, title, poster_url, year, note, created_at, read_at")
+    .eq(column, userId)
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  if (!primaryQuery.error) {
+    return (primaryQuery.data ?? []) as RecommendationMessageRow[];
+  }
+
+  if (!isMissingReadAtColumn(primaryQuery.error)) {
+    throw primaryQuery.error;
+  }
+
+  const fallbackQuery = await supabase
+    .from("recommendation_messages")
+    .select("id, sender_id, recipient_id, tmdb_id, media_type, title, poster_url, year, note, created_at")
+    .eq(column, userId)
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  if (fallbackQuery.error) {
+    throw fallbackQuery.error;
+  }
+
+  return ((fallbackQuery.data ?? []) as Omit<RecommendationMessageRow, "read_at">[]).map((row) => ({
+    ...row,
+    read_at: null
+  }));
+}
+
+async function mapMessageRows(rows: RecommendationMessageRow[]): Promise<RecommendationMessage[]> {
+  const [profiles, items] = await Promise.all([
+    listProfiles(),
+    Promise.all(rows.map((row) => hydrateItem(row)))
+  ]);
+
+  const profileMap = profileMapFromList(profiles);
+
+  return rows.map((row, index) => ({
+    id: row.id,
+    senderId: row.sender_id,
+    recipientId: row.recipient_id,
+    senderProfile: profileMap.get(row.sender_id) ?? null,
+    recipientProfile: profileMap.get(row.recipient_id) ?? null,
+    note: row.note ?? "",
+    createdAt: row.created_at,
+    createdAtLabel: formatRelativeLabel(row.created_at),
+    item: items[index]
+  }));
+}
+
+export async function sendRecommendationMessage(input: {
+  senderId: string;
+  recipientId: string;
+  item: DiscoveryItem;
+  note?: string;
+}) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.from("recommendation_messages").insert({
+    sender_id: input.senderId,
+    recipient_id: input.recipientId,
+    tmdb_id: input.item.id,
+    media_type: input.item.mediaType,
+    title: input.item.title,
+    poster_url: input.item.posterUrl,
+    year: input.item.year,
+    note: input.note?.trim() || null
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  dispatchInboxUpdate(input.senderId);
+  dispatchInboxUpdate(input.recipientId);
+}
+
+export async function fetchUnreadInboxCount(userId: string): Promise<number> {
+  if (!supabase) {
+    return 0;
+  }
+
+  const { count, error } = await supabase
+    .from("recommendation_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("recipient_id", userId)
+    .is("read_at", null);
+
+  if (error) {
+    if (isMissingReadAtColumn(error)) {
+      return 0;
+    }
+
+    throw error;
+  }
+
+  return count ?? 0;
+}
+
+export async function markInboxAsRead(userId: string) {
+  if (!supabase) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("recommendation_messages")
+    .update({ read_at: now })
+    .eq("recipient_id", userId)
+    .is("read_at", null);
+
+  if (error) {
+    if (isMissingReadAtColumn(error)) {
+      return;
+    }
+
+    throw error;
+  }
+
+  dispatchInboxUpdate(userId);
+}
+
+export async function fetchReceivedMessages(userId: string): Promise<RecommendationMessage[]> {
+  const rows = await fetchMessagesByColumn("recipient_id", userId);
+  return mapMessageRows(rows);
+}
+
+export async function fetchSentMessages(userId: string): Promise<RecommendationMessage[]> {
+  const rows = await fetchMessagesByColumn("sender_id", userId);
+  return mapMessageRows(rows);
+}

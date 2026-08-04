@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
+import { SendRecommendationModal } from "./SendRecommendationModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { demoDiscovery } from "../data/demoData";
 import { createFeedPost } from "../lib/feed";
-import { shareMediaLink } from "../lib/share";
 import {
   fetchStoredReactions,
+  REACTIONS_UPDATED_EVENT,
   removeStoredLike,
   saveStoredReaction,
   type StoredReaction
@@ -41,6 +42,8 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
   const [spotlightDetails, setSpotlightDetails] = useState<MediaDetails | null>(null);
+  const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
+  const [sendStatus, setSendStatus] = useState("Enviar");
 
   const likedIds = useMemo(
     () => storedReactions.filter((entry) => entry.reaction === "liked").map((entry) => entry.tmdbId),
@@ -113,13 +116,30 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   }, [availableItems.length, items.length, page]);
 
   useEffect(() => {
-    void fetchStoredReactions(userId)
-      .then((results) => {
+    async function loadStoredReactions() {
+      try {
+        const results = await fetchStoredReactions(userId);
         setStoredReactions(results);
-      })
-      .catch(() => {
+      } catch {
         setSyncMessage("No pude sincronizar tus reacciones guardadas.");
-      });
+      }
+    }
+
+    function handleReactionsUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (detail?.userId && detail.userId !== userId) {
+        return;
+      }
+
+      void loadStoredReactions();
+    }
+
+    void loadStoredReactions();
+    window.addEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
+    };
   }, [userId]);
 
   useEffect(() => {
@@ -186,7 +206,14 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
 
       setStoredReactions((current) => [
         { tmdbId: target.id, mediaType: target.mediaType, reaction },
-        ...current.filter((entry) => entry.tmdbId !== target.id)
+        ...current.filter(
+          (entry) =>
+            !(
+              entry.tmdbId === target.id &&
+              entry.mediaType === target.mediaType &&
+              (entry.reaction === reaction || entry.reaction === "disliked")
+            )
+        )
       ]);
     } catch {
       setSyncMessage("No pude guardar esta reaccion.");
@@ -202,17 +229,12 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     void registerReaction("liked");
   }
 
-  async function handleShare() {
+  function handleShare() {
     if (!spotlight) {
       return;
     }
 
-    try {
-      await shareMediaLink(spotlight);
-      setSyncMessage("Listo para enviar.");
-    } catch {
-      setSyncMessage("No pude preparar el envio.");
-    }
+    setSendItem(spotlight);
   }
 
   function handleWatched() {
@@ -272,7 +294,14 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
           mediaType: reviewItem.mediaType,
           reaction: "watched"
         },
-        ...current.filter((entry) => entry.tmdbId !== reviewItem.id)
+        ...current.filter(
+          (entry) =>
+            !(
+              entry.tmdbId === reviewItem.id &&
+              entry.mediaType === reviewItem.mediaType &&
+              (entry.reaction === "watched" || entry.reaction === "disliked")
+            )
+        )
       ]);
       setReviewItem(null);
       if (spotlight && spotlight.id === reviewItem.id) {
@@ -360,7 +389,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                   className="recommendation-action-button"
                   onClick={() => void handleShare()}
                   disabled={isSyncing}
-                  data-tooltip="Enviar"
+                  data-tooltip={sendStatus}
                   aria-label="Enviar a un amigo"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -471,6 +500,15 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
         isSaving={isSyncing}
         onClose={() => setReviewItem(null)}
         onSubmit={(input) => void handleReviewSubmit(input)}
+      />
+      <SendRecommendationModal
+        userId={userId}
+        item={sendItem}
+        onClose={() => setSendItem(null)}
+        onSent={() => {
+          setSendStatus("Enviado");
+          window.setTimeout(() => setSendStatus("Enviar"), 1800);
+        }}
       />
     </section>
   );

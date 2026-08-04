@@ -1,18 +1,27 @@
 import { AuthPanel } from "./components/AuthPanel";
 import { CinerianLogo } from "./components/CinerianLogo";
 import { FeedPanel } from "./components/FeedPanel";
+import { InboxPanel } from "./components/InboxPanel";
 import { MediaDetailsProvider } from "./components/MediaDetailsModal";
 import { ProfilePanel } from "./components/ProfilePanel";
 import { RecommendationPanel } from "./components/RecommendationPanel";
 import { SearchPanel } from "./components/SearchPanel";
+import { SharedUserPage } from "./components/SharedUserPage";
+import { UserProfilePage } from "./components/UserProfilePage";
 import { useAuth } from "./hooks/useAuth";
 import { signOut } from "./lib/auth";
+import { fetchUnreadInboxCount, INBOX_UPDATED_EVENT } from "./lib/inbox";
+import {
+  buildSharedProfilePath,
+  parseSharedProfilePath,
+  shareProfileLink
+} from "./lib/profileShare";
 import { hasSupabaseEnv } from "./lib/supabase";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-type AppView = "feed" | "search" | "recommendations" | "user";
+type AppView = "feed" | "search" | "recommendations" | "inbox" | "user";
 
-function DockIcon({ id }: { id: AppView }) {
+function DockIcon({ id, badgeCount = 0 }: { id: AppView; badgeCount?: number }) {
   if (id === "feed") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -38,6 +47,18 @@ function DockIcon({ id }: { id: AppView }) {
     );
   }
 
+  if (id === "inbox") {
+    return (
+      <>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 6h16v12H4z" />
+          <path d="m4 8 8 6 8-6" />
+        </svg>
+        {badgeCount > 0 ? <span className="dock__badge">{badgeCount > 9 ? "9+" : badgeCount}</span> : null}
+      </>
+    );
+  }
+
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="8" r="3.5" />
@@ -60,28 +81,174 @@ const dockItems: Array<{ id: AppView; label: string }> = [
   { id: "feed", label: "Inicio" },
   { id: "search", label: "Buscador" },
   { id: "recommendations", label: "Recomendador" },
+  { id: "inbox", label: "Inbox" },
   { id: "user", label: "Mi cuenta" }
 ];
 
 export default function App() {
   const { session, profile, isLoading, error } = useAuth();
+  const sessionUserId = session?.user.id ?? null;
   const [activeView, setActiveView] = useState<AppView>("feed");
+  const [unreadInboxCount, setUnreadInboxCount] = useState(0);
+  const [selectedProfileRoute, setSelectedProfileRoute] = useState<{
+    userId?: string;
+    username: string;
+  } | null>(() => parseSharedProfilePath(window.location.pathname));
+  const [shareLabel, setShareLabel] = useState("Compartir perfil");
+
+  const ownProfileAction = useMemo(() => {
+    return (
+      <div className="profile-hero__actions profile-hero__actions--own">
+        <button
+          type="button"
+          className="profile-share-button"
+          disabled={!profile?.username}
+          onClick={async () => {
+            if (!profile?.username) {
+              return;
+            }
+
+            const result = await shareProfileLink(profile.username);
+            setShareLabel(result === "shared" ? "Compartido" : "Link copiado");
+            window.setTimeout(() => setShareLabel("Compartir perfil"), 1800);
+          }}
+        >
+          {shareLabel}
+        </button>
+        <button type="button" className="profile-mobile-logout" onClick={() => void signOut()}>
+          Cerrar sesión
+        </button>
+      </div>
+    );
+  }, [profile?.username, shareLabel]);
+
+  useEffect(() => {
+    function syncRouteFromLocation() {
+      setSelectedProfileRoute(parseSharedProfilePath(window.location.pathname));
+    }
+
+    window.addEventListener("popstate", syncRouteFromLocation);
+    return () => window.removeEventListener("popstate", syncRouteFromLocation);
+  }, []);
+
+  useEffect(() => {
+    if (!sessionUserId) {
+      setUnreadInboxCount(0);
+      return;
+    }
+
+    const currentUserId = sessionUserId;
+    let isMounted = true;
+
+    async function loadUnreadCount() {
+      try {
+        const count = await fetchUnreadInboxCount(currentUserId);
+        if (isMounted) {
+          setUnreadInboxCount(count);
+        }
+      } catch {
+        if (isMounted) {
+          setUnreadInboxCount(0);
+        }
+      }
+    }
+
+    function handleInboxUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (detail?.userId && detail.userId !== currentUserId) {
+        return;
+      }
+
+      void loadUnreadCount();
+    }
+
+    void loadUnreadCount();
+    window.addEventListener(INBOX_UPDATED_EVENT, handleInboxUpdated as EventListener);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener(INBOX_UPDATED_EVENT, handleInboxUpdated as EventListener);
+    };
+  }, [sessionUserId]);
+
+  function handleOpenUserProfile(profileRef: { userId: string; username?: string }) {
+    if (profileRef.userId === session!.user.id) {
+      setSelectedProfileRoute(null);
+      setActiveView("user");
+      if (window.location.pathname !== "/") {
+        window.history.pushState({}, "", "/");
+      }
+      return;
+    }
+
+    if (!profileRef.username) {
+      return;
+    }
+
+    setSelectedProfileRoute({
+      userId: profileRef.userId,
+      username: profileRef.username
+    });
+    window.history.pushState({}, "", buildSharedProfilePath(profileRef.username));
+  }
+
+  function handleChangeView(view: AppView) {
+    setSelectedProfileRoute(null);
+    setActiveView(view);
+    if (window.location.pathname !== "/") {
+      window.history.pushState({}, "", "/");
+    }
+  }
 
   function renderActiveView() {
+    if (selectedProfileRoute) {
+      return (
+        <UserProfilePage
+          currentUserId={session!.user.id}
+          userId={selectedProfileRoute.userId}
+          username={selectedProfileRoute.username}
+          onBack={() => {
+            setSelectedProfileRoute(null);
+            window.history.pushState({}, "", "/");
+          }}
+        />
+      );
+    }
+
     switch (activeView) {
       case "search":
         return <SearchPanel userId={session!.user.id} />;
       case "recommendations":
         return <RecommendationPanel userId={session!.user.id} />;
       case "user":
-        return <ProfilePanel session={session!} profile={profile} />;
+        return (
+          <ProfilePanel
+            userId={session!.user.id}
+            profile={profile}
+            isOwnProfile
+            headerAction={ownProfileAction}
+            profileMessage="Tu perfil publico va juntando automaticamente lo que marcaste como visto, guardaste en Watchlist y recomendaste en Cinerian."
+          />
+        );
+      case "inbox":
+        return <InboxPanel userId={session!.user.id} onOpenUserProfile={handleOpenUserProfile} />;
       case "feed":
       default:
-        return <FeedPanel userId={session!.user.id} profile={profile} />;
+        return (
+          <FeedPanel
+            userId={session!.user.id}
+            profile={profile}
+            onOpenUserProfile={handleOpenUserProfile}
+          />
+        );
     }
   }
 
   if (!session) {
+    if (selectedProfileRoute) {
+      return <SharedUserPage username={selectedProfileRoute.username} />;
+    }
+
     return (
       <div className="auth-shell">
         <div className="auth-shell__inner">
@@ -106,7 +273,7 @@ export default function App() {
   }
 
   return (
-    <MediaDetailsProvider>
+    <MediaDetailsProvider userId={session.user.id}>
       <div className="app-shell app-shell--immersive">
         {error ? <div className="app-alert app-alert--floating">{error}</div> : null}
         {isLoading ? <div className="app-alert app-alert--floating">Cargando sesion...</div> : null}
@@ -122,12 +289,12 @@ export default function App() {
                   <button
                     key={item.id}
                     type="button"
-                    className={`dock__button ${activeView === item.id ? "is-active" : ""}`}
-                    onClick={() => setActiveView(item.id)}
+                    className={`dock__button ${selectedProfileRoute ? "" : activeView === item.id ? "is-active" : ""}`}
+                    onClick={() => handleChangeView(item.id)}
                     aria-label={item.label}
                   >
                     <span className="dock__icon">
-                      <DockIcon id={item.id} />
+                      <DockIcon id={item.id} badgeCount={item.id === "inbox" ? unreadInboxCount : 0} />
                     </span>
                     <span className="dock__label">{item.label}</span>
                   </button>

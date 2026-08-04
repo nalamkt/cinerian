@@ -1,6 +1,8 @@
 import { supabase } from "./supabase";
 import type { DiscoveryItem, MediaType } from "../types";
 
+export const REACTIONS_UPDATED_EVENT = "cinerian:reactions-updated";
+
 export type RecommendationReaction = "liked" | "watched" | "disliked";
 
 export type StoredReaction = {
@@ -9,6 +11,18 @@ export type StoredReaction = {
   reaction: RecommendationReaction;
   rating?: number | null;
 };
+
+function notifyReactionsUpdated(userId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(REACTIONS_UPDATED_EVENT, {
+      detail: { userId }
+    })
+  );
+}
 
 export async function fetchStoredReactions(userId: string): Promise<StoredReaction[]> {
   if (!supabase) {
@@ -43,13 +57,18 @@ export async function saveStoredReaction(input: {
     return;
   }
 
-  const deleteQuery = supabase
+  let deleteQuery = supabase
     .from("media_reactions")
     .delete()
     .eq("user_id", input.userId)
     .eq("tmdb_id", input.item.id)
-    .eq("media_type", input.item.mediaType)
-    .in("reaction", ["liked", "watched", "disliked"]);
+    .eq("media_type", input.item.mediaType);
+
+  if (input.reaction === "disliked") {
+    deleteQuery = deleteQuery.in("reaction", ["liked", "watched", "disliked"]);
+  } else {
+    deleteQuery = deleteQuery.in("reaction", [input.reaction, "disliked"]);
+  }
 
   const { error: deleteError } = await deleteQuery;
   if (deleteError) {
@@ -67,6 +86,8 @@ export async function saveStoredReaction(input: {
   if (insertError) {
     throw insertError;
   }
+
+  notifyReactionsUpdated(input.userId);
 }
 
 export async function removeStoredLike(userId: string, item: DiscoveryItem) {
@@ -93,4 +114,6 @@ export async function removeStoredReaction(
   if (error) {
     throw error;
   }
+
+  notifyReactionsUpdated(userId);
 }

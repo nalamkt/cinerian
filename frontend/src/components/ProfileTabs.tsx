@@ -16,6 +16,8 @@ import type { DiscoveryItem, FeedEntry } from "../types";
 
 type ProfileTabsProps = {
   userId: string;
+  readOnly?: boolean;
+  isOwnProfile?: boolean;
 };
 
 type TabId = "watched" | "liked" | "recommendations" | "posts";
@@ -67,7 +69,11 @@ function parseRatingPost(body: string) {
   return null;
 }
 
-export function ProfileTabs({ userId }: ProfileTabsProps) {
+export function ProfileTabs({
+  userId,
+  readOnly = false,
+  isOwnProfile = true
+}: ProfileTabsProps) {
   const { openMediaDetails } = useMediaDetails();
   const [activeTab, setActiveTab] = useState<TabId>("watched");
   const [reactions, setReactions] = useState<StoredReaction[]>([]);
@@ -254,10 +260,12 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
         ))}
       </div>
 
-      {syncMessage ? <div className="inline-status">{syncMessage}</div> : null}
+      {!readOnly && syncMessage ? <div className="inline-status">{syncMessage}</div> : null}
 
       {isLoading ? (
-        <div className="profile-grid__empty">Cargando tu videoteca...</div>
+        <div className="profile-grid__empty">
+          {isOwnProfile ? "Cargando tu videoteca..." : "Cargando este perfil..."}
+        </div>
       ) : activeTab === "recommendations" ? (
         mediaPosts.filter((post) => post.type === "rating").length ? (
           <div className="profile-posts">
@@ -272,7 +280,7 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
               return (
                 <article className="profile-post-card profile-post-card--media" key={post.id}>
                   <div className="profile-post-card__topline">
-                    <strong>Puntuaste este titulo</strong>
+                    <strong>{isOwnProfile ? "Puntuaste este titulo" : "Puntuo este titulo"}</strong>
                     <span>{post.createdAtLabel}</span>
                   </div>
 
@@ -301,29 +309,47 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
                       {parsedRating ? (
                         <>
                           <p className="profile-post-card__text">
-                            {parsedRating.quote || (parsedRating.liked ? "Te gusto y la marcaste como vista." : "No te gusto, pero la dejaste puntuadа como vista.")}
+                            {parsedRating.quote ||
+                              (parsedRating.liked
+                                ? isOwnProfile
+                                  ? "Te gusto y la marcaste como vista."
+                                  : "Le gusto y la marco como vista."
+                                : isOwnProfile
+                                  ? "No te gusto, pero la dejaste puntuada como vista."
+                                  : "No le gusto, pero la dejo puntuada como vista.")}
                           </p>
                         </>
                       ) : null}
                     </div>
                   </div>
 
-                  <div className="profile-post-card__actions">
-                    <button
-                      type="button"
-                      className="profile-grid__remove"
-                      disabled={isSyncing}
-                      onClick={() => void handleDeletePost(post.id)}
-                    >
-                      Eliminar
-                    </button>
-                  </div>
+                  {!readOnly ? (
+                    <div className="profile-post-card__actions">
+                      <button
+                        type="button"
+                        className="recommendation-action-button recommendation-action-button--small profile-remove-button"
+                        disabled={isSyncing}
+                        onClick={() => void handleDeletePost(post.id)}
+                        data-tooltip="Eliminar"
+                        aria-label="Eliminar"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6 6 18 18" />
+                          <path d="M18 6 6 18" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}
           </div>
         ) : (
-          <div className="profile-grid__empty">Todavia no tenes titulos puntuados desde Ya la vi.</div>
+          <div className="profile-grid__empty">
+            {isOwnProfile
+              ? "Todavia no tenes titulos puntuados desde Ya la vi."
+              : "Todavia no hay recomendaciones puntuadas en este perfil."}
+          </div>
         )
       ) : activeTab === "posts" ? (
         posts.length ? (
@@ -331,11 +357,11 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
             {posts.map((post) => (
               <article className="profile-post-card" key={post.id}>
                 <div className="profile-post-card__topline">
-                  <strong>Post propio</strong>
+                  <strong>{isOwnProfile ? "Post propio" : "Post publicado"}</strong>
                   <span>{post.createdAtLabel}</span>
                 </div>
 
-                {editingPostId === post.id ? (
+                {!readOnly && editingPostId === post.id ? (
                   <textarea
                     className="profile-post-card__textarea"
                     value={editingBody}
@@ -345,55 +371,61 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
                   <p className="profile-post-card__text">{post.body}</p>
                 )}
 
-                <div className="profile-post-card__actions">
-                  {editingPostId === post.id ? (
-                    <>
-                      <button
-                        type="button"
-                        className="primary-button"
-                        disabled={isSyncing || !editingBody.trim()}
-                        onClick={() => void handleSavePost(post.id)}
-                      >
-                        Guardar
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        disabled={isSyncing}
-                        onClick={() => {
-                          setEditingPostId(null);
-                          setEditingBody("");
-                        }}
-                      >
-                        Cancelar
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        disabled={isSyncing}
-                        onClick={() => startEditing(post)}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="profile-grid__remove"
-                        disabled={isSyncing}
-                        onClick={() => void handleDeletePost(post.id)}
-                      >
-                        Eliminar
-                      </button>
-                    </>
-                  )}
-                </div>
+                {!readOnly ? (
+                  <div className="profile-post-card__actions">
+                    {editingPostId === post.id ? (
+                      <>
+                        <button
+                          type="button"
+                          className="primary-button"
+                          disabled={isSyncing || !editingBody.trim()}
+                          onClick={() => void handleSavePost(post.id)}
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          disabled={isSyncing}
+                          onClick={() => {
+                            setEditingPostId(null);
+                            setEditingBody("");
+                          }}
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          disabled={isSyncing}
+                          onClick={() => startEditing(post)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="profile-grid__remove"
+                          disabled={isSyncing}
+                          onClick={() => void handleDeletePost(post.id)}
+                        >
+                          Eliminar
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
         ) : (
-          <div className="profile-grid__empty">Todavia no publicaste textos propios en el feed.</div>
+          <div className="profile-grid__empty">
+            {isOwnProfile
+              ? "Todavia no publicaste textos propios en el feed."
+              : "Esta persona todavia no publico textos propios en el feed."}
+          </div>
         )
       ) : tabItems.length ? (
         <div className="profile-grid">
@@ -414,14 +446,21 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
                 <span>
                   {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {item.year}
                 </span>
-                <button
-                  type="button"
-                  className="profile-grid__remove"
-                  disabled={isSyncing}
-                  onClick={() => void handleRemove(item)}
-                >
-                  Eliminar
-                </button>
+                {!readOnly ? (
+                  <button
+                    type="button"
+                    className="recommendation-action-button recommendation-action-button--small profile-remove-button"
+                    disabled={isSyncing}
+                    onClick={() => void handleRemove(item)}
+                    data-tooltip="Eliminar"
+                    aria-label="Eliminar"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M6 6 18 18" />
+                      <path d="M18 6 6 18" />
+                    </svg>
+                  </button>
+                ) : null}
               </div>
             </article>
           ))}
@@ -429,8 +468,12 @@ export function ProfileTabs({ userId }: ProfileTabsProps) {
       ) : (
         <div className="profile-grid__empty">
           {activeTab === "watched"
-            ? "Todavia no marcaste titulos como vistos."
-            : "Todavia no guardaste titulos en Watchlist."}
+            ? isOwnProfile
+              ? "Todavia no marcaste titulos como vistos."
+              : "Esta persona todavia no marco titulos como vistos."
+            : isOwnProfile
+              ? "Todavia no guardaste titulos en Watchlist."
+              : "Esta persona todavia no guardo titulos en Watchlist."}
         </div>
       )}
     </section>

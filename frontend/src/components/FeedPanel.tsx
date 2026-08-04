@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { demoDiscovery, demoFeed } from "../data/demoData";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { createFeedPost, fetchFeedPosts } from "../lib/feed";
+import { listProfiles, type Profile } from "../lib/auth";
+import { fetchFollowingUserIds } from "../lib/follows";
 import { getTitleById } from "../lib/tmdb";
-import type { Profile } from "../lib/auth";
 import type { DiscoveryItem, FeedEntry } from "../types";
 
 function findMediaFromPost(body: string) {
@@ -14,7 +15,20 @@ function findMediaFromPost(body: string) {
 type FeedPanelProps = {
   userId: string;
   profile: Profile | null;
+  onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
 };
+
+type FeedMode = "discover" | "following";
+const COMPOSER_WORD_LIMIT = 130;
+
+function countWords(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return 0;
+  }
+
+  return trimmed.split(/\s+/).length;
+}
 
 function parseRatingPost(body: string) {
   const fullReviewMatch = body.match(
@@ -60,29 +74,75 @@ function parseRatingPost(body: string) {
   return null;
 }
 
-export function FeedPanel({ userId, profile }: FeedPanelProps) {
+export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [entries, setEntries] = useState<FeedEntry[]>(demoFeed);
   const [mediaMap, setMediaMap] = useState<Record<string, DiscoveryItem>>({});
+  const [followingIds, setFollowingIds] = useState<string[]>([]);
+  const [activeFeedMode, setActiveFeedMode] = useState<FeedMode>("discover");
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [composerText, setComposerText] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
   const [composerMessage, setComposerMessage] = useState<string | null>(null);
+  const composerWordCount = useMemo(() => countWords(composerText), [composerText]);
 
   useEffect(() => {
-    void fetchFeedPosts()
-      .then((results) => {
-        if (results.length) {
-          setEntries(results);
+    void Promise.allSettled([fetchFeedPosts(), fetchFollowingUserIds(userId), listProfiles()])
+      .then(([feedResult, followingResult, profilesResult]) => {
+        if (feedResult.status === "fulfilled" && feedResult.value.length) {
+          setEntries(feedResult.value);
+        } else if (feedResult.status === "rejected") {
+          setEntries(demoFeed);
         }
-      })
-      .catch(() => {
-        setEntries(demoFeed);
+
+        if (followingResult.status === "fulfilled") {
+          setFollowingIds(followingResult.value);
+        } else {
+          setFollowingIds([]);
+        }
+
+        if (profilesResult.status === "fulfilled") {
+          setProfiles(profilesResult.value);
+        } else {
+          setProfiles([]);
+        }
       });
-  }, []);
+  }, [userId]);
+
+  const discoverProfiles = useMemo(() => {
+    return profiles.filter((entry) => entry.id !== userId).slice(0, 3);
+  }, [profiles, userId]);
+
+  const searchedProfiles = useMemo(() => {
+    const cleanedQuery = peopleQuery.trim().toLowerCase();
+
+    if (!cleanedQuery) {
+      return [];
+    }
+
+    return profiles
+      .filter((entry) => entry.id !== userId)
+      .filter((entry) => {
+        return (
+          entry.display_name.toLowerCase().includes(cleanedQuery) ||
+          entry.username.toLowerCase().includes(cleanedQuery)
+        );
+      })
+      .slice(0, 8);
+  }, [peopleQuery, profiles, userId]);
+
+  const visibleEntries = useMemo(() => {
+    if (activeFeedMode === "following") {
+      return entries.filter((entry) => entry.userId && followingIds.includes(entry.userId));
+    }
+
+    return entries;
+  }, [activeFeedMode, entries, followingIds]);
 
   const postsWithMedia = useMemo(
     () =>
-      entries.map((entry) => {
+      visibleEntries.map((entry) => {
         const fallbackMedia = findMediaFromPost(entry.body);
         const key = entry.tmdbId && entry.mediaType ? `${entry.mediaType}-${entry.tmdbId}` : null;
         const mappedMedia = key ? mediaMap[key] : undefined;
@@ -91,7 +151,7 @@ export function FeedPanel({ userId, profile }: FeedPanelProps) {
           media: mappedMedia ?? fallbackMedia ?? null
         };
       }),
-    [entries, mediaMap]
+    [mediaMap, visibleEntries]
   );
 
   const conversationItems = useMemo(() => {
@@ -156,7 +216,7 @@ export function FeedPanel({ userId, profile }: FeedPanelProps) {
 
   async function handlePublish() {
     const body = composerText.trim();
-    if (!body) {
+    if (!body || composerWordCount > COMPOSER_WORD_LIMIT) {
       return;
     }
 
@@ -190,14 +250,38 @@ export function FeedPanel({ userId, profile }: FeedPanelProps) {
     }
   }
 
+  function openAuthorProfile(targetUserId?: string, username?: string) {
+    if (!targetUserId) {
+      return;
+    }
+
+    onOpenUserProfile({ userId: targetUserId, username });
+  }
+
+  function handleComposerChange(value: string) {
+    if (countWords(value) > COMPOSER_WORD_LIMIT) {
+      return;
+    }
+
+    setComposerText(value);
+  }
+
   return (
     <section className="feed-shell">
       <div className="feed-main">
         <header className="feed-header">
-          <button type="button" className="feed-header__tab is-active">
-            Para ti
+          <button
+            type="button"
+            className={`feed-header__tab ${activeFeedMode === "discover" ? "is-active" : ""}`}
+            onClick={() => setActiveFeedMode("discover")}
+          >
+            Descubri
           </button>
-          <button type="button" className="feed-header__tab">
+          <button
+            type="button"
+            className={`feed-header__tab ${activeFeedMode === "following" ? "is-active" : ""}`}
+            onClick={() => setActiveFeedMode("following")}
+          >
             Siguiendo
           </button>
         </header>
@@ -207,88 +291,184 @@ export function FeedPanel({ userId, profile }: FeedPanelProps) {
             {(profile?.display_name ?? "Cinerian").slice(0, 1).toUpperCase()}
           </div>
           <div className="composer-card__body">
-            <textarea
-              className="composer-card__input"
-              value={composerText}
-              onChange={(event) => setComposerText(event.target.value)}
-              placeholder="¿Que peli o serie te volo la cabeza hoy?"
-            />
-            <div className="composer-card__footer">
+            <div className="composer-card__row">
+              <input
+                type="text"
+                className="composer-card__input composer-card__input--inline"
+                value={composerText}
+                onChange={(event) => handleComposerChange(event.target.value)}
+                placeholder="¿Que peli o serie te volo la cabeza hoy?"
+                maxLength={900}
+              />
               <button
                 type="button"
-                className="primary-button"
+                className="primary-button composer-card__submit"
                 onClick={() => void handlePublish()}
-                disabled={isPublishing || !composerText.trim()}
+                disabled={isPublishing || !composerText.trim() || composerWordCount > COMPOSER_WORD_LIMIT}
               >
                 Publicar
               </button>
+            </div>
+            <div className="composer-card__footer">
+              <span className={composerWordCount >= COMPOSER_WORD_LIMIT ? "composer-card__limit is-limit" : "composer-card__limit"}>
+                {composerWordCount}/{COMPOSER_WORD_LIMIT}
+              </span>
             </div>
             {composerMessage ? <div className="inline-status">{composerMessage}</div> : null}
           </div>
         </section>
 
         <div className="timeline-list">
-          {postsWithMedia.map(({ entry, media }) => {
-            const parsedRating = entry.type === "rating" ? parseRatingPost(entry.body) : null;
+          {postsWithMedia.length ? (
+            postsWithMedia.map(({ entry, media }) => {
+              const parsedRating = entry.type === "rating" ? parseRatingPost(entry.body) : null;
 
-            return (
-              <article className="timeline-card" key={entry.id}>
-                <div className="timeline-card__avatar">{entry.author.slice(0, 1)}</div>
+              return (
+                <article className="timeline-card" key={entry.id}>
+                  <button
+                    type="button"
+                    className="timeline-card__avatar timeline-card__avatar--interactive"
+                    onClick={() => openAuthorProfile(entry.userId, entry.username)}
+                    aria-label={`Ver perfil de ${entry.author}`}
+                  >
+                    {entry.author.slice(0, 1)}
+                  </button>
 
-                <div className="timeline-card__content">
-                  <div className="timeline-card__topline">
-                    <div>
-                      <strong>{entry.author}</strong>
-                      <span className="timeline-card__meta">@{entry.username ?? entry.author.toLowerCase()}</span>
-                      <span className="timeline-card__meta">· {entry.createdAtLabel}</span>
+                  <div className="timeline-card__content">
+                    <div className="timeline-card__topline">
+                      <div>
+                        <button
+                          type="button"
+                          className="timeline-card__author"
+                          onClick={() => openAuthorProfile(entry.userId, entry.username)}
+                        >
+                          <strong>{entry.author}</strong>
+                        </button>
+                        <button
+                          type="button"
+                          className="timeline-card__handle"
+                          onClick={() => openAuthorProfile(entry.userId, entry.username)}
+                        >
+                          @{entry.username ?? entry.author.toLowerCase()}
+                        </button>
+                        <span className="timeline-card__meta">· {entry.createdAtLabel}</span>
+                      </div>
                     </div>
+
+                    {parsedRating ? (
+                      <>
+                        <p className="timeline-card__text timeline-card__text--light">
+                          {parsedRating.sentiment} {parsedRating.title}
+                        </p>
+                        {parsedRating.quote ? (
+                          <p className="timeline-card__text timeline-card__text--featured">
+                            "{parsedRating.quote}"
+                          </p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="timeline-card__text">{entry.body}</p>
+                    )}
+
+                    {media ? (
+                      <div className="timeline-card__media timeline-card__media--interactive" onClick={() => openMediaDetails(media)}>
+                        <div className="detail-poster">
+                          <img src={media.posterUrl} alt={media.title} className="timeline-card__poster" />
+                          <span className="detail-poster__hint" aria-hidden="true">
+                            Ver detalles
+                          </span>
+                        </div>
+                        <div className="timeline-card__media-copy">
+                          <p className="meta-line">
+                            {media.mediaType === "tv" ? "Serie" : "Pelicula"} • {media.year}
+                          </p>
+                          <h3>{media.title}</h3>
+                          <p>{media.overview}</p>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-
-                  {parsedRating ? (
-                    <>
-                      <p className="timeline-card__text timeline-card__text--light">
-                        {parsedRating.sentiment} {parsedRating.title}
-                      </p>
-                      {parsedRating.quote ? (
-                        <p className="timeline-card__text timeline-card__text--featured">
-                          "{parsedRating.quote}"
-                        </p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <p className="timeline-card__text">{entry.body}</p>
-                  )}
-
-                  {media ? (
-                    <div className="timeline-card__media timeline-card__media--interactive" onClick={() => openMediaDetails(media)}>
-                      <div className="detail-poster">
-                        <img src={media.posterUrl} alt={media.title} className="timeline-card__poster" />
-                        <span className="detail-poster__hint" aria-hidden="true">
-                          Ver detalles
-                        </span>
-                      </div>
-                      <div className="timeline-card__media-copy">
-                        <p className="meta-line">
-                          {media.mediaType === "tv" ? "Serie" : "Pelicula"} • {media.year}
-                        </p>
-                        <h3>{media.title}</h3>
-                        <p>{media.overview}</p>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })}
+                </article>
+              );
+            })
+          ) : (
+            <div className="timeline-empty">
+              {activeFeedMode === "following"
+                ? "Todavia no seguis a nadie o esa gente aun no publico en Cinerian."
+                : "Todavia no hay publicaciones para descubrir."}
+            </div>
+          )}
         </div>
       </div>
 
       <aside className="feed-sidebar">
         <section className="sidebar-card">
-          <label className="sidebar-search">
-            <span>Explorar Cinerianos</span>
-            <input type="search" placeholder="Busca personas o posteos" />
-          </label>
+          <div className="sidebar-search-wrap">
+            <label className="sidebar-search">
+              <span>Explorar Cinerianos</span>
+              <input
+                type="search"
+                value={peopleQuery}
+                onChange={(event) => setPeopleQuery(event.target.value)}
+                placeholder="Busca cinerianos"
+              />
+            </label>
+
+            {peopleQuery.trim() ? (
+              <div className="sidebar-search-overlay">
+                <div className="sidebar-search-overlay__header">
+                  <strong>Resultados</strong>
+                  <span>{searchedProfiles.length}</span>
+                </div>
+
+                <div className="sidebar-users sidebar-users--overlay">
+                  {searchedProfiles.length ? (
+                    searchedProfiles.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        className="sidebar-user"
+                        onClick={() => onOpenUserProfile({ userId: entry.id, username: entry.username })}
+                      >
+                        <span className="sidebar-user__avatar" aria-hidden="true">
+                          {entry.display_name.slice(0, 1).toUpperCase()}
+                        </span>
+                        <span className="sidebar-user__copy">
+                          <strong>{entry.display_name}</strong>
+                          <span>@{entry.username}</span>
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="sidebar-empty">No encontre cinerianos con esa busqueda.</p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="sidebar-users">
+            {discoverProfiles.length ? (
+              discoverProfiles.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className="sidebar-user"
+                  onClick={() => onOpenUserProfile({ userId: entry.id, username: entry.username })}
+                >
+                  <span className="sidebar-user__avatar" aria-hidden="true">
+                    {entry.display_name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="sidebar-user__copy">
+                    <strong>{entry.display_name}</strong>
+                    <span>@{entry.username}</span>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <p className="sidebar-empty">Todavia no hay suficientes cinerianos para mostrar aca.</p>
+            )}
+          </div>
         </section>
 
         <section className="sidebar-card">

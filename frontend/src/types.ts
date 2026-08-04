@@ -57,3 +57,23 @@ export type UserTaste = {
   watched: number;
   ratings: number;
 };
+
+export type RecommendationMessage = {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  senderProfile: {
+    id: string;
+    username: string;
+    display_name: string;
+  } | null;
+  recipientProfile: {
+    id: string;
+    username: string;
+    display_name: string;
+  } | null;
+  note: string;
+  createdAt: string;
+  createdAtLabel: string;
+  item: DiscoveryItem;
+};
