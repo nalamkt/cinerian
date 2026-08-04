@@ -37,10 +37,35 @@ create table if not exists public.user_follows (
   check (follower_id <> following_id)
 );
 
+create table if not exists public.recommendation_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  recipient_id uuid not null references public.profiles(id) on delete cascade,
+  tmdb_id bigint not null,
+  media_type text not null check (media_type in ('movie', 'tv')),
+  title text not null,
+  poster_url text,
+  year text,
+  note text,
+  read_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now()),
+  check (sender_id <> recipient_id)
+);
+
+create table if not exists public.recommendation_message_replies (
+  id uuid primary key default gen_random_uuid(),
+  message_id uuid not null references public.recommendation_messages(id) on delete cascade,
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  body text not null,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
 alter table public.profiles enable row level security;
 alter table public.media_reactions enable row level security;
 alter table public.feed_posts enable row level security;
 alter table public.user_follows enable row level security;
+alter table public.recommendation_messages enable row level security;
+alter table public.recommendation_message_replies enable row level security;
 
 create policy "profiles are public read"
   on public.profiles for select
@@ -77,3 +102,43 @@ create policy "users manage own follows"
   on public.user_follows for all
   using (auth.uid() = follower_id)
   with check (auth.uid() = follower_id);
+
+create policy "recommendation messages read by participants"
+  on public.recommendation_messages for select
+  using (auth.uid() = sender_id or auth.uid() = recipient_id);
+
+create policy "recommendation messages insert by sender"
+  on public.recommendation_messages for insert
+  with check (auth.uid() = sender_id);
+
+create policy "recommendation messages update by recipient"
+  on public.recommendation_messages for update
+  using (auth.uid() = recipient_id)
+  with check (auth.uid() = recipient_id);
+
+create policy "recommendation messages delete by recipient"
+  on public.recommendation_messages for delete
+  using (auth.uid() = recipient_id);
+
+create policy "recommendation replies read by participants"
+  on public.recommendation_message_replies for select
+  using (
+    exists (
+      select 1
+      from public.recommendation_messages message
+      where message.id = recommendation_message_replies.message_id
+        and (auth.uid() = message.sender_id or auth.uid() = message.recipient_id)
+    )
+  );
+
+create policy "recommendation replies insert by participants"
+  on public.recommendation_message_replies for insert
+  with check (
+    auth.uid() = sender_id
+    and exists (
+      select 1
+      from public.recommendation_messages message
+      where message.id = recommendation_message_replies.message_id
+        and (auth.uid() = message.sender_id or auth.uid() = message.recipient_id)
+    )
+  );

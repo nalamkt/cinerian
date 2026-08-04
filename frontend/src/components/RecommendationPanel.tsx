@@ -7,12 +7,11 @@ import { createFeedPost } from "../lib/feed";
 import {
   fetchStoredReactions,
   REACTIONS_UPDATED_EVENT,
-  removeStoredLike,
   saveStoredReaction,
   type StoredReaction
 } from "../lib/reactions";
 import { buildWatchedPostBody } from "../lib/reviews";
-import { getRecommendationTitlesByPage, getTitleDetails } from "../lib/tmdb";
+import { getRecommendationTitlesByPage, getSimilarTitles, getTitleDetails } from "../lib/tmdb";
 import type { DiscoveryItem, MediaDetails } from "../types";
 
 type RecommendationPanelProps = {
@@ -44,11 +43,8 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const [spotlightDetails, setSpotlightDetails] = useState<MediaDetails | null>(null);
   const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
   const [sendStatus, setSendStatus] = useState("Enviar");
+  const [similarItems, setSimilarItems] = useState<DiscoveryItem[]>([]);
 
-  const likedIds = useMemo(
-    () => storedReactions.filter((entry) => entry.reaction === "liked").map((entry) => entry.tmdbId),
-    [storedReactions]
-  );
   const reactedIds = useMemo(() => storedReactions.map((entry) => entry.tmdbId), [storedReactions]);
 
   const availableItems = useMemo(() => {
@@ -58,16 +54,6 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const spotlight = availableItems.length
     ? availableItems[currentIndex % availableItems.length]
     : null;
-  const likedItems = useMemo(
-    () => {
-      const source = [...items, ...demoDiscovery];
-      const unique = source.filter(
-        (item, index, array) => array.findIndex((candidate) => candidate.id === item.id) === index
-      );
-      return unique.filter((item) => likedIds.includes(item.id));
-    },
-    [items, likedIds]
-  );
   const overviewPreview = useMemo(
     () => (spotlight ? truncateOverview(spotlight.overview) : { text: "", truncated: false }),
     [spotlight]
@@ -149,20 +135,28 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   useEffect(() => {
     if (!spotlight) {
       setSpotlightDetails(null);
+      setSimilarItems([]);
       return;
     }
 
     let isMounted = true;
 
-    void getTitleDetails(spotlight.id, spotlight.mediaType)
-      .then((details) => {
-        if (isMounted) {
-          setSpotlightDetails(details);
+    void Promise.all([
+      getTitleDetails(spotlight.id, spotlight.mediaType),
+      getSimilarTitles(spotlight.id, spotlight.mediaType)
+    ])
+      .then(([details, similar]) => {
+        if (!isMounted) {
+          return;
         }
+
+        setSpotlightDetails(details);
+        setSimilarItems(similar.filter((item) => item.id !== spotlight.id));
       })
       .catch(() => {
         if (isMounted) {
           setSpotlightDetails(null);
+          setSimilarItems([]);
         }
       });
 
@@ -197,8 +191,8 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       if (reaction === "liked") {
         await createFeedPost({
           userId,
-          postType: "recommendation",
-          body: `Le gusto ${target.title} y la guardo entre sus favoritas.`,
+          postType: "watchlist",
+          body: "La guardo en su Watchlist.",
           tmdbId: target.id,
           mediaType: target.mediaType
         });
@@ -243,25 +237,6 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
 
   function handleSkip() {
     void registerReaction("disliked");
-  }
-
-  async function handleMarkLikedAsWatched(item: DiscoveryItem) {
-    setReviewItem(item);
-  }
-
-  async function handleRemoveLike(item: DiscoveryItem) {
-    try {
-      setIsSyncing(true);
-      setSyncMessage(null);
-      await removeStoredLike(userId, item);
-      setStoredReactions((current) =>
-        current.filter((entry) => !(entry.tmdbId === item.id && entry.reaction === "liked"))
-      );
-    } catch {
-      setSyncMessage("No pude eliminar este like.");
-    } finally {
-      setIsSyncing(false);
-    }
   }
 
   async function handleReviewSubmit(input: { liked: boolean; comment: string }) {
@@ -437,12 +412,12 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       </div>
 
       <aside className="recommendation-side panel">
-        <p className="section-eyebrow">Tu watchlist</p>
-        <h2>Lo que queres ver despues</h2>
+        <p className="section-eyebrow">Parecidas</p>
+        <h2>Segui por aca</h2>
 
         <div className="recommendation-like-list">
-          {likedItems.length ? (
-            likedItems.map((item) => (
+          {similarItems.length ? (
+            similarItems.map((item) => (
               <article className="liked-card" key={item.id}>
                 <div className="detail-poster detail-poster--compact" onClick={() => openMediaDetails(item)}>
                   <img
@@ -461,35 +436,12 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                   <p>
                     {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {item.year}
                   </p>
-                  <div className="liked-card__actions">
-                    <button
-                      type="button"
-                      className="recommendation-action-button recommendation-action-button--primary recommendation-action-button--small"
-                      onClick={() => void handleMarkLikedAsWatched(item)}
-                      data-tooltip="Ya la vi"
-                      aria-label="Ya la vi"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-                        <circle cx="12" cy="12" r="2.5" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className="recommendation-action-button recommendation-action-button--small"
-                      onClick={() => void handleRemoveLike(item)}
-                      data-tooltip="Eliminar"
-                      aria-label="Eliminar"
-                    >
-                      <span aria-hidden="true">✕</span>
-                    </button>
-                  </div>
                 </div>
               </article>
             ))
           ) : (
             <div className="empty-like-state">
-              Guarda algunos titulos y te los voy armando en tu <strong>Watchlist</strong>.
+              Cuando TMDB traiga parecidas para este titulo, te las voy mostrando aca.
             </div>
           )}
         </div>

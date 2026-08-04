@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowingUserIds } from "../lib/follows";
 import {
+  deleteInboxMessage,
   fetchReceivedMessages,
   fetchSentMessages,
   INBOX_UPDATED_EVENT,
-  markInboxAsRead
+  sendRecommendationReply,
+  setInboxMessageReadState
 } from "../lib/inbox";
 import { useMediaDetails } from "./MediaDetailsModal";
 import type { RecommendationMessage } from "../types";
@@ -25,6 +27,9 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
   const [followingProfiles, setFollowingProfiles] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
+  const [replyingMessage, setReplyingMessage] = useState<RecommendationMessage | null>(null);
+  const [expandedThreads, setExpandedThreads] = useState<string[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -97,20 +102,93 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
     [mode, received, sent]
   );
 
-  useEffect(() => {
-    if (mode !== "received" || !received.length) {
+  async function handleToggleRead(message: RecommendationMessage) {
+    const nextRead = !message.readAt;
+
+    try {
+      setPendingMessageId(message.id);
+      await setInboxMessageReadState({
+        messageId: message.id,
+        userId,
+        read: nextRead
+      });
+      setReceived((current) =>
+        current.map((entry) =>
+          entry.id === message.id
+            ? {
+                ...entry,
+                readAt: nextRead ? new Date().toISOString() : null
+              }
+            : entry
+        )
+      );
+    } catch {
+      setErrorMessage("No pude cambiar el estado de lectura.");
+    } finally {
+      setPendingMessageId(null);
+    }
+  }
+
+  async function handleDelete(message: RecommendationMessage) {
+    try {
+      setPendingMessageId(message.id);
+      await deleteInboxMessage({
+        messageId: message.id,
+        userId
+      });
+      setReceived((current) => current.filter((entry) => entry.id !== message.id));
+    } catch {
+      setErrorMessage("No pude eliminar este mensaje.");
+    } finally {
+      setPendingMessageId(null);
+    }
+  }
+
+  async function handleReplySubmit(body: string) {
+    if (!replyingMessage) {
       return;
     }
 
-    void markInboxAsRead(userId);
-  }, [mode, received.length, userId]);
+    const recipientId =
+      userId === replyingMessage.senderId ? replyingMessage.recipientId : replyingMessage.senderId;
+
+    try {
+      setPendingMessageId(replyingMessage.id);
+      setExpandedThreads((current) =>
+        current.includes(replyingMessage.id) ? current : [...current, replyingMessage.id]
+      );
+      await sendRecommendationReply({
+        messageId: replyingMessage.id,
+        senderId: userId,
+        recipientId,
+        body
+      });
+      setReplyingMessage(null);
+    } catch {
+      setErrorMessage("No pude mandar la respuesta.");
+    } finally {
+      setPendingMessageId(null);
+    }
+  }
+
+  function toggleThread(messageId: string) {
+    setExpandedThreads((current) =>
+      current.includes(messageId)
+        ? current.filter((entry) => entry !== messageId)
+        : [...current, messageId]
+    );
+  }
 
   function renderMessage(message: RecommendationMessage) {
     const counterpart = mode === "received" ? message.senderProfile : message.recipientProfile;
     const directionLabel = mode === "received" ? "Te la mando" : "Se la mandaste a";
+    const isUnread = mode === "received" && !message.readAt;
+    const isPending = pendingMessageId === message.id;
+    const hasReplies = Boolean(message.replies?.length);
+    const isExpanded = expandedThreads.includes(message.id);
 
     return (
-      <article className="inbox-card" key={message.id}>
+      <article className={`inbox-card ${isUnread ? "is-unread" : ""}`} key={message.id}>
         <div className="inbox-card__topline">
           <div>
             <strong>{directionLabel}</strong>{" "}
@@ -129,27 +207,115 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
           <span>{message.createdAtLabel}</span>
         </div>
 
-        <div className="timeline-card__media timeline-card__media--interactive" onClick={() => openMediaDetails(message.item)}>
-          <div className="detail-poster">
-            <img src={message.item.posterUrl} alt={message.item.title} className="timeline-card__poster" />
-            <span className="detail-poster__hint" aria-hidden="true">
-              Ver detalles
-            </span>
+        <div className="inbox-card__body">
+          <div
+            className="timeline-card__media timeline-card__media--interactive inbox-card__media"
+            onClick={() => openMediaDetails(message.item)}
+          >
+            <div className="detail-poster">
+              <img src={message.item.posterUrl} alt={message.item.title} className="timeline-card__poster" />
+              <span className="detail-poster__hint" aria-hidden="true">
+                Ver detalles
+              </span>
+            </div>
+            <div className="timeline-card__media-copy">
+              <p className="meta-line">
+                {message.item.mediaType === "tv" ? "Serie" : "Pelicula"} • {message.item.year}
+              </p>
+              <h3>{message.item.title}</h3>
+              <p>
+                {message.note?.trim()
+                  ? `"${message.note.trim()}"`
+                  : mode === "received"
+                    ? "Te la recomendaron directo por Cinerian."
+                    : "La mandaste sin mensaje extra."}
+              </p>
+            </div>
           </div>
-          <div className="timeline-card__media-copy">
-            <p className="meta-line">
-              {message.item.mediaType === "tv" ? "Serie" : "Pelicula"} • {message.item.year}
-            </p>
-            <h3>{message.item.title}</h3>
-            <p>
-              {message.note?.trim()
-                ? `"${message.note.trim()}"`
-                : mode === "received"
-                  ? "Te la recomendaron directo por Cinerian."
-                  : "La mandaste sin mensaje extra."}
-            </p>
-          </div>
+
+          {mode === "received" ? (
+            <div className="inbox-card__actions">
+              <button
+                type="button"
+                className="inbox-card__action-button"
+                disabled={isPending}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleToggleRead(message);
+                }}
+              >
+                <span className="inbox-card__action-icon" aria-hidden="true">
+                  {message.readAt ? "◐" : "◉"}
+                </span>
+                <span>{message.readAt ? "No leido" : "Leido"}</span>
+              </button>
+              <button
+                type="button"
+                className="inbox-card__action-button"
+                disabled={isPending}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setExpandedThreads((current) =>
+                    current.includes(message.id) ? current : [...current, message.id]
+                  );
+                  setReplyingMessage(message);
+                }}
+              >
+                <span className="inbox-card__action-icon" aria-hidden="true">
+                  ↩
+                </span>
+                <span>Responder</span>
+              </button>
+              <button
+                type="button"
+                className="inbox-card__action-button inbox-card__action-button--danger"
+                disabled={isPending}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleDelete(message);
+                }}
+              >
+                <span className="inbox-card__action-icon" aria-hidden="true">
+                  ✕
+                </span>
+                <span>Eliminar</span>
+              </button>
+            </div>
+          ) : null}
         </div>
+
+        {hasReplies ? (
+          <>
+            <button
+              type="button"
+              className="inbox-card__thread-toggle"
+              onClick={() => toggleThread(message.id)}
+            >
+              <span>{isExpanded ? "Ocultar respuestas" : "Ver respuestas"}</span>
+              <strong>{message.replies?.length}</strong>
+            </button>
+
+            {isExpanded ? (
+              <div className="inbox-card__thread">
+                {message.replies?.map((reply) => {
+                  const isOwnReply = reply.senderId === userId;
+                  return (
+                    <article
+                      key={reply.id}
+                      className={`inbox-card__reply ${isOwnReply ? "is-own" : ""}`}
+                    >
+                      <div className="inbox-card__reply-topline">
+                        <strong>{reply.senderProfile?.display_name ?? "Cineriano"}</strong>
+                        <span>{reply.createdAtLabel}</span>
+                      </div>
+                      <p>{reply.body}</p>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </article>
     );
   }
@@ -219,6 +385,77 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
           </div>
         </section>
       </aside>
+
+      <ReplyRecommendationModal
+        message={replyingMessage}
+        isSending={Boolean(replyingMessage && pendingMessageId === replyingMessage.id)}
+        onClose={() => setReplyingMessage(null)}
+        onSubmit={(body) => void handleReplySubmit(body)}
+      />
     </section>
+  );
+}
+
+function ReplyRecommendationModal({
+  message,
+  isSending,
+  onClose,
+  onSubmit
+}: {
+  message: RecommendationMessage | null;
+  isSending: boolean;
+  onClose: () => void;
+  onSubmit: (body: string) => void;
+}) {
+  const [body, setBody] = useState("");
+
+  useEffect(() => {
+    if (!message) {
+      setBody("");
+    }
+  }, [message]);
+
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <div className="review-modal__backdrop" role="presentation" onClick={onClose}>
+      <div className="send-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <div className="send-modal__header">
+          <div>
+            <p className="section-eyebrow">Responder recomendacion</p>
+            <h3>{message.item.title}</h3>
+            <p className="send-modal__meta">Tu respuesta queda dentro de esta recomendacion</p>
+          </div>
+          <button type="button" className="review-modal__close" onClick={onClose} aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+
+        <label className="send-modal__field">
+          <span>Tu respuesta</span>
+          <textarea
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            placeholder='Ej: "ya la vi" o "me la guardo para el finde"'
+          />
+        </label>
+
+        <div className="review-modal__actions">
+          <button type="button" className="ghost-button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={isSending || !body.trim()}
+            onClick={() => onSubmit(body)}
+          >
+            {isSending ? "Enviando..." : "Responder"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

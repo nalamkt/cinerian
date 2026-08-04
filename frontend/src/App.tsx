@@ -217,7 +217,7 @@ export default function App() {
 
     switch (activeView) {
       case "search":
-        return <SearchPanel userId={session!.user.id} />;
+        return <SearchPanel userId={session!.user.id} onOpenUserProfile={handleOpenUserProfile} />;
       case "recommendations":
         return <RecommendationPanel userId={session!.user.id} />;
       case "user":

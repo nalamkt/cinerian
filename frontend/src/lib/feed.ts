@@ -53,6 +53,29 @@ function extractProfile(
   return Array.isArray(profiles) ? profiles[0] ?? null : profiles;
 }
 
+function normalizeFeedBody(body: string, type: FeedPostRow["post_type"]) {
+  if (type !== "watchlist" && type !== "recommendation") {
+    return body;
+  }
+
+  const legacyFavoriteMatch = body.match(/^Le gusto (.+?) y la guardo entre sus favoritas\.?$/);
+  if (legacyFavoriteMatch) {
+    return "La guardo en su Watchlist.";
+  }
+
+  const legacySearchMatch = body.match(/^Le gusto (.+?) y la guardo desde el buscador\.?$/);
+  if (legacySearchMatch) {
+    return "La guardo en su Watchlist.";
+  }
+
+  const plainWatchlistMatch = body.match(/^Guardo (.+?) en su Watchlist(?: para verla despues| desde el buscador)?\.?$/);
+  if (plainWatchlistMatch) {
+    return "La guardo en su Watchlist.";
+  }
+
+  return body;
+}
+
 function mapFeedRow(entry: FeedPostRow): FeedEntry {
   const profile = extractProfile(entry.profiles);
 
@@ -61,7 +84,7 @@ function mapFeedRow(entry: FeedPostRow): FeedEntry {
     userId: entry.user_id,
     author: profile?.display_name ?? "Cineriano",
     username: profile?.username ?? undefined,
-    body: entry.body,
+    body: normalizeFeedBody(entry.body, entry.post_type),
     createdAtLabel: formatRelativeLabel(entry.created_at),
     createdAt: entry.created_at,
     type: entry.post_type,
@@ -103,7 +126,26 @@ export async function fetchFeedPosts(): Promise<FeedEntry[]> {
     .from("feed_posts")
     .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username)")
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(60);
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as FeedPostRow[]).map(mapFeedRow);
+}
+
+export async function fetchFeedPostsByUsers(userIds: string[]): Promise<FeedEntry[]> {
+  if (!supabase || !userIds.length) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("feed_posts")
+    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username)")
+    .in("user_id", userIds)
+    .order("created_at", { ascending: false })
+    .limit(60);
 
   if (error) {
     throw error;

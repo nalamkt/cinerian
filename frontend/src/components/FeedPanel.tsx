@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { demoDiscovery, demoFeed } from "../data/demoData";
 import { useMediaDetails } from "./MediaDetailsModal";
-import { createFeedPost, fetchFeedPosts } from "../lib/feed";
+import { createFeedPost, fetchFeedPosts, fetchFeedPostsByUsers } from "../lib/feed";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowingUserIds } from "../lib/follows";
 import { getTitleById } from "../lib/tmdb";
@@ -77,10 +77,9 @@ function parseRatingPost(body: string) {
 export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [entries, setEntries] = useState<FeedEntry[]>(demoFeed);
+  const [followingEntries, setFollowingEntries] = useState<FeedEntry[]>([]);
   const [mediaMap, setMediaMap] = useState<Record<string, DiscoveryItem>>({});
-  const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [activeFeedMode, setActiveFeedMode] = useState<FeedMode>("discover");
-  const [peopleQuery, setPeopleQuery] = useState("");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [composerText, setComposerText] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
@@ -88,8 +87,13 @@ export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps
   const composerWordCount = useMemo(() => countWords(composerText), [composerText]);
 
   useEffect(() => {
-    void Promise.allSettled([fetchFeedPosts(), fetchFollowingUserIds(userId), listProfiles()])
-      .then(([feedResult, followingResult, profilesResult]) => {
+    async function loadFeed() {
+      const [feedResult, followingResult, profilesResult] = await Promise.allSettled([
+        fetchFeedPosts(),
+        fetchFollowingUserIds(userId),
+        listProfiles()
+      ]);
+
         if (feedResult.status === "fulfilled" && feedResult.value.length) {
           setEntries(feedResult.value);
         } else if (feedResult.status === "rejected") {
@@ -97,9 +101,18 @@ export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps
         }
 
         if (followingResult.status === "fulfilled") {
-          setFollowingIds(followingResult.value);
+          if (followingResult.value.length) {
+            try {
+              const followingFeed = await fetchFeedPostsByUsers(followingResult.value);
+              setFollowingEntries(followingFeed);
+            } catch {
+              setFollowingEntries([]);
+            }
+          } else {
+            setFollowingEntries([]);
+          }
         } else {
-          setFollowingIds([]);
+          setFollowingEntries([]);
         }
 
         if (profilesResult.status === "fulfilled") {
@@ -107,38 +120,22 @@ export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps
         } else {
           setProfiles([]);
         }
-      });
+    }
+
+    void loadFeed();
   }, [userId]);
 
   const discoverProfiles = useMemo(() => {
     return profiles.filter((entry) => entry.id !== userId).slice(0, 3);
   }, [profiles, userId]);
 
-  const searchedProfiles = useMemo(() => {
-    const cleanedQuery = peopleQuery.trim().toLowerCase();
-
-    if (!cleanedQuery) {
-      return [];
-    }
-
-    return profiles
-      .filter((entry) => entry.id !== userId)
-      .filter((entry) => {
-        return (
-          entry.display_name.toLowerCase().includes(cleanedQuery) ||
-          entry.username.toLowerCase().includes(cleanedQuery)
-        );
-      })
-      .slice(0, 8);
-  }, [peopleQuery, profiles, userId]);
-
   const visibleEntries = useMemo(() => {
     if (activeFeedMode === "following") {
-      return entries.filter((entry) => entry.userId && followingIds.includes(entry.userId));
+      return followingEntries;
     }
 
     return entries;
-  }, [activeFeedMode, entries, followingIds]);
+  }, [activeFeedMode, entries, followingEntries]);
 
   const postsWithMedia = useMemo(
     () =>
@@ -383,6 +380,9 @@ export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps
                             {media.mediaType === "tv" ? "Serie" : "Pelicula"} • {media.year}
                           </p>
                           <h3>{media.title}</h3>
+                          {media.genres.length ? (
+                            <p className="timeline-card__genres">{media.genres.join(" · ")}</p>
+                          ) : null}
                           <p>{media.overview}</p>
                         </div>
                       </div>
@@ -403,49 +403,7 @@ export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps
 
       <aside className="feed-sidebar">
         <section className="sidebar-card">
-          <div className="sidebar-search-wrap">
-            <label className="sidebar-search">
-              <span>Explorar Cinerianos</span>
-              <input
-                type="search"
-                value={peopleQuery}
-                onChange={(event) => setPeopleQuery(event.target.value)}
-                placeholder="Busca cinerianos"
-              />
-            </label>
-
-            {peopleQuery.trim() ? (
-              <div className="sidebar-search-overlay">
-                <div className="sidebar-search-overlay__header">
-                  <strong>Resultados</strong>
-                  <span>{searchedProfiles.length}</span>
-                </div>
-
-                <div className="sidebar-users sidebar-users--overlay">
-                  {searchedProfiles.length ? (
-                    searchedProfiles.map((entry) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        className="sidebar-user"
-                        onClick={() => onOpenUserProfile({ userId: entry.id, username: entry.username })}
-                      >
-                        <span className="sidebar-user__avatar" aria-hidden="true">
-                          {entry.display_name.slice(0, 1).toUpperCase()}
-                        </span>
-                        <span className="sidebar-user__copy">
-                          <strong>{entry.display_name}</strong>
-                          <span>@{entry.username}</span>
-                        </span>
-                      </button>
-                    ))
-                  ) : (
-                    <p className="sidebar-empty">No encontre cinerianos con esa busqueda.</p>
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
+          <strong>Explorar Cinerianos</strong>
 
           <div className="sidebar-users">
             {discoverProfiles.length ? (

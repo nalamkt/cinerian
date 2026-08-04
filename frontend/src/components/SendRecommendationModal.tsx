@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowingUserIds } from "../lib/follows";
 import { sendRecommendationMessage } from "../lib/inbox";
+import { shareMediaLink } from "../lib/share";
 import type { DiscoveryItem } from "../types";
 
 type SendRecommendationModalProps = {
@@ -22,6 +23,7 @@ export function SendRecommendationModal({
   const [isLoading, setIsLoading] = useState(true);
   const [isSendingTo, setIsSendingTo] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [shareLabel, setShareLabel] = useState("Compartir link");
 
   useEffect(() => {
     if (!item) {
@@ -94,6 +96,16 @@ export function SendRecommendationModal({
     }
   }
 
+  async function handleShareLink() {
+    if (!item) {
+      return;
+    }
+
+    const result = await shareMediaLink(item);
+    setShareLabel(result === "shared" ? "Compartido" : "Link copiado");
+    window.setTimeout(() => setShareLabel("Compartir link"), 1800);
+  }
+
   if (!item) {
     return null;
   }
@@ -120,6 +132,12 @@ export function SendRecommendationModal({
             placeholder="Por que se la queres mandar?"
           />
         </label>
+
+        <div className="send-modal__actions">
+          <button type="button" className="ghost-button" onClick={() => void handleShareLink()}>
+            {shareLabel}
+          </button>
+        </div>
 
         <div className="send-modal__list">
           {isLoading ? (

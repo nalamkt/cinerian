@@ -1,7 +1,7 @@
 import { getTitleById } from "./tmdb";
 import { listProfiles, type Profile } from "./auth";
 import { supabase } from "./supabase";
-import type { DiscoveryItem, MediaType, RecommendationMessage } from "../types";
+import type { DiscoveryItem, MediaType, RecommendationMessage, RecommendationReply } from "../types";
 
 export const INBOX_UPDATED_EVENT = "cinerian:inbox-updated";
 
@@ -17,6 +17,14 @@ type RecommendationMessageRow = {
   note: string | null;
   created_at: string;
   read_at: string | null;
+};
+
+type RecommendationReplyRow = {
+  id: string;
+  message_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
 };
 
 function isMissingReadAtColumn(error: { message?: string; details?: string; hint?: string } | null) {
@@ -120,24 +128,71 @@ async function fetchMessagesByColumn(column: "sender_id" | "recipient_id", userI
 }
 
 async function mapMessageRows(rows: RecommendationMessageRow[]): Promise<RecommendationMessage[]> {
-  const [profiles, items] = await Promise.all([
+  const [profiles, items, replies] = await Promise.all([
     listProfiles(),
-    Promise.all(rows.map((row) => hydrateItem(row)))
+    Promise.all(rows.map((row) => hydrateItem(row))),
+    fetchRepliesForMessages(rows.map((row) => row.id))
   ]);
 
   const profileMap = profileMapFromList(profiles);
+  const repliesByMessage = groupRepliesByMessage(replies, profileMap);
 
   return rows.map((row, index) => ({
     id: row.id,
     senderId: row.sender_id,
     recipientId: row.recipient_id,
+    readAt: row.read_at,
     senderProfile: profileMap.get(row.sender_id) ?? null,
     recipientProfile: profileMap.get(row.recipient_id) ?? null,
     note: row.note ?? "",
     createdAt: row.created_at,
     createdAtLabel: formatRelativeLabel(row.created_at),
-    item: items[index]
+    item: items[index],
+    replies: repliesByMessage.get(row.id) ?? []
   }));
+}
+
+async function fetchRepliesForMessages(messageIds: string[]) {
+  if (!supabase || !messageIds.length) {
+    return [] as RecommendationReplyRow[];
+  }
+
+  const { data, error } = await supabase
+    .from("recommendation_message_replies")
+    .select("id, message_id, sender_id, body, created_at")
+    .in("message_id", messageIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as RecommendationReplyRow[];
+}
+
+function groupRepliesByMessage(
+  rows: RecommendationReplyRow[],
+  profileMap: Map<string, Profile>
+) {
+  const grouped = new Map<string, RecommendationReply[]>();
+
+  rows.forEach((row) => {
+    const mapped: RecommendationReply = {
+      id: row.id,
+      messageId: row.message_id,
+      senderId: row.sender_id,
+      senderProfile: profileMap.get(row.sender_id) ?? null,
+      body: row.body,
+      createdAt: row.created_at,
+      createdAtLabel: formatRelativeLabel(row.created_at)
+    };
+
+    const current = grouped.get(row.message_id) ?? [];
+    current.push(mapped);
+    grouped.set(row.message_id, current);
+  });
+
+  return grouped;
 }
 
 export async function sendRecommendationMessage(input: {
@@ -212,6 +267,74 @@ export async function markInboxAsRead(userId: string) {
   }
 
   dispatchInboxUpdate(userId);
+}
+
+export async function setInboxMessageReadState(input: {
+  messageId: string;
+  userId: string;
+  read: boolean;
+}) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("recommendation_messages")
+    .update({ read_at: input.read ? new Date().toISOString() : null })
+    .eq("id", input.messageId)
+    .eq("recipient_id", input.userId);
+
+  if (error) {
+    if (isMissingReadAtColumn(error)) {
+      return;
+    }
+
+    throw error;
+  }
+
+  dispatchInboxUpdate(input.userId);
+}
+
+export async function deleteInboxMessage(input: { messageId: string; userId: string }) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("recommendation_messages")
+    .delete()
+    .eq("id", input.messageId)
+    .eq("recipient_id", input.userId);
+
+  if (error) {
+    throw error;
+  }
+
+  dispatchInboxUpdate(input.userId);
+}
+
+export async function sendRecommendationReply(input: {
+  messageId: string;
+  senderId: string;
+  body: string;
+  recipientId: string;
+}) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.from("recommendation_message_replies").insert({
+    message_id: input.messageId,
+    sender_id: input.senderId,
+    body: input.body.trim()
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  dispatchInboxUpdate(input.senderId);
+  dispatchInboxUpdate(input.recipientId);
 }
 
 export async function fetchReceivedMessages(userId: string): Promise<RecommendationMessage[]> {

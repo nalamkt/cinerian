@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { SendRecommendationModal } from "./SendRecommendationModal";
+import { TalentDetailsModal } from "./TalentDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { createFeedPost, fetchFeedPosts } from "../lib/feed";
 import { getProviderSearchUrl } from "../lib/providerLinks";
@@ -7,7 +8,7 @@ import { fetchStoredReactions, removeStoredReaction, saveStoredReaction } from "
 import { buildWatchedPostBody } from "../lib/reviews";
 import { buildSharedMediaUrl, shareMediaLink } from "../lib/share";
 import { getTitleDetails } from "../lib/tmdb";
-import type { FeedEntry, MediaDetails, DiscoveryItem } from "../types";
+import type { FeedEntry, MediaDetails, DiscoveryItem, TalentSearchItem } from "../types";
 
 export type MediaReference = Pick<DiscoveryItem, "id" | "mediaType" | "title">;
 
@@ -102,6 +103,7 @@ type MediaDetailsSheetProps = {
   canMarkWatched?: boolean;
   publicCta?: ReactNode;
   publicMode?: boolean;
+  onOpenTalent?: (talent: TalentSearchItem) => void;
 };
 
 export function MediaDetailsSheet({
@@ -119,7 +121,8 @@ export function MediaDetailsSheet({
   canSave = false,
   canMarkWatched = false,
   publicCta,
-  publicMode = false
+  publicMode = false,
+  onOpenTalent
 }: MediaDetailsSheetProps) {
   const technicalData = useMemo(() => {
     if (!details) {
@@ -215,49 +218,58 @@ export function MediaDetailsSheet({
             <section className="media-modal__section media-modal__section--actions">
               <div className="media-modal__actions-row">
                 {canMarkWatched && onWatched ? (
-                  <button
-                    type="button"
-                    className={`recommendation-action-button ${
-                      watchedLabel === "Vista" ? "recommendation-action-button--primary" : ""
-                    }`}
-                    onClick={onWatched}
-                    data-tooltip={watchedLabel ?? "Ya la vi"}
-                    aria-label={watchedLabel ?? "Ya la vi"}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-                      <circle cx="12" cy="12" r="2.5" />
-                    </svg>
-                  </button>
+                  <div className="media-modal__action-item">
+                    <button
+                      type="button"
+                      className={`recommendation-action-button ${
+                        watchedLabel === "Vista" ? "recommendation-action-button--primary" : ""
+                      }`}
+                      onClick={onWatched}
+                      data-tooltip={watchedLabel ?? "Ya la vi"}
+                      aria-label={watchedLabel ?? "Ya la vi"}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                        <circle cx="12" cy="12" r="2.5" />
+                      </svg>
+                    </button>
+                    <span className="media-modal__action-label">Marcar vista</span>
+                  </div>
                 ) : null}
                 {canSave && onSave ? (
-                  <button
-                    type="button"
-                    className={`recommendation-action-button ${
-                      saveLabel === "Guardado" ? "recommendation-action-button--primary" : ""
-                    }`}
-                    onClick={onSave}
-                    data-tooltip={saveLabel ?? "Guardar"}
-                    aria-label={saveLabel ?? "Guardar"}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z" />
-                    </svg>
-                  </button>
+                  <div className="media-modal__action-item">
+                    <button
+                      type="button"
+                      className={`recommendation-action-button ${
+                        saveLabel === "Guardado" ? "recommendation-action-button--primary" : ""
+                      }`}
+                      onClick={onSave}
+                      data-tooltip={saveLabel ?? "Guardar"}
+                      aria-label={saveLabel ?? "Guardar"}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z" />
+                      </svg>
+                    </button>
+                    <span className="media-modal__action-label">Guardar</span>
+                  </div>
                 ) : null}
                 {onShare ? (
-                  <button
-                    type="button"
-                    className="recommendation-action-button"
-                    onClick={onShare}
-                    data-tooltip={shareLabel ?? "Enviar"}
-                    aria-label={shareLabel ?? "Enviar"}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M21 3 10 14" />
-                      <path d="m21 3-7 18-4-7-7-4 18-7Z" />
-                    </svg>
-                  </button>
+                  <div className="media-modal__action-item">
+                    <button
+                      type="button"
+                      className="recommendation-action-button"
+                      onClick={onShare}
+                      data-tooltip={shareLabel ?? "Enviar"}
+                      aria-label={shareLabel ?? "Enviar"}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M21 3 10 14" />
+                        <path d="m21 3-7 18-4-7-7-4 18-7Z" />
+                      </svg>
+                    </button>
+                    <span className="media-modal__action-label">Enviar</span>
+                  </div>
                 ) : null}
               </div>
             </section>
@@ -304,13 +316,58 @@ export function MediaDetailsSheet({
               <p className="section-eyebrow">Elenco</p>
               <div className="media-modal__cast">
                 {details.cast.map((person) => (
-                  <article className="media-modal__cast-card" key={person.id}>
+                  <button
+                    type="button"
+                    className="media-modal__cast-card media-modal__cast-card--interactive"
+                    key={person.id}
+                    onClick={() =>
+                      onOpenTalent?.({
+                        id: person.id,
+                        name: person.name,
+                        knownForDepartment: "Actor / Actriz",
+                        profileUrl: person.profileUrl,
+                        knownForTitles: []
+                      })
+                    }
+                  >
                     <div className="media-modal__cast-avatar">
                       {person.profileUrl ? <img src={person.profileUrl} alt={person.name} /> : <span>🎭</span>}
                     </div>
                     <strong>{person.name}</strong>
                     {person.character ? <span>{person.character}</span> : null}
-                  </article>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {details.creators.length ? (
+            <section className="media-modal__section">
+              <p className="section-eyebrow">
+                {details.mediaType === "movie" ? "Direccion" : "Creacion"}
+              </p>
+              <div className="media-modal__cast media-modal__cast--creators">
+                {details.creators.map((person) => (
+                  <button
+                    type="button"
+                    className="media-modal__cast-card media-modal__cast-card--interactive"
+                    key={`creator-${person.id}`}
+                    onClick={() =>
+                      onOpenTalent?.({
+                        id: person.id,
+                        name: person.name,
+                        knownForDepartment: person.roleLabel ?? "Talento",
+                        profileUrl: person.profileUrl,
+                        knownForTitles: []
+                      })
+                    }
+                  >
+                    <div className="media-modal__cast-avatar">
+                      {person.profileUrl ? <img src={person.profileUrl} alt={person.name} /> : <span>🎬</span>}
+                    </div>
+                    <strong>{person.name}</strong>
+                    {person.roleLabel ? <span>{person.roleLabel}</span> : null}
+                  </button>
                 ))}
               </div>
             </section>
@@ -351,6 +408,7 @@ function MediaDetailsModal({
   const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
   const [isReviewSaving, setIsReviewSaving] = useState(false);
   const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
+  const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
 
   useEffect(() => {
     if (!item) {
@@ -543,7 +601,7 @@ function MediaDetailsModal({
   return (
     <div className="media-modal__backdrop" role="presentation" onClick={onClose}>
       <div className="media-modal__frame" role="presentation">
-        <div role="presentation" onClick={(event) => event.stopPropagation()}>
+        <div className="media-modal__panel" role="presentation" onClick={(event) => event.stopPropagation()}>
           <MediaDetailsSheet
             item={item}
             details={details}
@@ -558,6 +616,7 @@ function MediaDetailsModal({
             watchedLabel={watchedLabel}
             canSave={Boolean(userId)}
             canMarkWatched={Boolean(userId)}
+            onOpenTalent={setActiveTalent}
           />
         </div>
         <WatchReviewModal
@@ -577,6 +636,7 @@ function MediaDetailsModal({
             }}
           />
         ) : null}
+        <TalentDetailsModal item={activeTalent} onClose={() => setActiveTalent(null)} />
       </div>
     </div>
   );
@@ -606,6 +666,7 @@ export function MediaDetailsProvider({
 export function SharedMediaLanding({ item }: { item: MediaReference }) {
   const { details, feedPosts, isLoading } = useMediaDetailsData(item);
   const [shareLabel, setShareLabel] = useState("Compartir");
+  const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
 
   async function handleShare() {
     const result = await shareMediaLink(details ? { ...item, title: details.title } : item);
@@ -630,16 +691,20 @@ export function SharedMediaLanding({ item }: { item: MediaReference }) {
   ) : null;
 
   return (
-    <MediaDetailsSheet
-      item={item}
-      details={details}
-      feedPosts={feedPosts}
-      isLoading={isLoading}
-      onShare={handleShare}
-      shareLabel={shareLabel}
-      publicCta={publicCta}
-      publicMode
-    />
+    <>
+      <MediaDetailsSheet
+        item={item}
+        details={details}
+        feedPosts={feedPosts}
+        isLoading={isLoading}
+        onShare={handleShare}
+        shareLabel={shareLabel}
+        publicCta={publicCta}
+        publicMode
+        onOpenTalent={setActiveTalent}
+      />
+      <TalentDetailsModal item={activeTalent} onClose={() => setActiveTalent(null)} />
+    </>
   );
 }
 

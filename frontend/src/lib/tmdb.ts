@@ -1,13 +1,42 @@
-import type { DiscoveryItem, MediaDetails, MediaType } from "../types";
+import type { DiscoveryItem, MediaDetails, MediaType, TalentCredit, TalentDetails, TalentSearchItem } from "../types";
 import { demoDiscovery } from "../data/demoData";
 
 const apiKey = import.meta.env.VITE_TMDB_API_KEY;
 const baseUrl = "https://api.themoviedb.org/3";
 const imageBase = "https://image.tmdb.org/t/p/w500";
 const backdropBase = "https://image.tmdb.org/t/p/original";
+const profileBase = "https://image.tmdb.org/t/p/w300";
 
 function normalizeMediaType(value: string): MediaType {
   return value === "tv" ? "tv" : "movie";
+}
+
+function isAllowedOriginalLanguage(value: unknown) {
+  return value === "es" || value === "en";
+}
+
+function hasUsefulArtwork(item: Record<string, unknown>) {
+  return typeof item.poster_path === "string" && item.poster_path.trim().length > 0;
+}
+
+function hasUsefulOverview(item: Record<string, unknown>) {
+  return typeof item.overview === "string" && item.overview.trim().length > 0;
+}
+
+function hasDisplayTitle(item: Record<string, unknown>) {
+  return (
+    (typeof item.title === "string" && item.title.trim().length > 0) ||
+    (typeof item.name === "string" && item.name.trim().length > 0)
+  );
+}
+
+function isSupportedCatalogResult(item: Record<string, unknown>) {
+  return (
+    hasDisplayTitle(item) &&
+    hasUsefulArtwork(item) &&
+    hasUsefulOverview(item) &&
+    isAllowedOriginalLanguage(item.original_language)
+  );
 }
 
 function normalizeLanguage(code: string | null) {
@@ -25,6 +54,22 @@ function normalizeLanguage(code: string | null) {
   };
 
   return labels[code] ?? code.toUpperCase();
+}
+
+function normalizeDepartment(value: string | null | undefined) {
+  if (!value) {
+    return "Talento";
+  }
+
+  const labels: Record<string, string> = {
+    Acting: "Actor / Actriz",
+    Directing: "Director / Directora",
+    Production: "Produccion",
+    Writing: "Guion",
+    Creator: "Creador / Creadora"
+  };
+
+  return labels[value] ?? value;
 }
 
 function formatRuntime(minutes: number | null) {
@@ -170,6 +215,37 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
   };
 }
 
+function normalizeCredit(item: Record<string, unknown>): TalentCredit | null {
+  const posterPath = typeof item.poster_path === "string" ? item.poster_path : "";
+  const title =
+    (typeof item.title === "string" && item.title) ||
+    (typeof item.name === "string" && item.name) ||
+    null;
+
+  if (!title || !posterPath) {
+    return null;
+  }
+
+  const releaseDate =
+    typeof item.release_date === "string"
+      ? item.release_date
+      : typeof item.first_air_date === "string"
+        ? item.first_air_date
+        : "";
+
+  return {
+    id: Number(item.id),
+    title,
+    year: releaseDate ? releaseDate.slice(0, 4) : "Sin fecha",
+    mediaType: normalizeMediaType(String(item.media_type ?? "movie")),
+    posterUrl: `${imageBase}${posterPath}`,
+    roleLabel:
+      (typeof item.character === "string" && item.character) ||
+      (typeof item.job === "string" && item.job) ||
+      "Participacion"
+  };
+}
+
 export async function searchTitles(query: string): Promise<DiscoveryItem[]> {
   if (!query.trim()) {
     return [];
@@ -194,6 +270,7 @@ export async function searchTitles(query: string): Promise<DiscoveryItem[]> {
   const payload = (await response.json()) as { results?: Record<string, unknown>[] };
   return (payload.results ?? [])
     .filter((item) => item.media_type === "movie" || item.media_type === "tv")
+    .filter(isSupportedCatalogResult)
     .slice(0, 8)
     .map(normalizeItem);
 }
@@ -230,14 +307,44 @@ export async function getRecommendationTitlesByPage(page: number): Promise<Disco
   const moviePayload = (await movieResponse.json()) as { results?: Record<string, unknown>[] };
   const tvPayload = (await tvResponse.json()) as { results?: Record<string, unknown>[] };
 
-  const movieItems = (moviePayload.results ?? []).slice(0, 8).map((item) =>
+  const movieItems = (moviePayload.results ?? [])
+    .filter(isSupportedCatalogResult)
+    .slice(0, 8)
+    .map((item) =>
     normalizeItem({ ...item, media_type: "movie" })
   );
-  const tvItems = (tvPayload.results ?? []).slice(0, 8).map((item) =>
+  const tvItems = (tvPayload.results ?? [])
+    .filter(isSupportedCatalogResult)
+    .slice(0, 8)
+    .map((item) =>
     normalizeItem({ ...item, media_type: "tv" })
   );
 
   return [...movieItems, ...tvItems];
+}
+
+export async function getSimilarTitles(tmdbId: number, mediaType: MediaType): Promise<DiscoveryItem[]> {
+  if (!apiKey) {
+    return demoDiscovery
+      .filter((item) => !(item.id === tmdbId && item.mediaType === mediaType))
+      .slice(0, 6);
+  }
+
+  const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}/similar`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("language", "es-MX");
+  url.searchParams.set("page", "1");
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error("No pude traer titulos similares.");
+  }
+
+  const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+  return (payload.results ?? [])
+    .filter(isSupportedCatalogResult)
+    .slice(0, 6)
+    .map((item) => normalizeItem({ ...item, media_type: mediaType }));
 }
 
 export async function getTitleById(tmdbId: number, mediaType: MediaType): Promise<DiscoveryItem | null> {
@@ -276,6 +383,7 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
       directorLabel: null,
       budgetLabel: null,
       trailerUrl: null,
+      creators: [],
       cast: []
     };
   }
@@ -313,6 +421,25 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
         profileUrl:
           typeof person.profile_path === "string" ? `${imageBase}${person.profile_path}` : null
       })) ?? [];
+  const creators =
+    mediaType === "movie"
+      ? (((payload.credits as { crew?: Array<Record<string, unknown>> } | undefined)?.crew ?? [])
+          .filter((person) => person.job === "Director")
+          .slice(0, 3)
+          .map((person) => ({
+            id: Number(person.id),
+            name: typeof person.name === "string" ? person.name : "Sin nombre",
+            roleLabel: typeof person.job === "string" ? person.job : "Director",
+            profileUrl:
+              typeof person.profile_path === "string" ? `${imageBase}${person.profile_path}` : null
+          })) ?? [])
+      : ((payload.created_by as Array<Record<string, unknown>> | undefined) ?? []).map((person) => ({
+          id: Number(person.id),
+          name: typeof person.name === "string" ? person.name : "Sin nombre",
+          roleLabel: "Creador / Creadora",
+          profileUrl:
+            typeof person.profile_path === "string" ? `${imageBase}${person.profile_path}` : null
+        }));
 
   const runtime =
     mediaType === "movie"
@@ -344,6 +471,108 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
     directorLabel: getDirectorLabel(payload, mediaType),
     budgetLabel: mediaType === "movie" ? formatBudget(typeof payload.budget === "number" ? payload.budget : null) : null,
     trailerUrl: getTrailerUrl(payload),
+    creators,
     cast
+  };
+}
+
+export async function searchTalent(query: string): Promise<TalentSearchItem[]> {
+  if (!query.trim()) {
+    return [];
+  }
+
+  if (!apiKey) {
+    return [];
+  }
+
+  const url = new URL(`${baseUrl}/search/person`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("query", query);
+  url.searchParams.set("include_adult", "false");
+  url.searchParams.set("language", "es-MX");
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`TMDB respondio ${response.status}`);
+  }
+
+  const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+  return (payload.results ?? [])
+    .filter((item) => typeof item.name === "string" && item.name.trim().length > 0)
+    .filter((item) => typeof item.profile_path === "string" && item.profile_path.trim().length > 0)
+    .slice(0, 8)
+    .map((item) => ({
+      id: Number(item.id),
+      name: String(item.name),
+      knownForDepartment: normalizeDepartment(
+        typeof item.known_for_department === "string" ? item.known_for_department : null
+      ),
+      profileUrl:
+        typeof item.profile_path === "string" ? `${profileBase}${item.profile_path}` : null,
+      knownForTitles: Array.isArray(item.known_for)
+        ? item.known_for
+            .map((credit) =>
+              typeof credit === "object" &&
+              credit !== null &&
+              (typeof (credit as { title?: unknown }).title === "string"
+                ? (credit as { title: string }).title
+                : typeof (credit as { name?: unknown }).name === "string"
+                  ? (credit as { name: string }).name
+                  : null)
+            )
+            .filter((title): title is string => Boolean(title))
+            .slice(0, 3)
+        : []
+    }));
+}
+
+export async function getTalentDetails(personId: number): Promise<TalentDetails | null> {
+  if (!apiKey) {
+    return null;
+  }
+
+  const url = new URL(`${baseUrl}/person/${personId}`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("language", "es-MX");
+  url.searchParams.set("append_to_response", "combined_credits");
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as Record<string, unknown>;
+  const combinedCredits = (payload.combined_credits as {
+    cast?: Record<string, unknown>[];
+    crew?: Record<string, unknown>[];
+  } | undefined) ?? { cast: [], crew: [] };
+
+  const actingCredits = (combinedCredits.cast ?? [])
+    .map((item) => normalizeCredit(item))
+    .filter((item): item is TalentCredit => Boolean(item))
+    .slice(0, 12);
+
+  const directingCredits = (combinedCredits.crew ?? [])
+    .filter((item) => item.job === "Director" || item.department === "Directing")
+    .map((item) => normalizeCredit(item))
+    .filter((item): item is TalentCredit => Boolean(item))
+    .slice(0, 12);
+
+  return {
+    id: Number(payload.id),
+    name: typeof payload.name === "string" ? payload.name : "Talento sin nombre",
+    profileUrl:
+      typeof payload.profile_path === "string" ? `${profileBase}${payload.profile_path}` : null,
+    biography:
+      typeof payload.biography === "string" && payload.biography.trim().length > 0
+        ? payload.biography
+        : "Todavia no tenemos biografia cargada para este talento.",
+    knownForDepartment: normalizeDepartment(
+      typeof payload.known_for_department === "string" ? payload.known_for_department : null
+    ),
+    birthday: typeof payload.birthday === "string" ? payload.birthday : null,
+    placeOfBirth: typeof payload.place_of_birth === "string" ? payload.place_of_birth : null,
+    actingCredits,
+    directingCredits
   };
 }
