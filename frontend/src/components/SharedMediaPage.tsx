@@ -1,5 +1,5 @@
 import { CinerianLogo } from "./CinerianLogo";
-import { SharedMediaLanding } from "./MediaDetailsModal";
+import { MediaDetailsProvider, SharedMediaLanding } from "./MediaDetailsModal";
 import type { MediaType } from "../types";
 
 export function SharedMediaPage({
@@ -26,7 +26,9 @@ export function SharedMediaPage({
           </div>
         </header>
 
-        <SharedMediaLanding item={{ id, mediaType, title: "Titulo compartido" }} />
+        <MediaDetailsProvider>
+          <SharedMediaLanding item={{ id, mediaType, title: "Titulo compartido" }} />
+        </MediaDetailsProvider>
       </div>
     </div>
   );

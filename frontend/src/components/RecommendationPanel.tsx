@@ -297,7 +297,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
           {spotlight ? (
             <>
               <div className="recommendation-headline">
-                <div>
+                <div className="recommendation-headline__copy">
                   <p className="meta-line">
                     {spotlight.mediaType === "tv" ? "Serie" : "Pelicula"} • {spotlight.year}
                   </p>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowingUserIds } from "../lib/follows";
 import { sendRecommendationMessage } from "../lib/inbox";
-import { shareMediaLink } from "../lib/share";
+import { copyMediaLink } from "../lib/share";
 import type { DiscoveryItem } from "../types";
 
 type SendRecommendationModalProps = {
@@ -101,8 +101,8 @@ export function SendRecommendationModal({
       return;
     }
 
-    const result = await shareMediaLink(item);
-    setShareLabel(result === "shared" ? "Compartido" : "Link copiado");
+    await copyMediaLink(item);
+    setShareLabel("Link copiado");
     window.setTimeout(() => setShareLabel("Compartir link"), 1800);
   }
 

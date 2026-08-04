@@ -27,15 +27,35 @@ export function buildSharedMediaUrl(item: { id: number; mediaType: MediaType; ti
   return new URL(buildSharedMediaPath(item), window.location.origin).toString();
 }
 
+export async function copyMediaLink(item: ShareableMediaReference) {
+  const url = buildSharedMediaUrl(item);
+
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(url);
+    return url;
+  }
+
+  if (typeof window !== "undefined") {
+    window.prompt("Copiá este link", url);
+  }
+
+  return url;
+}
+
 export function parseSharedMediaPath(pathname: string) {
-  const match = pathname.match(/^\/share\/(movie|tv)\/(\d+)(?:-([^/]+))?\/?$/);
+  const match = pathname.match(/^\/share\/(movie|tv)\/([^/]+)\/?$/);
   if (!match) {
+    return null;
+  }
+
+  const idMatch = match[2].match(/^(\d+)/);
+  if (!idMatch) {
     return null;
   }
 
   return {
     mediaType: match[1] as MediaType,
-    id: Number(match[2])
+    id: Number(idMatch[1])
   };
 }
 

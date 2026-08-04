@@ -58,6 +58,17 @@ export type FeedEntry = {
   mediaType?: MediaType;
 };
 
+export type FeedComment = {
+  id: string;
+  postId: string;
+  userId: string;
+  author: string;
+  username?: string;
+  body: string;
+  createdAtLabel: string;
+  createdAt?: string;
+};
+
 export type UserTaste = {
   likes: number;
   watched: number;
@@ -98,6 +109,26 @@ export type RecommendationReply = {
   body: string;
   createdAt: string;
   createdAtLabel: string;
+};
+
+export type CommentInboxNotification = {
+  id: string;
+  commentId: string;
+  postId: string;
+  actorId: string;
+  recipientId: string;
+  actorProfile: {
+    id: string;
+    username: string;
+    display_name: string;
+  } | null;
+  body: string;
+  createdAt: string;
+  createdAtLabel: string;
+  readAt?: string | null;
+  postBody: string;
+  postType: FeedEntry["type"];
+  item: DiscoveryItem | null;
 };
 
 export type TalentSearchItem = {

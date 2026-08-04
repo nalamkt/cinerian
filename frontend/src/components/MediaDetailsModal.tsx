@@ -7,7 +7,7 @@ import { getProviderSearchUrl } from "../lib/providerLinks";
 import { fetchStoredReactions, removeStoredReaction, saveStoredReaction } from "../lib/reactions";
 import { buildWatchedPostBody } from "../lib/reviews";
 import { buildSharedMediaUrl, shareMediaLink } from "../lib/share";
-import { getTitleDetails } from "../lib/tmdb";
+import { getTitleById, getTitleDetails } from "../lib/tmdb";
 import type { FeedEntry, MediaDetails, DiscoveryItem, TalentSearchItem } from "../types";
 
 export type MediaReference = Pick<DiscoveryItem, "id" | "mediaType" | "title">;
@@ -42,6 +42,7 @@ function useMediaDetailsData(item: MediaReference | null) {
   const [details, setDetails] = useState<MediaDetails | null>(null);
   const [feedPosts, setFeedPosts] = useState<FeedEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasFailed, setHasFailed] = useState(false);
 
   useEffect(() => {
     if (!item) {
@@ -53,28 +54,60 @@ function useMediaDetailsData(item: MediaReference | null) {
 
     async function load() {
       setIsLoading(true);
+      setHasFailed(false);
+      setFeedPosts([]);
 
       try {
-        const [detailResult, posts] = await Promise.all([
-          getTitleDetails(currentItem.id, currentItem.mediaType),
-          fetchFeedPosts()
-        ]);
+        let resolvedDetails = await getTitleDetails(currentItem.id, currentItem.mediaType).catch(() => null);
+        if (!resolvedDetails) {
+          const fallbackItem = await getTitleById(currentItem.id, currentItem.mediaType).catch(() => null);
+          if (fallbackItem) {
+            resolvedDetails = {
+              ...fallbackItem,
+              backdropUrl: null,
+              runtimeLabel: null,
+              releaseLabel: null,
+              countryLabel: null,
+              languageLabel: null,
+              certification: null,
+              directorLabel: null,
+              budgetLabel: null,
+              trailerUrl: null,
+              creators: [],
+              cast: []
+            };
+          }
+        }
 
         if (!isMounted) {
           return;
         }
 
-        setDetails(detailResult);
-        setFeedPosts(
-          posts
-            .filter((post) => post.tmdbId === currentItem.id && post.mediaType === currentItem.mediaType)
-            .slice(0, 4)
-        );
+        setDetails(resolvedDetails);
+        setHasFailed(!resolvedDetails);
       } finally {
         if (isMounted) {
           setIsLoading(false);
         }
       }
+
+      void fetchFeedPosts()
+        .then((posts) => {
+          if (!isMounted) {
+            return;
+          }
+
+          setFeedPosts(
+            posts
+              .filter((post) => post.tmdbId === currentItem.id && post.mediaType === currentItem.mediaType)
+              .slice(0, 4)
+          );
+        })
+        .catch(() => {
+          if (isMounted) {
+            setFeedPosts([]);
+          }
+        });
     }
 
     void load();
@@ -84,7 +117,7 @@ function useMediaDetailsData(item: MediaReference | null) {
     };
   }, [item]);
 
-  return { details, feedPosts, isLoading };
+  return { details, feedPosts, isLoading, hasFailed };
 }
 
 type MediaDetailsSheetProps = {
@@ -92,6 +125,7 @@ type MediaDetailsSheetProps = {
   details: MediaDetails | null;
   feedPosts: FeedEntry[];
   isLoading: boolean;
+  hasFailed?: boolean;
   onClose?: () => void;
   onShare?: () => void;
   shareLabel?: string;
@@ -111,6 +145,7 @@ export function MediaDetailsSheet({
   details,
   feedPosts,
   isLoading,
+  hasFailed = false,
   onClose,
   onShare,
   shareLabel,
@@ -161,8 +196,14 @@ export function MediaDetailsSheet({
         ) : null}
       </div>
 
-      {isLoading || !details ? (
+      {isLoading ? (
         <div className="media-modal__loading">Cargando detalles...</div>
+      ) : !details ? (
+        <div className="media-modal__empty">
+          {hasFailed
+            ? "No pudimos cargar esta ficha compartida ahora mismo. Probá abrirla otra vez en unos segundos."
+            : "Todavia no tenemos datos para esta ficha."}
+        </div>
       ) : (
         <>
           <div
@@ -401,7 +442,7 @@ function MediaDetailsModal({
   item: MediaReference | null;
   onClose: () => void;
 }) {
-  const { details, feedPosts, isLoading } = useMediaDetailsData(item);
+  const { details, feedPosts, isLoading, hasFailed } = useMediaDetailsData(item);
   const [shareLabel, setShareLabel] = useState("Compartir");
   const [saveLabel, setSaveLabel] = useState("Guardar");
   const [watchedLabel, setWatchedLabel] = useState("Ya la vi");
@@ -599,14 +640,32 @@ function MediaDetailsModal({
   }
 
   return (
-    <div className="media-modal__backdrop" role="presentation" onClick={onClose}>
-      <div className="media-modal__frame" role="presentation">
+    <div
+      className="media-modal__backdrop"
+      role="presentation"
+      onClick={onClose}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="media-modal__frame"
+        role="presentation"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            onClose();
+          }
+        }}
+      >
         <div className="media-modal__panel" role="presentation" onClick={(event) => event.stopPropagation()}>
           <MediaDetailsSheet
             item={item}
             details={details}
             feedPosts={feedPosts}
             isLoading={isLoading}
+            hasFailed={hasFailed}
             onClose={onClose}
             onShare={handleShare}
             shareLabel={shareLabel === "Compartir" ? "Enviar" : shareLabel}
@@ -664,7 +723,7 @@ export function MediaDetailsProvider({
 }
 
 export function SharedMediaLanding({ item }: { item: MediaReference }) {
-  const { details, feedPosts, isLoading } = useMediaDetailsData(item);
+  const { details, feedPosts, isLoading, hasFailed } = useMediaDetailsData(item);
   const [shareLabel, setShareLabel] = useState("Compartir");
   const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
 
@@ -692,17 +751,22 @@ export function SharedMediaLanding({ item }: { item: MediaReference }) {
 
   return (
     <>
-      <MediaDetailsSheet
-        item={item}
-        details={details}
-        feedPosts={feedPosts}
-        isLoading={isLoading}
-        onShare={handleShare}
-        shareLabel={shareLabel}
-        publicCta={publicCta}
-        publicMode
-        onOpenTalent={setActiveTalent}
-      />
+      <div className="media-modal__frame" role="presentation">
+        <div className="media-modal__panel" role="presentation">
+          <MediaDetailsSheet
+            item={item}
+            details={details}
+            feedPosts={feedPosts}
+            isLoading={isLoading}
+            hasFailed={hasFailed}
+            onShare={handleShare}
+            shareLabel={shareLabel}
+            publicCta={publicCta}
+            publicMode
+            onOpenTalent={setActiveTalent}
+          />
+        </div>
+      </div>
       <TalentDetailsModal item={activeTalent} onClose={() => setActiveTalent(null)} />
     </>
   );

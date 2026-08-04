@@ -90,6 +90,11 @@ export default function App() {
   const sessionUserId = session?.user.id ?? null;
   const [activeView, setActiveView] = useState<AppView>("feed");
   const [unreadInboxCount, setUnreadInboxCount] = useState(0);
+  const [highlightedFeedPost, setHighlightedFeedPost] = useState<{
+    postId: string;
+    openComments?: boolean;
+    focusCommentInput?: boolean;
+  } | null>(null);
   const [selectedProfileRoute, setSelectedProfileRoute] = useState<{
     userId?: string;
     username: string;
@@ -231,7 +236,24 @@ export default function App() {
           />
         );
       case "inbox":
-        return <InboxPanel userId={session!.user.id} onOpenUserProfile={handleOpenUserProfile} />;
+        return (
+          <InboxPanel
+            userId={session!.user.id}
+            onOpenUserProfile={handleOpenUserProfile}
+            onOpenFeedPost={({ postId, focusCommentInput }) => {
+              setSelectedProfileRoute(null);
+              setActiveView("feed");
+              setHighlightedFeedPost({
+                postId,
+                openComments: true,
+                focusCommentInput
+              });
+              if (window.location.pathname !== "/") {
+                window.history.pushState({}, "", "/");
+              }
+            }}
+          />
+        );
       case "feed":
       default:
         return (
@@ -239,6 +261,8 @@ export default function App() {
             userId={session!.user.id}
             profile={profile}
             onOpenUserProfile={handleOpenUserProfile}
+            highlightedPost={highlightedFeedPost}
+            onHighlightHandled={() => setHighlightedFeedPost(null)}
           />
         );
     }

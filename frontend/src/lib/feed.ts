@@ -1,5 +1,6 @@
+import { emitInboxUpdate } from "./inbox";
 import { supabase } from "./supabase";
-import type { FeedEntry, MediaType } from "../types";
+import type { FeedComment, FeedEntry, MediaType } from "../types";
 
 type FeedPostRow = {
   id: string;
@@ -9,6 +10,24 @@ type FeedPostRow = {
   created_at: string;
   tmdb_id: number | null;
   media_type: MediaType | null;
+  profiles:
+    | {
+        display_name: string;
+        username: string;
+      }
+    | {
+        display_name: string;
+        username: string;
+      }[]
+    | null;
+};
+
+type FeedCommentRow = {
+  id: string;
+  post_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
   profiles:
     | {
         display_name: string;
@@ -90,6 +109,21 @@ function mapFeedRow(entry: FeedPostRow): FeedEntry {
     type: entry.post_type,
     tmdbId: entry.tmdb_id ?? undefined,
     mediaType: entry.media_type ?? undefined
+  };
+}
+
+function mapFeedCommentRow(entry: FeedCommentRow): FeedComment {
+  const profile = extractProfile(entry.profiles);
+
+  return {
+    id: entry.id,
+    postId: entry.post_id,
+    userId: entry.user_id,
+    author: profile?.display_name ?? "Cineriano",
+    username: profile?.username ?? undefined,
+    body: entry.body,
+    createdAtLabel: formatRelativeLabel(entry.created_at),
+    createdAt: entry.created_at
   };
 }
 
@@ -221,5 +255,75 @@ export async function deleteFeedPost(input: { postId: string; userId: string }) 
 
   if (error) {
     throw error;
+  }
+}
+
+export async function fetchFeedComments(postIds: string[]): Promise<Record<string, FeedComment[]>> {
+  if (!supabase || !postIds.length) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from("feed_post_comments")
+    .select("id, post_id, user_id, body, created_at, profiles(display_name, username)")
+    .in("post_id", postIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as FeedCommentRow[]).reduce<Record<string, FeedComment[]>>((accumulator, row) => {
+    const mapped = mapFeedCommentRow(row);
+    if (!accumulator[mapped.postId]) {
+      accumulator[mapped.postId] = [];
+    }
+    accumulator[mapped.postId].push(mapped);
+    return accumulator;
+  }, {});
+}
+
+export async function createFeedComment(input: { postId: string; userId: string; body: string }) {
+  if (!supabase) {
+    return;
+  }
+
+  const { data: post, error: postError } = await supabase
+    .from("feed_posts")
+    .select("id, user_id")
+    .eq("id", input.postId)
+    .single();
+
+  if (postError) {
+    throw postError;
+  }
+
+  const { data: comment, error } = await supabase
+    .from("feed_post_comments")
+    .insert({
+      post_id: input.postId,
+      user_id: input.userId,
+      body: input.body.trim()
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  if (post.user_id !== input.userId && comment?.id) {
+    const { error: notificationError } = await supabase
+      .from("feed_post_comment_notifications")
+      .insert({
+        comment_id: comment.id,
+        post_id: input.postId,
+        actor_user_id: input.userId,
+        recipient_user_id: post.user_id
+      });
+
+    if (!notificationError) {
+      emitInboxUpdate(post.user_id);
+    }
   }
 }

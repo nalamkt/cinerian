@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { demoDiscovery, demoFeed } from "../data/demoData";
 import { useMediaDetails } from "./MediaDetailsModal";
-import { createFeedPost, fetchFeedPosts, fetchFeedPostsByUsers } from "../lib/feed";
+import { createFeedComment, createFeedPost, fetchFeedComments, fetchFeedPosts, fetchFeedPostsByUsers } from "../lib/feed";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowingUserIds } from "../lib/follows";
 import { getTitleById } from "../lib/tmdb";
-import type { DiscoveryItem, FeedEntry } from "../types";
+import type { DiscoveryItem, FeedComment, FeedEntry } from "../types";
 
 function findMediaFromPost(body: string) {
   const lowered = body.toLowerCase();
@@ -16,6 +16,12 @@ type FeedPanelProps = {
   userId: string;
   profile: Profile | null;
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
+  highlightedPost?: {
+    postId: string;
+    openComments?: boolean;
+    focusCommentInput?: boolean;
+  } | null;
+  onHighlightHandled?: () => void;
 };
 
 type FeedMode = "discover" | "following";
@@ -74,16 +80,39 @@ function parseRatingPost(body: string) {
   return null;
 }
 
-export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps) {
+function truncateOverview(text: string, maxLength = 220) {
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  const sliced = text.slice(0, maxLength);
+  const safeSlice = sliced.includes(" ") ? sliced.slice(0, sliced.lastIndexOf(" ")) : sliced;
+  return `${safeSlice.trim()}...`;
+}
+
+export function FeedPanel({
+  userId,
+  profile,
+  onOpenUserProfile,
+  highlightedPost,
+  onHighlightHandled
+}: FeedPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [entries, setEntries] = useState<FeedEntry[]>(demoFeed);
   const [followingEntries, setFollowingEntries] = useState<FeedEntry[]>([]);
   const [mediaMap, setMediaMap] = useState<Record<string, DiscoveryItem>>({});
+  const [commentsMap, setCommentsMap] = useState<Record<string, FeedComment[]>>({});
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [commentStatus, setCommentStatus] = useState<Record<string, string | null>>({});
+  const [submittingCommentFor, setSubmittingCommentFor] = useState<string | null>(null);
   const [activeFeedMode, setActiveFeedMode] = useState<FeedMode>("discover");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [composerText, setComposerText] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
   const [composerMessage, setComposerMessage] = useState<string | null>(null);
+  const postRefs = useRef<Record<string, HTMLElement | null>>({});
+  const commentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const composerWordCount = useMemo(() => countWords(composerText), [composerText]);
 
   useEffect(() => {
@@ -183,6 +212,59 @@ export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps
   }, [postsWithMedia]);
 
   useEffect(() => {
+    const ids = visibleEntries.map((entry) => entry.id);
+    if (!ids.length) {
+      setCommentsMap({});
+      return;
+    }
+
+    void fetchFeedComments(ids)
+      .then(setCommentsMap)
+      .catch(() => setCommentsMap({}));
+  }, [visibleEntries]);
+
+  useEffect(() => {
+    if (!highlightedPost) {
+      return;
+    }
+
+    const targetExists = visibleEntries.some((entry) => entry.id === highlightedPost.postId);
+    if (!targetExists) {
+      if (activeFeedMode !== "discover") {
+        setActiveFeedMode("discover");
+      }
+      return;
+    }
+
+    if (activeFeedMode !== "discover") {
+      setActiveFeedMode("discover");
+      return;
+    }
+
+    if (highlightedPost.openComments) {
+      setExpandedComments((current) => ({
+        ...current,
+        [highlightedPost.postId]: true
+      }));
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      postRefs.current[highlightedPost.postId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
+
+      if (highlightedPost.focusCommentInput) {
+        commentInputRefs.current[highlightedPost.postId]?.focus();
+      }
+
+      onHighlightHandled?.();
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeFeedMode, highlightedPost, onHighlightHandled, visibleEntries]);
+
+  useEffect(() => {
     const targets = entries.filter((entry) => entry.tmdbId && entry.mediaType);
     const missing = targets.filter((entry) => !mediaMap[`${entry.mediaType}-${entry.tmdbId}`]);
 
@@ -263,6 +345,53 @@ export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps
     setComposerText(value);
   }
 
+  function toggleComments(postId: string) {
+    setExpandedComments((current) => ({
+      ...current,
+      [postId]: !current[postId]
+    }));
+  }
+
+  async function handleCommentSubmit(postId: string) {
+    const body = (commentDrafts[postId] ?? "").trim();
+    if (!body) {
+      return;
+    }
+
+    try {
+      setSubmittingCommentFor(postId);
+      setCommentStatus((current) => ({ ...current, [postId]: null }));
+      await createFeedComment({
+        postId,
+        userId,
+        body
+      });
+
+      setCommentsMap((current) => ({
+        ...current,
+        [postId]: [
+          ...(current[postId] ?? []),
+          {
+            id: `local-comment-${Date.now()}`,
+            postId,
+            userId,
+            author: profile?.display_name ?? "Vos",
+            username: profile?.username ?? "vos",
+            body,
+            createdAtLabel: "Ahora"
+          }
+        ]
+      }));
+      setCommentDrafts((current) => ({ ...current, [postId]: "" }));
+      setExpandedComments((current) => ({ ...current, [postId]: true }));
+      setCommentStatus((current) => ({ ...current, [postId]: "Comentario publicado." }));
+    } catch {
+      setCommentStatus((current) => ({ ...current, [postId]: "No pude publicar tu comentario." }));
+    } finally {
+      setSubmittingCommentFor(null);
+    }
+  }
+
   return (
     <section className="feed-shell">
       <div className="feed-main">
@@ -319,9 +448,17 @@ export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps
           {postsWithMedia.length ? (
             postsWithMedia.map(({ entry, media }) => {
               const parsedRating = entry.type === "rating" ? parseRatingPost(entry.body) : null;
+              const comments = commentsMap[entry.id] ?? [];
+              const isCommentsOpen = Boolean(expandedComments[entry.id]);
 
               return (
-                <article className="timeline-card" key={entry.id}>
+                <article
+                  className="timeline-card"
+                  key={entry.id}
+                  ref={(node) => {
+                    postRefs.current[entry.id] = node;
+                  }}
+                >
                   <button
                     type="button"
                     className="timeline-card__avatar timeline-card__avatar--interactive"
@@ -383,8 +520,70 @@ export function FeedPanel({ userId, profile, onOpenUserProfile }: FeedPanelProps
                           {media.genres.length ? (
                             <p className="timeline-card__genres">{media.genres.join(" · ")}</p>
                           ) : null}
-                          <p>{media.overview}</p>
+                          <p>{truncateOverview(media.overview)}</p>
                         </div>
+                      </div>
+                    ) : null}
+
+                    <div className="timeline-card__actions">
+                      <button
+                        type="button"
+                        className="ghost-button timeline-card__comment-toggle"
+                        onClick={() => toggleComments(entry.id)}
+                        aria-label={isCommentsOpen ? "Ocultar comentarios" : "Abrir comentarios"}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6.5 5.5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H10l-4 3.5V15.5h-.5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z" />
+                        </svg>
+                        {comments.length ? <span>{comments.length}</span> : null}
+                      </button>
+                    </div>
+
+                    {isCommentsOpen ? (
+                      <div className="timeline-card__comments">
+                        {comments.length ? (
+                          <div className="timeline-card__comment-list">
+                            {comments.map((comment) => (
+                              <article className="timeline-card__comment" key={comment.id}>
+                                <strong>{comment.author}</strong>
+                                <span>
+                                  @{comment.username ?? comment.author.toLowerCase()} · {comment.createdAtLabel}
+                                </span>
+                                <p>{comment.body}</p>
+                              </article>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="timeline-card__comment-empty">Todavía no hay comentarios acá.</p>
+                        )}
+
+                        <div className="timeline-card__comment-form">
+                          <input
+                            type="text"
+                            ref={(node) => {
+                              commentInputRefs.current[entry.id] = node;
+                            }}
+                            value={commentDrafts[entry.id] ?? ""}
+                            onChange={(event) =>
+                              setCommentDrafts((current) => ({
+                                ...current,
+                                [entry.id]: event.target.value
+                              }))
+                            }
+                            placeholder="Deja tu comentario"
+                          />
+                          <button
+                            type="button"
+                            className="primary-button"
+                            disabled={submittingCommentFor === entry.id || !(commentDrafts[entry.id] ?? "").trim()}
+                            onClick={() => void handleCommentSubmit(entry.id)}
+                          >
+                            {submittingCommentFor === entry.id ? "Publicando..." : "Comentar"}
+                          </button>
+                        </div>
+                        {commentStatus[entry.id] ? (
+                          <div className="inline-status">{commentStatus[entry.id]}</div>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>

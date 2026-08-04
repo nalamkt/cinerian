@@ -60,12 +60,35 @@ create table if not exists public.recommendation_message_replies (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.feed_post_comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.feed_posts(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  body text not null,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.feed_post_comment_notifications (
+  id uuid primary key default gen_random_uuid(),
+  comment_id uuid not null references public.feed_post_comments(id) on delete cascade,
+  post_id uuid not null references public.feed_posts(id) on delete cascade,
+  actor_user_id uuid not null references public.profiles(id) on delete cascade,
+  recipient_user_id uuid not null references public.profiles(id) on delete cascade,
+  read_at timestamptz,
+  deleted_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now()),
+  unique (comment_id, recipient_user_id),
+  check (actor_user_id <> recipient_user_id)
+);
+
 alter table public.profiles enable row level security;
 alter table public.media_reactions enable row level security;
 alter table public.feed_posts enable row level security;
 alter table public.user_follows enable row level security;
 alter table public.recommendation_messages enable row level security;
 alter table public.recommendation_message_replies enable row level security;
+alter table public.feed_post_comments enable row level security;
+alter table public.feed_post_comment_notifications enable row level security;
 
 create policy "profiles are public read"
   on public.profiles for select
@@ -142,3 +165,28 @@ create policy "recommendation replies insert by participants"
         and (auth.uid() = message.sender_id or auth.uid() = message.recipient_id)
     )
   );
+
+create policy "feed post comments are public read"
+  on public.feed_post_comments for select
+  using (true);
+
+create policy "users insert feed post comments"
+  on public.feed_post_comments for insert
+  with check (auth.uid() = user_id);
+
+create policy "users delete own feed post comments"
+  on public.feed_post_comments for delete
+  using (auth.uid() = user_id);
+
+create policy "comment notifications read by participants"
+  on public.feed_post_comment_notifications for select
+  using (auth.uid() = recipient_user_id or auth.uid() = actor_user_id);
+
+create policy "comment notifications insert by actor"
+  on public.feed_post_comment_notifications for insert
+  with check (auth.uid() = actor_user_id);
+
+create policy "comment notifications update by recipient"
+  on public.feed_post_comment_notifications for update
+  using (auth.uid() = recipient_user_id)
+  with check (auth.uid() = recipient_user_id);

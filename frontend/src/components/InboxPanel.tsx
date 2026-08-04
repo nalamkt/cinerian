@@ -2,28 +2,35 @@ import { useEffect, useMemo, useState } from "react";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowingUserIds } from "../lib/follows";
 import {
+  deleteCommentNotification,
   deleteInboxMessage,
+  fetchCommentNotifications,
   fetchReceivedMessages,
   fetchSentMessages,
   INBOX_UPDATED_EVENT,
   sendRecommendationReply,
+  setCommentNotificationReadState,
   setInboxMessageReadState
 } from "../lib/inbox";
 import { useMediaDetails } from "./MediaDetailsModal";
-import type { RecommendationMessage } from "../types";
+import type { CommentInboxNotification, RecommendationMessage } from "../types";
 
 type InboxPanelProps = {
   userId: string;
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
+  onOpenFeedPost?: (target: { postId: string; focusCommentInput?: boolean }) => void;
 };
 
 type InboxMode = "received" | "sent";
+type InboxCategory = "recommendations" | "comments";
 
-export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
+export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxPanelProps) {
   const { openMediaDetails } = useMediaDetails();
+  const [category, setCategory] = useState<InboxCategory>("recommendations");
   const [mode, setMode] = useState<InboxMode>("received");
   const [received, setReceived] = useState<RecommendationMessage[]>([]);
   const [sent, setSent] = useState<RecommendationMessage[]>([]);
+  const [commentNotifications, setCommentNotifications] = useState<CommentInboxNotification[]>([]);
   const [followingProfiles, setFollowingProfiles] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -38,9 +45,10 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
       setIsLoading(true);
       setErrorMessage(null);
 
-      const [receivedResult, sentResult, followingResult, profilesResult] = await Promise.allSettled([
+      const [receivedResult, sentResult, commentsResult, followingResult, profilesResult] = await Promise.allSettled([
         fetchReceivedMessages(userId),
         fetchSentMessages(userId),
+        fetchCommentNotifications(userId),
         fetchFollowingUserIds(userId),
         listProfiles()
       ]);
@@ -61,6 +69,12 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
         setSent([]);
       }
 
+      if (commentsResult.status === "fulfilled") {
+        setCommentNotifications(commentsResult.value);
+      } else {
+        setCommentNotifications([]);
+      }
+
       if (followingResult.status === "fulfilled" && profilesResult.status === "fulfilled") {
         setFollowingProfiles(
           profilesResult.value.filter((profile) => followingResult.value.includes(profile.id))
@@ -70,7 +84,9 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
       }
 
       const inboxFailed =
-        receivedResult.status === "rejected" && sentResult.status === "rejected";
+        receivedResult.status === "rejected" &&
+        sentResult.status === "rejected" &&
+        commentsResult.status === "rejected";
 
       if (inboxFailed) {
         setErrorMessage("No pude cargar tu inbox todavia.");
@@ -100,6 +116,11 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
   const visibleMessages = useMemo(
     () => (mode === "received" ? received : sent),
     [mode, received, sent]
+  );
+
+  const hasUnreadComments = useMemo(
+    () => commentNotifications.some((notification) => !notification.readAt),
+    [commentNotifications]
   );
 
   async function handleToggleRead(message: RecommendationMessage) {
@@ -142,6 +163,80 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
     } finally {
       setPendingMessageId(null);
     }
+  }
+
+  async function handleToggleCommentRead(notification: CommentInboxNotification) {
+    const nextRead = !notification.readAt;
+
+    try {
+      setPendingMessageId(notification.id);
+      await setCommentNotificationReadState({
+        notificationId: notification.id,
+        userId,
+        read: nextRead
+      });
+      setCommentNotifications((current) =>
+        current.map((entry) =>
+          entry.id === notification.id
+            ? {
+                ...entry,
+                readAt: nextRead ? new Date().toISOString() : null
+              }
+            : entry
+        )
+      );
+    } catch {
+      setErrorMessage("No pude cambiar el estado del comentario.");
+    } finally {
+      setPendingMessageId(null);
+    }
+  }
+
+  async function handleDeleteComment(notification: CommentInboxNotification) {
+    try {
+      setPendingMessageId(notification.id);
+      await deleteCommentNotification({
+        notificationId: notification.id,
+        userId
+      });
+      setCommentNotifications((current) => current.filter((entry) => entry.id !== notification.id));
+    } catch {
+      setErrorMessage("No pude eliminar esta notificacion.");
+    } finally {
+      setPendingMessageId(null);
+    }
+  }
+
+  async function openCommentNotification(
+    notification: CommentInboxNotification,
+    options?: { focusCommentInput?: boolean }
+  ) {
+    try {
+      if (!notification.readAt) {
+        await setCommentNotificationReadState({
+          notificationId: notification.id,
+          userId,
+          read: true
+        });
+        setCommentNotifications((current) =>
+          current.map((entry) =>
+            entry.id === notification.id
+              ? {
+                  ...entry,
+                  readAt: new Date().toISOString()
+                }
+              : entry
+          )
+        );
+      }
+    } catch {
+      setErrorMessage("No pude actualizar este comentario.");
+    }
+
+    onOpenFeedPost?.({
+      postId: notification.postId,
+      focusCommentInput: options?.focusCommentInput
+    });
   }
 
   async function handleReplySubmit(body: string) {
@@ -223,7 +318,7 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
                 {message.item.mediaType === "tv" ? "Serie" : "Pelicula"} • {message.item.year}
               </p>
               <h3>{message.item.title}</h3>
-              <p>
+              <p className="timeline-card__note">
                 {message.note?.trim()
                   ? `"${message.note.trim()}"`
                   : mode === "received"
@@ -320,38 +415,187 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
     );
   }
 
+  function renderCommentNotification(notification: CommentInboxNotification) {
+    const isUnread = !notification.readAt;
+    const isPending = pendingMessageId === notification.id;
+    const postPreview =
+      notification.postBody.length > 180
+        ? `${notification.postBody.slice(0, 180).trimEnd()}...`
+        : notification.postBody;
+
+    return (
+      <article className={`inbox-card ${isUnread ? "is-unread" : ""}`} key={notification.id}>
+        <div className="inbox-card__topline">
+          <div>
+            <strong>Comentó tu publicación</strong>{" "}
+            <button
+              type="button"
+              className="timeline-card__author"
+              onClick={() =>
+                notification.actorProfile
+                  ? onOpenUserProfile({
+                      userId: notification.actorProfile.id,
+                      username: notification.actorProfile.username
+                    })
+                  : undefined
+              }
+            >
+              {notification.actorProfile?.display_name ?? "Cineriano"}
+            </button>
+          </div>
+          <span>{notification.createdAtLabel}</span>
+        </div>
+
+        <div className="inbox-card__body">
+          {notification.item ? (
+            <div
+              className="timeline-card__media timeline-card__media--interactive inbox-card__media"
+              onClick={() => openMediaDetails(notification.item!)}
+            >
+              <div className="detail-poster">
+                <img
+                  src={notification.item.posterUrl}
+                  alt={notification.item.title}
+                  className="timeline-card__poster"
+                />
+                <span className="detail-poster__hint" aria-hidden="true">
+                  Ver detalles
+                </span>
+              </div>
+              <div className="timeline-card__media-copy">
+                <p className="meta-line">
+                  {notification.item.mediaType === "tv" ? "Serie" : "Pelicula"} • {notification.item.year}
+                </p>
+                <h3>{notification.item.title}</h3>
+                <p className="inbox-card__comment-quote">“{notification.body}”</p>
+                <p className="inbox-card__post-preview">{postPreview}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="inbox-card__comment-fallback">
+              <p className="inbox-card__comment-quote">“{notification.body}”</p>
+              <p className="inbox-card__post-preview">{postPreview}</p>
+            </div>
+          )}
+
+          <div className="inbox-card__actions">
+            <button
+              type="button"
+              className="inbox-card__action-button"
+              onClick={() => void openCommentNotification(notification)}
+            >
+              <span className="inbox-card__action-icon" aria-hidden="true">
+                ↗
+              </span>
+              <span>Ver post</span>
+            </button>
+            <button
+              type="button"
+              className="inbox-card__action-button"
+              onClick={() => void openCommentNotification(notification, { focusCommentInput: true })}
+            >
+              <span className="inbox-card__action-icon" aria-hidden="true">
+                ↩
+              </span>
+              <span>Responder</span>
+            </button>
+            <button
+              type="button"
+              className="inbox-card__action-button"
+              disabled={isPending}
+              onClick={() => void handleToggleCommentRead(notification)}
+            >
+              <span className="inbox-card__action-icon" aria-hidden="true">
+                {notification.readAt ? "◐" : "◉"}
+              </span>
+              <span>{notification.readAt ? "No leido" : "Leido"}</span>
+            </button>
+            <button
+              type="button"
+              className="inbox-card__action-button inbox-card__action-button--danger"
+              disabled={isPending}
+              onClick={() => void handleDeleteComment(notification)}
+            >
+              <span className="inbox-card__action-icon" aria-hidden="true">
+                ✕
+              </span>
+              <span>Eliminar</span>
+            </button>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
   return (
     <section className="feed-shell">
       <div className="feed-main">
         <header className="feed-header">
           <button
             type="button"
-            className={`feed-header__tab ${mode === "received" ? "is-active" : ""}`}
-            onClick={() => setMode("received")}
+            className={`feed-header__tab ${category === "recommendations" ? "is-active" : ""}`}
+            onClick={() => setCategory("recommendations")}
           >
-            Recibidas
+            Recomendaciones
           </button>
           <button
             type="button"
-            className={`feed-header__tab ${mode === "sent" ? "is-active" : ""}`}
-            onClick={() => setMode("sent")}
+            className={`feed-header__tab ${category === "comments" ? "is-active" : ""}`}
+            onClick={() => setCategory("comments")}
           >
-            Enviadas
+            Comentarios
           </button>
         </header>
 
+        {category === "recommendations" ? (
+          <div className="inbox-subtabs">
+            <button
+              type="button"
+              className={`inbox-subtabs__button ${mode === "received" ? "is-active" : ""}`}
+              onClick={() => setMode("received")}
+            >
+              Recibidas
+            </button>
+            <button
+              type="button"
+              className={`inbox-subtabs__button ${mode === "sent" ? "is-active" : ""}`}
+              onClick={() => setMode("sent")}
+            >
+              Enviadas
+            </button>
+          </div>
+        ) : (
+          <div className="inbox-subtabs inbox-subtabs--summary">
+            <span className="inbox-subtabs__summary">
+              {hasUnreadComments
+                ? "Tenés comentarios nuevos en tus publicaciones"
+                : "Tus comentarios recibidos aparecen acá"}
+            </span>
+          </div>
+        )}
+
         <div className="timeline-list">
           {errorMessage ? <div className="timeline-empty">{errorMessage}</div> : null}
-          {isLoading ? <div className="timeline-empty">Cargando recomendaciones...</div> : null}
+          {isLoading ? (
+            <div className="timeline-empty">
+              {category === "recommendations" ? "Cargando recomendaciones..." : "Cargando comentarios..."}
+            </div>
+          ) : null}
           {!isLoading && !errorMessage ? (
-            visibleMessages.length ? (
-              visibleMessages.map(renderMessage)
+            category === "recommendations" ? (
+              visibleMessages.length ? (
+                visibleMessages.map(renderMessage)
+              ) : (
+                <div className="timeline-empty">
+                  {mode === "received"
+                    ? "Todavia no recibiste recomendaciones internas."
+                    : "Todavia no mandaste recomendaciones a otros cinerianos."}
+                </div>
+              )
+            ) : commentNotifications.length ? (
+              commentNotifications.map(renderCommentNotification)
             ) : (
-              <div className="timeline-empty">
-                {mode === "received"
-                  ? "Todavia no recibiste recomendaciones internas."
-                  : "Todavia no mandaste recomendaciones a otros cinerianos."}
-              </div>
+              <div className="timeline-empty">Todavía nadie comentó tus publicaciones.</div>
             )
           ) : null}
         </div>

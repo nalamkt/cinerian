@@ -1,7 +1,13 @@
 import { getTitleById } from "./tmdb";
 import { listProfiles, type Profile } from "./auth";
 import { supabase } from "./supabase";
-import type { DiscoveryItem, MediaType, RecommendationMessage, RecommendationReply } from "../types";
+import type {
+  CommentInboxNotification,
+  DiscoveryItem,
+  MediaType,
+  RecommendationMessage,
+  RecommendationReply
+} from "../types";
 
 export const INBOX_UPDATED_EVENT = "cinerian:inbox-updated";
 
@@ -27,6 +33,39 @@ type RecommendationReplyRow = {
   created_at: string;
 };
 
+type CommentNotificationRow = {
+  id: string;
+  comment_id: string;
+  post_id: string;
+  actor_user_id: string;
+  recipient_user_id: string;
+  created_at: string;
+  read_at: string | null;
+  deleted_at: string | null;
+  feed_post_comments:
+    | {
+        body: string;
+      }
+    | {
+        body: string;
+      }[]
+    | null;
+  feed_posts:
+    | {
+        body: string;
+        post_type: "rating" | "recommendation" | "watchlist";
+        tmdb_id: number | null;
+        media_type: MediaType | null;
+      }
+    | {
+        body: string;
+        post_type: "rating" | "recommendation" | "watchlist";
+        tmdb_id: number | null;
+        media_type: MediaType | null;
+      }[]
+    | null;
+};
+
 function isMissingReadAtColumn(error: { message?: string; details?: string; hint?: string } | null) {
   const haystack = `${error?.message ?? ""} ${error?.details ?? ""} ${error?.hint ?? ""}`.toLowerCase();
   return haystack.includes("read_at") && (haystack.includes("column") || haystack.includes("schema cache"));
@@ -38,6 +77,10 @@ function dispatchInboxUpdate(userId: string) {
       detail: { userId }
     })
   );
+}
+
+export function emitInboxUpdate(userId: string) {
+  dispatchInboxUpdate(userId);
 }
 
 function formatRelativeLabel(dateString: string) {
@@ -76,6 +119,14 @@ function buildFallbackItem(row: RecommendationMessageRow): DiscoveryItem {
   };
 }
 
+function extractNested<T>(value: T | T[] | null): T | null {
+  if (!value) {
+    return null;
+  }
+
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+
 async function hydrateItem(row: RecommendationMessageRow) {
   const fallback = buildFallbackItem(row);
 
@@ -86,8 +137,26 @@ async function hydrateItem(row: RecommendationMessageRow) {
   }
 }
 
+async function hydrateNotificationItem(row: CommentNotificationRow) {
+  const post = extractNested(row.feed_posts);
+  if (!post?.tmdb_id || !post.media_type) {
+    return null;
+  }
+
+  try {
+    return await getTitleById(post.tmdb_id, post.media_type);
+  } catch {
+    return null;
+  }
+}
+
 function profileMapFromList(profiles: Profile[]) {
   return new Map(profiles.map((profile) => [profile.id, profile]));
+}
+
+function isMissingCommentNotificationTable(error: { message?: string; details?: string; hint?: string } | null) {
+  const haystack = `${error?.message ?? ""} ${error?.details ?? ""} ${error?.hint ?? ""}`.toLowerCase();
+  return haystack.includes("feed_post_comment_notifications") && (haystack.includes("does not exist") || haystack.includes("schema cache"));
 }
 
 async function fetchMessagesByColumn(column: "sender_id" | "recipient_id", userId: string) {
@@ -229,21 +298,85 @@ export async function fetchUnreadInboxCount(userId: string): Promise<number> {
     return 0;
   }
 
-  const { count, error } = await supabase
-    .from("recommendation_messages")
-    .select("id", { count: "exact", head: true })
-    .eq("recipient_id", userId)
-    .is("read_at", null);
+  const [recommendationResult, commentResult] = await Promise.all([
+    supabase
+      .from("recommendation_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", userId)
+      .is("read_at", null),
+    supabase
+      .from("feed_post_comment_notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_user_id", userId)
+      .is("read_at", null)
+      .is("deleted_at", null)
+  ]);
+
+  if (recommendationResult.error) {
+    if (isMissingReadAtColumn(recommendationResult.error)) {
+      return 0;
+    }
+
+    throw recommendationResult.error;
+  }
+
+  if (commentResult.error && !isMissingCommentNotificationTable(commentResult.error)) {
+    throw commentResult.error;
+  }
+
+  return (recommendationResult.count ?? 0) + (commentResult.count ?? 0);
+}
+
+export async function fetchCommentNotifications(userId: string): Promise<CommentInboxNotification[]> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("feed_post_comment_notifications")
+    .select(
+      "id, comment_id, post_id, actor_user_id, recipient_user_id, created_at, read_at, deleted_at, feed_post_comments(body), feed_posts(body, post_type, tmdb_id, media_type)"
+    )
+    .eq("recipient_user_id", userId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(60);
 
   if (error) {
-    if (isMissingReadAtColumn(error)) {
-      return 0;
+    if (isMissingCommentNotificationTable(error)) {
+      return [];
     }
 
     throw error;
   }
 
-  return count ?? 0;
+  const rows = (data ?? []) as CommentNotificationRow[];
+  const [profiles, items] = await Promise.all([
+    listProfiles(),
+    Promise.all(rows.map((row) => hydrateNotificationItem(row)))
+  ]);
+  const profileMap = profileMapFromList(profiles);
+
+  return rows.map((row, index) => {
+    const comment = extractNested(row.feed_post_comments);
+    const post = extractNested(row.feed_posts);
+
+    return {
+      id: row.id,
+      commentId: row.comment_id,
+      postId: row.post_id,
+      actorId: row.actor_user_id,
+      recipientId: row.recipient_user_id,
+      actorProfile: profileMap.get(row.actor_user_id) ?? null,
+      body: comment?.body ?? "",
+      createdAt: row.created_at,
+      createdAtLabel: formatRelativeLabel(row.created_at),
+      readAt: row.read_at,
+      postBody: post?.body ?? "",
+      postType: post?.post_type ?? "recommendation",
+      item: items[index]
+    };
+  });
 }
 
 export async function markInboxAsRead(userId: string) {
@@ -260,6 +393,30 @@ export async function markInboxAsRead(userId: string) {
 
   if (error) {
     if (isMissingReadAtColumn(error)) {
+      return;
+    }
+
+    throw error;
+  }
+
+  dispatchInboxUpdate(userId);
+}
+
+export async function markCommentNotificationsAsRead(userId: string) {
+  if (!supabase) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("feed_post_comment_notifications")
+    .update({ read_at: now })
+    .eq("recipient_user_id", userId)
+    .is("read_at", null)
+    .is("deleted_at", null);
+
+  if (error) {
+    if (isMissingCommentNotificationTable(error)) {
       return;
     }
 
@@ -295,6 +452,32 @@ export async function setInboxMessageReadState(input: {
   dispatchInboxUpdate(input.userId);
 }
 
+export async function setCommentNotificationReadState(input: {
+  notificationId: string;
+  userId: string;
+  read: boolean;
+}) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("feed_post_comment_notifications")
+    .update({ read_at: input.read ? new Date().toISOString() : null })
+    .eq("id", input.notificationId)
+    .eq("recipient_user_id", input.userId);
+
+  if (error) {
+    if (isMissingCommentNotificationTable(error)) {
+      return;
+    }
+
+    throw error;
+  }
+
+  dispatchInboxUpdate(input.userId);
+}
+
 export async function deleteInboxMessage(input: { messageId: string; userId: string }) {
   if (!supabase) {
     return;
@@ -307,6 +490,28 @@ export async function deleteInboxMessage(input: { messageId: string; userId: str
     .eq("recipient_id", input.userId);
 
   if (error) {
+    throw error;
+  }
+
+  dispatchInboxUpdate(input.userId);
+}
+
+export async function deleteCommentNotification(input: { notificationId: string; userId: string }) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("feed_post_comment_notifications")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", input.notificationId)
+    .eq("recipient_user_id", input.userId);
+
+  if (error) {
+    if (isMissingCommentNotificationTable(error)) {
+      return;
+    }
+
     throw error;
   }
 

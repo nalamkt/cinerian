@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import {
+  createFeedComment,
   deleteFeedPost,
+  fetchFeedComments,
   fetchUserMediaPosts,
   fetchUserTextPosts,
   updateFeedPost
@@ -12,7 +14,7 @@ import {
   type StoredReaction
 } from "../lib/reactions";
 import { getTitleById } from "../lib/tmdb";
-import type { DiscoveryItem, FeedEntry } from "../types";
+import type { DiscoveryItem, FeedComment, FeedEntry } from "../types";
 
 type ProfileTabsProps = {
   userId: string;
@@ -85,6 +87,10 @@ export function ProfileTabs({
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
+  const [commentsMap, setCommentsMap] = useState<Record<string, FeedComment[]>>({});
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [submittingCommentFor, setSubmittingCommentFor] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -152,6 +158,21 @@ export function ProfileTabs({
       isMounted = false;
     };
   }, [userId]);
+
+  useEffect(() => {
+    const recommendationPostIds = mediaPosts
+      .filter((post) => post.type === "rating")
+      .map((post) => post.id);
+
+    if (!recommendationPostIds.length) {
+      setCommentsMap({});
+      return;
+    }
+
+    void fetchFeedComments(recommendationPostIds)
+      .then(setCommentsMap)
+      .catch(() => setCommentsMap({}));
+  }, [mediaPosts]);
 
   const tabItems = useMemo(() => {
     return reactions
@@ -245,6 +266,55 @@ export function ProfileTabs({
     }
   }
 
+  function toggleComments(postId: string) {
+    setExpandedComments((current) => ({
+      ...current,
+      [postId]: !current[postId]
+    }));
+  }
+
+  async function handleCommentSubmit(postId: string) {
+    const body = (commentDrafts[postId] ?? "").trim();
+    if (!body) {
+      return;
+    }
+
+    try {
+      setSubmittingCommentFor(postId);
+      await createFeedComment({
+        postId,
+        userId,
+        body
+      });
+      setCommentsMap((current) => ({
+        ...current,
+        [postId]: [
+          ...(current[postId] ?? []),
+          {
+            id: `local-comment-${Date.now()}`,
+            postId,
+            userId,
+            author: isOwnProfile ? "Vos" : "Cineriano",
+            body,
+            createdAtLabel: "Ahora"
+          }
+        ]
+      }));
+      setCommentDrafts((current) => ({
+        ...current,
+        [postId]: ""
+      }));
+      setExpandedComments((current) => ({
+        ...current,
+        [postId]: true
+      }));
+    } catch {
+      setSyncMessage("No pude comentar esta recomendación.");
+    } finally {
+      setSubmittingCommentFor(null);
+    }
+  }
+
   return (
     <section className="profile-tabs">
       <div className="profile-tabs__switcher">
@@ -276,6 +346,8 @@ export function ProfileTabs({
 
               const item = titles[`${post.mediaType}-${post.tmdbId}`];
               const parsedRating = post.type === "rating" ? parseRatingPost(post.body) : null;
+              const comments = commentsMap[post.id] ?? [];
+              const isCommentsOpen = Boolean(expandedComments[post.id]);
 
               return (
                 <article className="profile-post-card profile-post-card--media" key={post.id}>
@@ -284,7 +356,7 @@ export function ProfileTabs({
                     <span>{post.createdAtLabel}</span>
                   </div>
 
-                  <div className="profile-post-card__media-layout">
+                  <div className="profile-post-card__media-layout profile-post-card__media-layout--with-actions">
                     {item ? (
                       <div className="detail-poster detail-poster--profile" onClick={() => openMediaDetails(item)}>
                         <img
@@ -321,23 +393,76 @@ export function ProfileTabs({
                         </>
                       ) : null}
                     </div>
-                  </div>
 
-                  {!readOnly ? (
-                    <div className="profile-post-card__actions">
+                    <div className="profile-post-card__inline-actions">
+                      {!readOnly ? (
+                        <button
+                          type="button"
+                          className="recommendation-action-button recommendation-action-button--small profile-remove-button profile-remove-button--inline"
+                          disabled={isSyncing}
+                          onClick={() => void handleDeletePost(post.id)}
+                          data-tooltip="Eliminar"
+                          aria-label="Eliminar"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M6 6 18 18" />
+                            <path d="M18 6 6 18" />
+                          </svg>
+                        </button>
+                      ) : null}
                       <button
                         type="button"
-                        className="recommendation-action-button recommendation-action-button--small profile-remove-button"
-                        disabled={isSyncing}
-                        onClick={() => void handleDeletePost(post.id)}
-                        data-tooltip="Eliminar"
-                        aria-label="Eliminar"
+                        className="recommendation-action-button recommendation-action-button--small profile-comment-button"
+                        onClick={() => toggleComments(post.id)}
+                        data-tooltip="Comentar"
+                        aria-label={isCommentsOpen ? "Ocultar comentarios" : "Abrir comentarios"}
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M6 6 18 18" />
-                          <path d="M18 6 6 18" />
+                          <path d="M6.5 5.5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H10l-4 3.5V15.5h-.5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z" />
                         </svg>
                       </button>
+                    </div>
+                  </div>
+
+                  {isCommentsOpen ? (
+                    <div className="timeline-card__comments timeline-card__comments--profile">
+                      {comments.length ? (
+                        <div className="timeline-card__comment-list">
+                          {comments.map((comment) => (
+                            <article className="timeline-card__comment" key={comment.id}>
+                              <strong>{comment.author}</strong>
+                              <span>
+                                @{comment.username ?? comment.author.toLowerCase()} · {comment.createdAtLabel}
+                              </span>
+                              <p>{comment.body}</p>
+                            </article>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="timeline-card__comment-empty">Todavía no hay comentarios acá.</p>
+                      )}
+
+                      <div className="timeline-card__comment-form">
+                        <input
+                          type="text"
+                          value={commentDrafts[post.id] ?? ""}
+                          onChange={(event) =>
+                            setCommentDrafts((current) => ({
+                              ...current,
+                              [post.id]: event.target.value
+                            }))
+                          }
+                          placeholder="Deja tu comentario"
+                        />
+                        <button
+                          type="button"
+                          className="primary-button"
+                          disabled={submittingCommentFor === post.id || !(commentDrafts[post.id] ?? "").trim()}
+                          onClick={() => void handleCommentSubmit(post.id)}
+                        >
+                          {submittingCommentFor === post.id ? "Publicando..." : "Comentar"}
+                        </button>
+                      </div>
                     </div>
                   ) : null}
                 </article>
