@@ -20,6 +20,7 @@ import { hasSupabaseEnv } from "./lib/supabase";
 import { useEffect, useMemo, useState } from "react";
 
 type AppView = "feed" | "search" | "recommendations" | "inbox" | "user";
+const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
 
 function DockIcon({ id, badgeCount = 0 }: { id: AppView; badgeCount?: number }) {
   if (id === "feed") {
@@ -88,7 +89,14 @@ const dockItems: Array<{ id: AppView; label: string }> = [
 export default function App() {
   const { session, profile, isLoading, error } = useAuth();
   const sessionUserId = session?.user.id ?? null;
-  const [activeView, setActiveView] = useState<AppView>("feed");
+  const [activeView, setActiveView] = useState<AppView>(() => {
+    if (typeof window === "undefined") {
+      return "feed";
+    }
+
+    const storedView = window.localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY);
+    return dockItems.some((item) => item.id === storedView) ? (storedView as AppView) : "feed";
+  });
   const [unreadInboxCount, setUnreadInboxCount] = useState(0);
   const [highlightedFeedPost, setHighlightedFeedPost] = useState<{
     postId: string;
@@ -135,6 +143,14 @@ export default function App() {
     window.addEventListener("popstate", syncRouteFromLocation);
     return () => window.removeEventListener("popstate", syncRouteFromLocation);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, activeView);
+  }, [activeView]);
 
   useEffect(() => {
     if (!sessionUserId) {

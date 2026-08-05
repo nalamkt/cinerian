@@ -204,6 +204,7 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
       (typeof item.name === "string" && item.name) ||
       "Titulo sin nombre",
     year: releaseDate ? releaseDate.slice(0, 4) : "Sin fecha",
+    releaseDate: releaseDate || null,
     mediaType: normalizeMediaType(String(item.media_type ?? "movie")),
     overview:
       (typeof item.overview === "string" && item.overview) ||
@@ -213,6 +214,23 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
     providers: [],
     score: typeof item.vote_average === "number" ? Number(item.vote_average.toFixed(1)) : 0
   };
+}
+
+function isUpcomingThisWeek(dateString: string | null | undefined) {
+  if (!dateString) {
+    return false;
+  }
+
+  const releaseTime = new Date(`${dateString}T00:00:00`).getTime();
+  if (Number.isNaN(releaseTime)) {
+    return false;
+  }
+
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const end = start + 1000 * 60 * 60 * 24 * 10;
+
+  return releaseTime >= start && releaseTime <= end;
 }
 
 function normalizeCredit(item: Record<string, unknown>): TalentCredit | null {
@@ -321,6 +339,56 @@ export async function getRecommendationTitlesByPage(page: number): Promise<Disco
   );
 
   return [...movieItems, ...tvItems];
+}
+
+async function fetchCatalogCollection(
+  path: string,
+  options?: {
+    page?: number;
+    mediaType?: MediaType;
+  }
+): Promise<DiscoveryItem[]> {
+  if (!apiKey) {
+    return demoDiscovery;
+  }
+
+  const url = new URL(`${baseUrl}${path}`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("language", "es-MX");
+  url.searchParams.set("page", String(options?.page ?? 1));
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error("No pude traer titulos para el home.");
+  }
+
+  const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+  return (payload.results ?? [])
+    .filter(isSupportedCatalogResult)
+    .map((item) =>
+      normalizeItem({
+        ...item,
+        media_type: options?.mediaType ?? normalizeMediaType(String(item.media_type ?? "movie"))
+      })
+    );
+}
+
+export async function getTrendingTitles(): Promise<DiscoveryItem[]> {
+  const items = await fetchCatalogCollection("/trending/all/week");
+  return items.slice(0, 6);
+}
+
+export async function getUpcomingTitles(): Promise<DiscoveryItem[]> {
+  const items = await fetchCatalogCollection("/movie/upcoming", { mediaType: "movie" });
+  return items
+    .filter((item) => isUpcomingThisWeek(item.releaseDate))
+    .sort((a, b) => (a.releaseDate ?? "").localeCompare(b.releaseDate ?? ""))
+    .slice(0, 6);
+}
+
+export async function getNowPlayingTitles(): Promise<DiscoveryItem[]> {
+  const movieItems = await fetchCatalogCollection("/movie/now_playing", { mediaType: "movie" });
+  return movieItems.slice(0, 6);
 }
 
 export async function getSimilarTitles(tmdbId: number, mediaType: MediaType): Promise<DiscoveryItem[]> {

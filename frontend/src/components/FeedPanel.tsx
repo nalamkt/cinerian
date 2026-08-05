@@ -1,10 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { demoDiscovery, demoFeed } from "../data/demoData";
 import { useMediaDetails } from "./MediaDetailsModal";
-import { createFeedComment, createFeedPost, fetchFeedComments, fetchFeedPosts, fetchFeedPostsByUsers } from "../lib/feed";
+import {
+  createFeedComment,
+  createFeedPost,
+  fetchFeedComments,
+  fetchFeedPosts,
+  fetchFeedPostsByUsers,
+  fetchUserMediaPosts
+} from "../lib/feed";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowingUserIds } from "../lib/follows";
-import { getTitleById } from "../lib/tmdb";
+import {
+  getNowPlayingTitles,
+  getSimilarTitles,
+  getTitleById,
+  getTrendingTitles,
+  getUpcomingTitles,
+  searchTitles
+} from "../lib/tmdb";
+import { fetchStoredReactions, REACTIONS_UPDATED_EVENT, type StoredReaction } from "../lib/reactions";
 import type { DiscoveryItem, FeedComment, FeedEntry } from "../types";
 
 function findMediaFromPost(body: string) {
@@ -25,6 +40,18 @@ type FeedPanelProps = {
 };
 
 type FeedMode = "discover" | "following";
+type EditorialRail = {
+  id: string;
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  items: DiscoveryItem[];
+};
+
+type TimelineItem =
+  | { type: "post"; entry: FeedEntry; media: DiscoveryItem | null }
+  | { type: "editorial"; rail: EditorialRail };
+
 const COMPOSER_WORD_LIMIT = 130;
 
 function countWords(text: string) {
@@ -90,6 +117,39 @@ function truncateOverview(text: string, maxLength = 220) {
   return `${safeSlice.trim()}...`;
 }
 
+function formatSidebarRelease(dateString?: string | null) {
+  if (!dateString) {
+    return "Muy pronto";
+  }
+
+  const [year, month, day] = dateString.split("-");
+  if (!year || !month || !day) {
+    return dateString;
+  }
+
+  const months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  return `${Number(day)} ${months[Number(month) - 1] ?? month}`;
+}
+
+function extractMediaSearchTitle(entry: FeedEntry) {
+  const parsedRating = entry.type === "rating" ? parseRatingPost(entry.body) : null;
+  if (parsedRating?.title) {
+    return parsedRating.title.trim();
+  }
+
+  const recommendationMatch = entry.body.match(/^Recomendo (.+?)(?: para| porque| y |\.|$)/i);
+  if (recommendationMatch?.[1]) {
+    return recommendationMatch[1].trim();
+  }
+
+  const watchlistMatch = entry.body.match(/^Guardo (.+?) en su Watchlist/i);
+  if (watchlistMatch?.[1]) {
+    return watchlistMatch[1].trim();
+  }
+
+  return null;
+}
+
 export function FeedPanel({
   userId,
   profile,
@@ -108,6 +168,9 @@ export function FeedPanel({
   const [submittingCommentFor, setSubmittingCommentFor] = useState<string | null>(null);
   const [activeFeedMode, setActiveFeedMode] = useState<FeedMode>("discover");
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [editorialRails, setEditorialRails] = useState<EditorialRail[]>([]);
+  const [recentMediaPosts, setRecentMediaPosts] = useState<FeedEntry[]>([]);
+  const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
   const [composerText, setComposerText] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
   const [composerMessage, setComposerMessage] = useState<string | null>(null);
@@ -154,6 +217,112 @@ export function FeedPanel({
     void loadFeed();
   }, [userId]);
 
+  useEffect(() => {
+    async function loadPersonalSignals() {
+      const [mediaPosts, reactions] = await Promise.allSettled([
+        fetchUserMediaPosts(userId),
+        fetchStoredReactions(userId)
+      ]);
+
+      if (mediaPosts.status === "fulfilled") {
+        setRecentMediaPosts(mediaPosts.value);
+      } else {
+        setRecentMediaPosts([]);
+      }
+
+      if (reactions.status === "fulfilled") {
+        setStoredReactions(reactions.value);
+      } else {
+        setStoredReactions([]);
+      }
+    }
+
+    function handleReactionsUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (detail?.userId && detail.userId !== userId) {
+        return;
+      }
+
+      void loadPersonalSignals();
+    }
+
+    void loadPersonalSignals();
+    window.addEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadEditorialRails() {
+      try {
+        const [trending, upcoming, nowPlaying] = await Promise.all([
+          getTrendingTitles(),
+          getUpcomingTitles(),
+          getNowPlayingTitles()
+        ]);
+
+        if (!isActive) {
+          return;
+        }
+
+        setEditorialRails([
+          {
+            id: "trending",
+            eyebrow: "Tendencias",
+            title: "Lo que esta prendido entre cinefilos",
+            subtitle: "Titulos que vienen levantando conversacion y clicks.",
+            items: trending.slice(0, 3)
+          },
+          {
+            id: "upcoming",
+            eyebrow: "Estrenos",
+            title: "Para agendar esta semana",
+            subtitle: "Peliculas que vienen entrando fuerte y vale la pena seguir.",
+            items: upcoming.slice(0, 3)
+          },
+          {
+            id: "now-playing",
+            eyebrow: "Ahora",
+            title: "Titulos que ya se estan moviendo",
+            subtitle: "Una mezcla de novedad, ruido y ganas de ver que sigue.",
+            items: nowPlaying.slice(0, 3)
+          }
+        ].filter((rail) => rail.items.length));
+      } catch {
+        if (!isActive) {
+          return;
+        }
+
+        setEditorialRails([
+          {
+            id: "fallback-trending",
+            eyebrow: "Tendencias",
+            title: "Lo que esta prendido entre cinefilos",
+            subtitle: "Arrancamos con una primera curaduria mientras TMDB responde.",
+            items: demoDiscovery.slice(0, 3)
+          },
+          {
+            id: "fallback-upcoming",
+            eyebrow: "Estrenos",
+            title: "Para agendar esta semana",
+            subtitle: "Titulos para ir poblando el home con mas contexto de cine.",
+            items: demoDiscovery.slice(3, 6)
+          }
+        ]);
+      }
+    }
+
+    void loadEditorialRails();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
   const discoverProfiles = useMemo(() => {
     return profiles.filter((entry) => entry.id !== userId).slice(0, 3);
   }, [profiles, userId]);
@@ -172,12 +341,132 @@ export function FeedPanel({
         const fallbackMedia = findMediaFromPost(entry.body);
         const key = entry.tmdbId && entry.mediaType ? `${entry.mediaType}-${entry.tmdbId}` : null;
         const mappedMedia = key ? mediaMap[key] : undefined;
+        const searchTitle = extractMediaSearchTitle(entry);
+        const searchedMedia = searchTitle ? mediaMap[`search-${searchTitle.toLowerCase()}`] : undefined;
         return {
           entry,
-          media: mappedMedia ?? fallbackMedia ?? null
+          media: mappedMedia ?? searchedMedia ?? fallbackMedia ?? null
         };
       }),
     [mediaMap, visibleEntries]
+  );
+
+  const [becauseYouWatchedRail, setBecauseYouWatchedRail] = useState<EditorialRail | null>(null);
+
+  const reactedKeySet = useMemo(
+    () => new Set(storedReactions.map((entry) => `${entry.mediaType}-${entry.tmdbId}`)),
+    [storedReactions]
+  );
+
+  const recentSignalPost = useMemo(
+    () => recentMediaPosts.find((entry) => entry.tmdbId && entry.mediaType) ?? null,
+    [recentMediaPosts]
+  );
+
+  const followingPostsWithMedia = useMemo(
+    () =>
+      followingEntries.map((entry) => {
+        const fallbackMedia = findMediaFromPost(entry.body);
+        const key = entry.tmdbId && entry.mediaType ? `${entry.mediaType}-${entry.tmdbId}` : null;
+        const mappedMedia = key ? mediaMap[key] : undefined;
+        const searchTitle = extractMediaSearchTitle(entry);
+        const searchedMedia = searchTitle ? mediaMap[`search-${searchTitle.toLowerCase()}`] : undefined;
+        return {
+          entry,
+          media: mappedMedia ?? searchedMedia ?? fallbackMedia ?? null
+        };
+      }),
+    [followingEntries, mediaMap]
+  );
+
+  const circleRail = useMemo<EditorialRail | null>(() => {
+    const counts = new Map<string, { media: DiscoveryItem; posts: number }>();
+
+    followingPostsWithMedia.forEach(({ media }) => {
+      if (!media) {
+        return;
+      }
+
+      const key = `${media.mediaType}-${media.id}`;
+      const current = counts.get(key);
+      if (current) {
+        current.posts += 1;
+      } else {
+        counts.set(key, { media, posts: 1 });
+      }
+    });
+
+    const items = [...counts.values()]
+      .sort((a, b) => b.posts - a.posts)
+      .map((entry) => entry.media)
+      .filter((item) => !reactedKeySet.has(`${item.mediaType}-${item.id}`))
+      .slice(0, 3);
+
+    if (!items.length) {
+      return null;
+    }
+
+    return {
+      id: "circle",
+      eyebrow: "Tu circulo",
+      title: "Lo que esta viendo tu gente",
+      subtitle: "Titulos que ya estan apareciendo entre las personas que seguis.",
+      items
+    };
+  }, [followingPostsWithMedia, reactedKeySet]);
+
+  const effectiveEditorialRails = useMemo(
+    () => [becauseYouWatchedRail, circleRail, ...editorialRails].filter(Boolean) as EditorialRail[],
+    [becauseYouWatchedRail, circleRail, editorialRails]
+  );
+
+  const discoverTimeline = useMemo<TimelineItem[]>(() => {
+    if (!postsWithMedia.length) {
+      return effectiveEditorialRails.map((rail) => ({ type: "editorial", rail }));
+    }
+
+    const nextTimeline: TimelineItem[] = [];
+    const railsQueue = [...effectiveEditorialRails];
+
+    postsWithMedia.forEach(({ entry, media }, index) => {
+      nextTimeline.push({
+        type: "post",
+        entry,
+        media
+      });
+
+      const shouldInjectRail = railsQueue.length > 0 && (index === 0 || (index + 1) % 3 === 0);
+      if (shouldInjectRail) {
+        const rail = railsQueue.shift();
+        if (rail) {
+          nextTimeline.push({
+            type: "editorial",
+            rail
+          });
+        }
+      }
+    });
+
+    railsQueue.forEach((rail) => {
+      nextTimeline.push({
+        type: "editorial",
+        rail
+      });
+    });
+
+    return nextTimeline;
+  }, [effectiveEditorialRails, postsWithMedia]);
+
+  const visibleTimeline = useMemo<TimelineItem[]>(
+    () =>
+      activeFeedMode === "discover"
+        ? discoverTimeline
+        : postsWithMedia.map(({ entry, media }) => ({
+            type: "post",
+            entry,
+            media
+          })),
+    [activeFeedMode, discoverTimeline, postsWithMedia]
   );
 
   const conversationItems = useMemo(() => {
@@ -210,6 +499,57 @@ export function FeedPanel({
 
     return [...counts.values()].sort((a, b) => b.posts - a.posts).slice(0, 3);
   }, [postsWithMedia]);
+
+  useEffect(() => {
+    if (!recentSignalPost?.tmdbId || !recentSignalPost.mediaType) {
+      setBecauseYouWatchedRail(null);
+      return;
+    }
+
+    let isActive = true;
+
+    void getTitleById(recentSignalPost.tmdbId, recentSignalPost.mediaType)
+      .then(async (sourceTitle) => {
+        if (!sourceTitle) {
+          if (isActive) {
+            setBecauseYouWatchedRail(null);
+          }
+          return;
+        }
+
+        const related = await getSimilarTitles(recentSignalPost.tmdbId!, recentSignalPost.mediaType!);
+
+        if (!isActive) {
+          return;
+        }
+
+        const items = related
+          .filter((item) => !reactedKeySet.has(`${item.mediaType}-${item.id}`))
+          .slice(0, 3);
+
+        if (!items.length) {
+          setBecauseYouWatchedRail(null);
+          return;
+        }
+
+        setBecauseYouWatchedRail({
+          id: "because-you-watched",
+          eyebrow: "Para vos",
+          title: `Porque viste ${sourceTitle.title}`,
+          subtitle: "Titulos cercanos a lo que ya marcaste en tu recorrido cineriano.",
+          items
+        });
+      })
+      .catch(() => {
+        if (isActive) {
+          setBecauseYouWatchedRail(null);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [reactedKeySet, recentSignalPost]);
 
   useEffect(() => {
     const ids = visibleEntries.map((entry) => entry.id);
@@ -265,7 +605,8 @@ export function FeedPanel({
   }, [activeFeedMode, highlightedPost, onHighlightHandled, visibleEntries]);
 
   useEffect(() => {
-    const targets = entries.filter((entry) => entry.tmdbId && entry.mediaType);
+    const sourceEntries = [...entries, ...followingEntries];
+    const targets = sourceEntries.filter((entry) => entry.tmdbId && entry.mediaType);
     const missing = targets.filter((entry) => !mediaMap[`${entry.mediaType}-${entry.tmdbId}`]);
 
     if (!missing.length) {
@@ -291,7 +632,62 @@ export function FeedPanel({
         return next;
       });
     });
-  }, [entries, mediaMap]);
+  }, [entries, followingEntries, mediaMap]);
+
+  useEffect(() => {
+    const sourceEntries = [...entries, ...followingEntries];
+    const unresolvedEntries = sourceEntries.filter((entry) => {
+      if (entry.tmdbId && entry.mediaType) {
+        return false;
+      }
+
+      if (findMediaFromPost(entry.body)) {
+        return false;
+      }
+
+      return Boolean(extractMediaSearchTitle(entry));
+    });
+
+    if (!unresolvedEntries.length) {
+      return;
+    }
+
+    const uniqueQueries = [
+      ...new Set(unresolvedEntries.map((entry) => extractMediaSearchTitle(entry)).filter(Boolean) as string[])
+    ];
+    const pendingQueries = uniqueQueries.filter((query) => !mediaMap[`search-${query.toLowerCase()}`]);
+
+    if (!pendingQueries.length) {
+      return;
+    }
+
+    void Promise.all(
+      pendingQueries.map(async (query) => {
+        const results = await searchTitles(query);
+        const lowered = query.toLowerCase();
+        const bestMatch =
+          results.find((item) => item.title.toLowerCase() === lowered) ??
+          results.find((item) => item.title.toLowerCase().includes(lowered)) ??
+          results[0] ??
+          null;
+
+        return {
+          key: `search-${lowered}`,
+          media: bestMatch
+        };
+      })
+    ).then((results) => {
+      setMediaMap((current) => {
+        const next = { ...current };
+        results.forEach((result) => {
+          if (result.media) {
+            next[result.key] = result.media;
+          }
+        });
+        return next;
+      });
+    });
+  }, [entries, followingEntries, mediaMap]);
 
   async function handlePublish() {
     const body = composerText.trim();
@@ -445,8 +841,52 @@ export function FeedPanel({
         </section>
 
         <div className="timeline-list">
-          {postsWithMedia.length ? (
-            postsWithMedia.map(({ entry, media }) => {
+          {visibleTimeline.length ? (
+            visibleTimeline.map((item) => {
+              if (item.type === "editorial") {
+                return (
+                  <article className="timeline-card timeline-card--editorial" key={item.rail.id}>
+                    <div className="timeline-editorial">
+                      <div className="timeline-editorial__header">
+                        <p className="section-eyebrow">{item.rail.eyebrow}</p>
+                        <h3>{item.rail.title}</h3>
+                        <p>{item.rail.subtitle}</p>
+                      </div>
+
+                      <div className="timeline-editorial__grid">
+                        {item.rail.items.map((editorialItem) => (
+                          <button
+                            type="button"
+                            key={`${item.rail.id}-${editorialItem.mediaType}-${editorialItem.id}`}
+                            className="timeline-editorial__item"
+                            onClick={() => openMediaDetails(editorialItem)}
+                          >
+                            <div className="detail-poster detail-poster--editorial">
+                              <img
+                                src={editorialItem.posterUrl}
+                                alt={editorialItem.title}
+                                className="timeline-editorial__poster"
+                              />
+                              <span className="detail-poster__hint" aria-hidden="true">
+                                Ver detalles
+                              </span>
+                            </div>
+                            <div className="timeline-editorial__copy">
+                              <span className="meta-line">
+                                {editorialItem.mediaType === "tv" ? "Serie" : "Pelicula"} • {editorialItem.year}
+                              </span>
+                              <strong>{editorialItem.title}</strong>
+                              <p>{truncateOverview(editorialItem.overview, 92)}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </article>
+                );
+              }
+
+              const { entry, media } = item;
               const parsedRating = entry.type === "rating" ? parseRatingPost(entry.body) : null;
               const comments = commentsMap[entry.id] ?? [];
               const isCommentsOpen = Boolean(expandedComments[entry.id]);
@@ -602,30 +1042,38 @@ export function FeedPanel({
 
       <aside className="feed-sidebar">
         <section className="sidebar-card">
-          <strong>Explorar Cinerianos</strong>
-
-          <div className="sidebar-users">
-            {discoverProfiles.length ? (
-              discoverProfiles.map((entry) => (
+          <p className="section-eyebrow">Estrena esta semana</p>
+          {editorialRails.find((rail) => rail.id === "upcoming")?.items?.length ? (
+            <div className="sidebar-premieres">
+              {(editorialRails.find((rail) => rail.id === "upcoming")?.items ?? []).map((item) => (
                 <button
-                  key={entry.id}
+                  key={item.id}
                   type="button"
-                  className="sidebar-user"
-                  onClick={() => onOpenUserProfile({ userId: entry.id, username: entry.username })}
+                  className="sidebar-premiere"
+                  onClick={() => openMediaDetails(item)}
                 >
-                  <span className="sidebar-user__avatar" aria-hidden="true">
-                    {entry.display_name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="sidebar-user__copy">
-                    <strong>{entry.display_name}</strong>
-                    <span>@{entry.username}</span>
-                  </span>
+                  <div className="detail-poster detail-poster--compact">
+                    <img
+                      src={item.posterUrl}
+                      alt={item.title}
+                      className="sidebar-media__poster sidebar-media__poster--interactive"
+                    />
+                    <span className="detail-poster__hint" aria-hidden="true">
+                      Ver detalles
+                    </span>
+                  </div>
+                  <div className="sidebar-premiere__copy">
+                    <strong>{item.title}</strong>
+                    <span>
+                      {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {formatSidebarRelease(item.releaseDate)}
+                    </span>
+                  </div>
                 </button>
-              ))
-            ) : (
-              <p className="sidebar-empty">Todavia no hay suficientes cinerianos para mostrar aca.</p>
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="sidebar-empty">No encontre estrenos nuevos entre hoy, 5 de agosto de 2026, y los proximos dias.</p>
+          )}
         </section>
 
         <section className="sidebar-card">
@@ -659,24 +1107,29 @@ export function FeedPanel({
         </section>
 
         <section className="sidebar-card">
-          <p className="section-eyebrow">Recomendados para vos</p>
-          <div className="poster-stack">
-            {demoDiscovery.map((item) => (
-              <div
-                key={item.id}
-                className="detail-poster detail-poster--stack"
-                onClick={() => openMediaDetails(item)}
-              >
-                <img
-                  src={item.posterUrl}
-                  alt={item.title}
-                  className="poster-stack__item poster-stack__item--interactive"
-                />
-                <span className="detail-poster__hint" aria-hidden="true">
-                  Ver detalles
-                </span>
-              </div>
-            ))}
+          <strong>Explorar Cinerianos</strong>
+
+          <div className="sidebar-users">
+            {discoverProfiles.length ? (
+              discoverProfiles.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className="sidebar-user"
+                  onClick={() => onOpenUserProfile({ userId: entry.id, username: entry.username })}
+                >
+                  <span className="sidebar-user__avatar" aria-hidden="true">
+                    {entry.display_name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="sidebar-user__copy">
+                    <strong>{entry.display_name}</strong>
+                    <span>@{entry.username}</span>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <p className="sidebar-empty">Todavia no hay suficientes cinerianos para mostrar aca.</p>
+            )}
           </div>
         </section>
       </aside>

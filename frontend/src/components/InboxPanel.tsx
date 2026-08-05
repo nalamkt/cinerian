@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { listProfiles, type Profile } from "../lib/auth";
-import { fetchFollowingUserIds } from "../lib/follows";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createFeedComment } from "../lib/feed";
 import {
   deleteCommentNotification,
   deleteInboxMessage,
@@ -26,17 +25,45 @@ type InboxCategory = "recommendations" | "comments";
 
 export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxPanelProps) {
   const { openMediaDetails } = useMediaDetails();
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 900px)").matches : false
+  );
   const [category, setCategory] = useState<InboxCategory>("recommendations");
   const [mode, setMode] = useState<InboxMode>("received");
   const [received, setReceived] = useState<RecommendationMessage[]>([]);
   const [sent, setSent] = useState<RecommendationMessage[]>([]);
   const [commentNotifications, setCommentNotifications] = useState<CommentInboxNotification[]>([]);
-  const [followingProfiles, setFollowingProfiles] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
-  const [replyingMessage, setReplyingMessage] = useState<RecommendationMessage | null>(null);
-  const [expandedThreads, setExpandedThreads] = useState<string[]>([]);
+  const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [commentReplyDraft, setCommentReplyDraft] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [swipedMessageId, setSwipedMessageId] = useState<string | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const swipeRef = useRef<{
+    id: string | null;
+    startX: number;
+    dragging: boolean;
+  }>({ id: null, startX: 0, dragging: false });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 900px)");
+    const handleChange = (event: MediaQueryListEvent) => setIsMobile(event.matches);
+
+    setIsMobile(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+
+    return () => {
+      mediaQuery.removeEventListener("change", handleChange);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -45,12 +72,10 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
       setIsLoading(true);
       setErrorMessage(null);
 
-      const [receivedResult, sentResult, commentsResult, followingResult, profilesResult] = await Promise.allSettled([
+      const [receivedResult, sentResult, commentsResult] = await Promise.allSettled([
         fetchReceivedMessages(userId),
         fetchSentMessages(userId),
-        fetchCommentNotifications(userId),
-        fetchFollowingUserIds(userId),
-        listProfiles()
+        fetchCommentNotifications(userId)
       ]);
 
       if (!isMounted) {
@@ -73,14 +98,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
         setCommentNotifications(commentsResult.value);
       } else {
         setCommentNotifications([]);
-      }
-
-      if (followingResult.status === "fulfilled" && profilesResult.status === "fulfilled") {
-        setFollowingProfiles(
-          profilesResult.value.filter((profile) => followingResult.value.includes(profile.id))
-        );
-      } else {
-        setFollowingProfiles([]);
       }
 
       const inboxFailed =
@@ -123,22 +140,154 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     [commentNotifications]
   );
 
-  async function handleToggleRead(message: RecommendationMessage) {
-    const nextRead = !message.readAt;
+  const activeMessage = useMemo(
+    () => visibleMessages.find((message) => message.id === activeMessageId) ?? null,
+    [activeMessageId, visibleMessages]
+  );
 
+  const activeComment = useMemo(
+    () => commentNotifications.find((notification) => notification.id === activeCommentId) ?? null,
+    [activeCommentId, commentNotifications]
+  );
+
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
+  const filteredMessages = useMemo(() => {
+    if (!normalizedSearchQuery) {
+      return visibleMessages;
+    }
+
+    return visibleMessages.filter((message) => {
+      const counterpart =
+        mode === "received" ? message.senderProfile?.display_name : message.recipientProfile?.display_name;
+      const preview =
+        message.note?.trim() ||
+        message.replies?.[message.replies.length - 1]?.body ||
+        message.item.title;
+
+      const haystack = [
+        counterpart ?? "",
+        message.item.title,
+        preview,
+        message.senderProfile?.username ?? "",
+        message.recipientProfile?.username ?? ""
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(normalizedSearchQuery);
+    });
+  }, [mode, normalizedSearchQuery, visibleMessages]);
+
+  const filteredCommentNotifications = useMemo(() => {
+    if (!normalizedSearchQuery) {
+      return commentNotifications;
+    }
+
+    return commentNotifications.filter((notification) => {
+      const haystack = [
+        notification.actorProfile?.display_name ?? "",
+        notification.actorProfile?.username ?? "",
+        notification.body,
+        notification.postBody,
+        notification.item?.title ?? ""
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(normalizedSearchQuery);
+    });
+  }, [commentNotifications, normalizedSearchQuery]);
+
+  const isShowingMobileThread =
+    isMobile &&
+    ((category === "recommendations" && Boolean(activeMessage)) ||
+      (category === "comments" && Boolean(activeComment)));
+
+  useEffect(() => {
+    if (category !== "recommendations") {
+      return;
+    }
+
+    if (!filteredMessages.length || (activeMessageId && !filteredMessages.some((message) => message.id === activeMessageId))) {
+      setActiveMessageId(null);
+    }
+  }, [activeMessageId, category, filteredMessages]);
+
+  useEffect(() => {
+    if (category !== "comments") {
+      return;
+    }
+
+    if (
+      !filteredCommentNotifications.length ||
+      (activeCommentId &&
+        !filteredCommentNotifications.some((notification) => notification.id === activeCommentId))
+    ) {
+      setActiveCommentId(null);
+    }
+  }, [activeCommentId, category, filteredCommentNotifications]);
+
+  useEffect(() => {
+    if (!activeMessage) {
+      setReplyDraft("");
+    }
+  }, [activeMessage?.id]);
+
+  useEffect(() => {
+    if (!activeMessage || mode !== "received" || activeMessage.readAt) {
+      return;
+    }
+
+    void handleSetReadState(activeMessage, true);
+  }, [activeMessage, mode]);
+
+  useEffect(() => {
+    if (!activeComment) {
+      setCommentReplyDraft("");
+    }
+  }, [activeComment?.id]);
+
+  useEffect(() => {
+    setActiveMessageId(null);
+    setActiveCommentId(null);
+  }, [category, mode, isMobile]);
+
+  useEffect(() => {
+    setSearchQuery("");
+  }, [category, mode]);
+
+  useEffect(() => {
+    setSwipedMessageId(null);
+    setSwipeOffset(0);
+  }, [activeMessageId, category, mode, isMobile]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    document.body.classList.toggle("inbox-mobile-thread-open", isShowingMobileThread);
+
+    return () => {
+      document.body.classList.remove("inbox-mobile-thread-open");
+    };
+  }, [isShowingMobileThread]);
+
+  async function handleSetReadState(message: RecommendationMessage, read: boolean) {
     try {
       setPendingMessageId(message.id);
       await setInboxMessageReadState({
         messageId: message.id,
         userId,
-        read: nextRead
+        read
       });
       setReceived((current) =>
         current.map((entry) =>
           entry.id === message.id
             ? {
                 ...entry,
-                readAt: nextRead ? new Date().toISOString() : null
+                readAt: read ? new Date().toISOString() : null
               }
             : entry
         )
@@ -148,6 +297,10 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     } finally {
       setPendingMessageId(null);
     }
+  }
+
+  async function handleToggleRead(message: RecommendationMessage) {
+    await handleSetReadState(message, !message.readAt);
   }
 
   async function handleDelete(message: RecommendationMessage) {
@@ -163,6 +316,59 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     } finally {
       setPendingMessageId(null);
     }
+  }
+
+  function beginSwipe(messageId: string, clientX: number) {
+    if (!isMobile) {
+      return;
+    }
+
+    swipeRef.current = {
+      id: messageId,
+      startX: clientX,
+      dragging: true
+    };
+    setSwipedMessageId(messageId);
+    setSwipeOffset(0);
+  }
+
+  function moveSwipe(clientX: number) {
+    if (!swipeRef.current.dragging || !swipeRef.current.id) {
+      return;
+    }
+
+    const delta = clientX - swipeRef.current.startX;
+    const clamped = Math.max(-104, Math.min(104, delta));
+    setSwipeOffset(clamped);
+  }
+
+  function endSwipe() {
+    if (!swipeRef.current.id) {
+      return;
+    }
+
+    const finalOffset = swipeOffset > 44 ? 92 : swipeOffset < -44 ? -92 : 0;
+    setSwipeOffset(finalOffset);
+
+    if (finalOffset === 0) {
+      setSwipedMessageId(null);
+    }
+
+    swipeRef.current = {
+      id: null,
+      startX: 0,
+      dragging: false
+    };
+  }
+
+  function closeSwipeActions() {
+    setSwipedMessageId(null);
+    setSwipeOffset(0);
+    swipeRef.current = {
+      id: null,
+      startX: 0,
+      dragging: false
+    };
   }
 
   async function handleToggleCommentRead(notification: CommentInboxNotification) {
@@ -239,26 +445,23 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     });
   }
 
-  async function handleReplySubmit(body: string) {
-    if (!replyingMessage) {
+  async function handleReplySubmit(message: RecommendationMessage, body: string) {
+    if (!body.trim()) {
       return;
     }
 
     const recipientId =
-      userId === replyingMessage.senderId ? replyingMessage.recipientId : replyingMessage.senderId;
+      userId === message.senderId ? message.recipientId : message.senderId;
 
     try {
-      setPendingMessageId(replyingMessage.id);
-      setExpandedThreads((current) =>
-        current.includes(replyingMessage.id) ? current : [...current, replyingMessage.id]
-      );
+      setPendingMessageId(message.id);
       await sendRecommendationReply({
-        messageId: replyingMessage.id,
+        messageId: message.id,
         senderId: userId,
         recipientId,
         body
       });
-      setReplyingMessage(null);
+      setReplyDraft("");
     } catch {
       setErrorMessage("No pude mandar la respuesta.");
     } finally {
@@ -266,260 +469,419 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     }
   }
 
-  function toggleThread(messageId: string) {
-    setExpandedThreads((current) =>
-      current.includes(messageId)
-        ? current.filter((entry) => entry !== messageId)
-        : [...current, messageId]
+  async function handleCommentReplySubmit(notification: CommentInboxNotification, body: string) {
+    if (!body.trim()) {
+      return;
+    }
+
+    try {
+      setPendingMessageId(notification.id);
+      await createFeedComment({
+        postId: notification.postId,
+        userId,
+        body
+      });
+      setCommentReplyDraft("");
+      await openCommentNotification(notification, { focusCommentInput: true });
+    } catch {
+      setErrorMessage("No pude mandar tu respuesta.");
+    } finally {
+      setPendingMessageId(null);
+    }
+  }
+
+  function renderMessageListItem(message: RecommendationMessage) {
+    const counterpart = mode === "received" ? message.senderProfile : message.recipientProfile;
+    const isUnread = mode === "received" && !message.readAt;
+    const isSwiped = swipedMessageId === message.id;
+    const currentOffset = isSwiped ? swipeOffset : 0;
+    const preview =
+      message.note?.trim() ||
+      (message.replies?.length
+        ? message.replies[message.replies.length - 1]?.body
+        : mode === "received"
+          ? "Te la recomendaron directo por Cinerian."
+          : "La mandaste sin mensaje extra.");
+
+    return (
+      <div
+        key={message.id}
+        className={`inbox-thread-swipe ${isSwiped && currentOffset !== 0 ? "is-open" : ""} ${
+          currentOffset > 0 ? "is-revealing-delete" : ""
+        } ${currentOffset < 0 ? "is-revealing-read" : ""}`}
+      >
+        <button
+          type="button"
+          className="inbox-thread-swipe__action inbox-thread-swipe__action--delete"
+          onClick={() => {
+            closeSwipeActions();
+            void handleDelete(message);
+          }}
+        >
+          <span aria-hidden="true">✕</span>
+          <span>Eliminar</span>
+        </button>
+        <button
+          type="button"
+          className="inbox-thread-swipe__action inbox-thread-swipe__action--read"
+          onClick={() => {
+            closeSwipeActions();
+            void handleToggleRead(message);
+          }}
+        >
+          <span aria-hidden="true">{message.readAt ? "◐" : "◉"}</span>
+          <span>{message.readAt ? "No leído" : "Leído"}</span>
+        </button>
+        <button
+          type="button"
+          className={`inbox-thread-item ${isUnread ? "is-unread" : ""} ${
+            activeMessage?.id === message.id ? "is-active" : ""
+          }`}
+          style={isMobile ? { transform: `translateX(${currentOffset}px)` } : undefined}
+          onTouchStart={(event) => beginSwipe(message.id, event.touches[0]?.clientX ?? 0)}
+          onTouchMove={(event) => moveSwipe(event.touches[0]?.clientX ?? 0)}
+          onTouchEnd={endSwipe}
+          onTouchCancel={endSwipe}
+          onClick={() => {
+            if (isSwiped && currentOffset !== 0) {
+              closeSwipeActions();
+              return;
+            }
+            setActiveMessageId(message.id);
+          }}
+        >
+          <img src={message.item.posterUrl} alt={message.item.title} className="inbox-thread-item__poster" />
+          <div className="inbox-thread-item__copy">
+          <div className="inbox-thread-item__topline">
+            <strong>{message.item.title}</strong>
+            <span>
+              {message.createdAtLabel}
+              {mode === "received" && isUnread ? <span className="inbox-thread-item__dot" aria-hidden="true" /> : null}
+            </span>
+          </div>
+          <div className="inbox-thread-item__identity">
+            <span>
+              {mode === "received" ? "De" : "Para"} @{counterpart?.username ?? "cineriano"}
+            </span>
+          </div>
+          <p>{preview}</p>
+        </div>
+      </button>
+      </div>
     );
   }
 
-  function renderMessage(message: RecommendationMessage) {
+  function renderActiveMessage(message: RecommendationMessage) {
     const counterpart = mode === "received" ? message.senderProfile : message.recipientProfile;
-    const directionLabel = mode === "received" ? "Te la mando" : "Se la mandaste a";
-    const isUnread = mode === "received" && !message.readAt;
     const isPending = pendingMessageId === message.id;
-    const hasReplies = Boolean(message.replies?.length);
-    const isExpanded = expandedThreads.includes(message.id);
+    const conversation = [
+      {
+        id: `${message.id}-root`,
+        senderId: message.senderId,
+        author: message.senderProfile?.display_name ?? "Cineriano",
+        createdAtLabel: message.createdAtLabel,
+        body:
+          message.note?.trim() ||
+          (mode === "received"
+            ? "Te recomendó este título por Cinerian."
+            : "Le mandaste esta recomendación por Cinerian.")
+      },
+      ...(message.replies ?? []).map((reply) => ({
+        id: reply.id,
+        senderId: reply.senderId,
+        author: reply.senderProfile?.display_name ?? "Cineriano",
+        createdAtLabel: reply.createdAtLabel,
+        body: reply.body
+      }))
+    ];
 
     return (
-      <article className={`inbox-card ${isUnread ? "is-unread" : ""}`} key={message.id}>
-        <div className="inbox-card__topline">
-          <div>
-            <strong>{directionLabel}</strong>{" "}
+      <article className="inbox-thread-view">
+        <div className="inbox-thread-view__summary">
+          {isMobile ? (
             <button
               type="button"
-              className="timeline-card__author"
-              onClick={() =>
-                counterpart
-                  ? onOpenUserProfile({ userId: counterpart.id, username: counterpart.username })
-                  : undefined
-              }
+              className="inbox-thread-view__back"
+              onClick={() => setActiveMessageId(null)}
             >
-              {counterpart?.display_name ?? "Cineriano"}
+              <span aria-hidden="true">←</span>
+              <span>Volver</span>
             </button>
-          </div>
-          <span>{message.createdAtLabel}</span>
-        </div>
-
-        <div className="inbox-card__body">
-          <div
-            className="timeline-card__media timeline-card__media--interactive inbox-card__media"
-            onClick={() => openMediaDetails(message.item)}
-          >
-            <div className="detail-poster">
-              <img src={message.item.posterUrl} alt={message.item.title} className="timeline-card__poster" />
-              <span className="detail-poster__hint" aria-hidden="true">
-                Ver detalles
-              </span>
-            </div>
-            <div className="timeline-card__media-copy">
-              <p className="meta-line">
-                {message.item.mediaType === "tv" ? "Serie" : "Pelicula"} • {message.item.year}
-              </p>
-              <h3>{message.item.title}</h3>
-              <p className="timeline-card__note">
-                {message.note?.trim()
-                  ? `"${message.note.trim()}"`
-                  : mode === "received"
-                    ? "Te la recomendaron directo por Cinerian."
-                    : "La mandaste sin mensaje extra."}
-              </p>
-            </div>
-          </div>
-
-          {mode === "received" ? (
-            <div className="inbox-card__actions">
-              <button
-                type="button"
-                className="inbox-card__action-button"
-                disabled={isPending}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void handleToggleRead(message);
-                }}
-              >
-                <span className="inbox-card__action-icon" aria-hidden="true">
-                  {message.readAt ? "◐" : "◉"}
-                </span>
-                <span>{message.readAt ? "No leido" : "Leido"}</span>
-              </button>
-              <button
-                type="button"
-                className="inbox-card__action-button"
-                disabled={isPending}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setExpandedThreads((current) =>
-                    current.includes(message.id) ? current : [...current, message.id]
-                  );
-                  setReplyingMessage(message);
-                }}
-              >
-                <span className="inbox-card__action-icon" aria-hidden="true">
-                  ↩
-                </span>
-                <span>Responder</span>
-              </button>
-              <button
-                type="button"
-                className="inbox-card__action-button inbox-card__action-button--danger"
-                disabled={isPending}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void handleDelete(message);
-                }}
-              >
-                <span className="inbox-card__action-icon" aria-hidden="true">
-                  ✕
-                </span>
-                <span>Eliminar</span>
-              </button>
-            </div>
           ) : null}
+          <div className="inbox-thread-view__header">
+            <div className="inbox-thread-view__header-copy">
+              <span className="inbox-thread-view__kicker">
+                {message.item.mediaType === "movie" ? "PELICULA" : "SERIE"} • {message.item.year}
+              </span>
+              <strong className="inbox-thread-view__title">{message.item.title}</strong>
+              <div className="inbox-thread-view__identity">
+                <span className="sidebar-user__avatar inbox-thread-view__avatar" aria-hidden="true">
+                  {(counterpart?.display_name ?? "C").slice(0, 1).toUpperCase()}
+                </span>
+                <div className="inbox-thread-view__identity-copy">
+                  <button
+                    type="button"
+                    className="timeline-card__author inbox-thread-view__author"
+                    onClick={() =>
+                      counterpart
+                        ? onOpenUserProfile({ userId: counterpart.id, username: counterpart.username })
+                        : undefined
+                    }
+                  >
+                    {counterpart?.display_name ?? "Cineriano"}
+                  </button>
+                  <span>
+                    {mode === "received" ? "Te la mandó" : "Se la mandaste"} • @{counterpart?.username ?? "cineriano"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="inbox-thread-view__header-side">
+              <div className="inbox-thread-view__actions inbox-thread-view__actions--header">
+                {!isMobile && mode === "received" ? (
+                  <button
+                    type="button"
+                    className="inbox-card__action-button"
+                    disabled={isPending}
+                    onClick={() => void handleToggleRead(message)}
+                  >
+                    <span className="inbox-card__action-icon" aria-hidden="true">
+                      {message.readAt ? "◐" : "◉"}
+                    </span>
+                    <span>{message.readAt ? "No leído" : "Marcar leído"}</span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="inbox-card__action-button"
+                  onClick={() => openMediaDetails(message.item)}
+                >
+                  <span className="inbox-card__action-icon" aria-hidden="true">
+                    ↗
+                  </span>
+                  <span>Ver título</span>
+                </button>
+                {!isMobile ? (
+                  <button
+                    type="button"
+                    className="inbox-card__action-button inbox-card__action-button--danger"
+                    disabled={isPending}
+                    onClick={() => void handleDelete(message)}
+                  >
+                    <span className="inbox-card__action-icon" aria-hidden="true">
+                      ✕
+                    </span>
+                    <span>Eliminar</span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
         </div>
 
-        {hasReplies ? (
-          <>
+        <div className="inbox-thread-view__messages">
+          {conversation.map((entry) => {
+            const isOwn = entry.senderId === userId;
+            return (
+              <article
+                key={entry.id}
+                className={`inbox-thread-bubble ${isOwn ? "is-own" : "is-other"}`}
+              >
+                <div className="inbox-thread-bubble__topline">
+                  <strong>{entry.author}</strong>
+                  <span>{entry.createdAtLabel}</span>
+                </div>
+                <p>{entry.body}</p>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="inbox-thread-view__composer">
+          <div className="inbox-thread-view__composer-row">
+            <input
+              id="inbox-reply-composer"
+              type="text"
+              value={replyDraft}
+              onChange={(event) => setReplyDraft(event.target.value)}
+              placeholder='Ej: "ya la vi" o "me la guardo para el finde"'
+            />
             <button
               type="button"
-              className="inbox-card__thread-toggle"
-              onClick={() => toggleThread(message.id)}
+              className="primary-button"
+              disabled={isPending || !replyDraft.trim()}
+              onClick={() => void handleReplySubmit(message, replyDraft)}
             >
-              <span>{isExpanded ? "Ocultar respuestas" : "Ver respuestas"}</span>
-              <strong>{message.replies?.length}</strong>
+              {isPending ? "Enviando..." : "Enviar"}
             </button>
-
-            {isExpanded ? (
-              <div className="inbox-card__thread">
-                {message.replies?.map((reply) => {
-                  const isOwnReply = reply.senderId === userId;
-                  return (
-                    <article
-                      key={reply.id}
-                      className={`inbox-card__reply ${isOwnReply ? "is-own" : ""}`}
-                    >
-                      <div className="inbox-card__reply-topline">
-                        <strong>{reply.senderProfile?.display_name ?? "Cineriano"}</strong>
-                        <span>{reply.createdAtLabel}</span>
-                      </div>
-                      <p>{reply.body}</p>
-                    </article>
-                  );
-                })}
-              </div>
-            ) : null}
-          </>
-        ) : null}
+          </div>
+        </div>
       </article>
     );
   }
 
-  function renderCommentNotification(notification: CommentInboxNotification) {
+  function renderCommentNotificationListItem(notification: CommentInboxNotification) {
     const isUnread = !notification.readAt;
+    const postPreview =
+      notification.body.length > 90 ? `${notification.body.slice(0, 90).trimEnd()}...` : notification.body;
+
+    return (
+      <button
+        type="button"
+        className={`inbox-thread-item ${isUnread ? "is-unread" : ""} ${
+          activeComment?.id === notification.id ? "is-active" : ""
+        }`}
+        key={notification.id}
+        onClick={() => setActiveCommentId(notification.id)}
+      >
+        <span className="sidebar-user__avatar inbox-thread-item__avatar" aria-hidden="true">
+          {(notification.actorProfile?.display_name ?? "C").slice(0, 1).toUpperCase()}
+        </span>
+        <div className="inbox-thread-item__copy">
+          <div className="inbox-thread-item__topline">
+            <strong>{notification.actorProfile?.display_name ?? "Cineriano"}</strong>
+            <span>{notification.createdAtLabel}</span>
+          </div>
+          <div className="inbox-thread-item__meta">
+            <span className="inbox-thread-item__title">Comentario nuevo</span>
+            {isUnread ? <span className="inbox-thread-item__dot" aria-hidden="true" /> : null}
+          </div>
+          <p>{`"${postPreview}"`}</p>
+        </div>
+      </button>
+    );
+  }
+
+  function renderActiveComment(notification: CommentInboxNotification) {
     const isPending = pendingMessageId === notification.id;
     const postPreview =
-      notification.postBody.length > 180
-        ? `${notification.postBody.slice(0, 180).trimEnd()}...`
+      notification.postBody.length > 220
+        ? `${notification.postBody.slice(0, 220).trimEnd()}...`
         : notification.postBody;
 
     return (
-      <article className={`inbox-card ${isUnread ? "is-unread" : ""}`} key={notification.id}>
-        <div className="inbox-card__topline">
-          <div>
-            <strong>Comentó tu publicación</strong>{" "}
+      <article className="inbox-thread-view">
+        <div className="inbox-thread-view__summary">
+          {isMobile ? (
             <button
               type="button"
-              className="timeline-card__author"
-              onClick={() =>
-                notification.actorProfile
-                  ? onOpenUserProfile({
-                      userId: notification.actorProfile.id,
-                      username: notification.actorProfile.username
-                    })
-                  : undefined
-              }
+              className="inbox-thread-view__back"
+              onClick={() => setActiveCommentId(null)}
             >
-              {notification.actorProfile?.display_name ?? "Cineriano"}
+              <span aria-hidden="true">←</span>
+              <span>Volver</span>
             </button>
+          ) : null}
+          <div className="inbox-thread-view__header">
+            <div className="inbox-thread-view__header-copy">
+              <div className="inbox-thread-view__identity">
+                <span className="sidebar-user__avatar inbox-thread-view__avatar" aria-hidden="true">
+                  {(notification.actorProfile?.display_name ?? "C").slice(0, 1).toUpperCase()}
+                </span>
+                <div className="inbox-thread-view__identity-copy">
+                  <button
+                    type="button"
+                    className="timeline-card__author inbox-thread-view__author"
+                    onClick={() =>
+                      notification.actorProfile
+                        ? onOpenUserProfile({
+                            userId: notification.actorProfile.id,
+                            username: notification.actorProfile.username
+                          })
+                        : undefined
+                    }
+                  >
+                    {notification.actorProfile?.display_name ?? "Cineriano"}
+                  </button>
+                  <span>@{notification.actorProfile?.username ?? "cineriano"}</span>
+                </div>
+              </div>
+              <p>Comentó una de tus publicaciones</p>
+            </div>
+            <div className="inbox-thread-view__header-side">
+              <div className="inbox-thread-view__actions inbox-thread-view__actions--header">
+                <button
+                  type="button"
+                  className="inbox-card__action-button"
+                  onClick={() => void openCommentNotification(notification)}
+                >
+                  <span className="inbox-card__action-icon" aria-hidden="true">
+                    ↗
+                  </span>
+                  <span>Ver post</span>
+                </button>
+                <button
+                  type="button"
+                  className="inbox-card__action-button"
+                  onClick={() => (notification.item ? openMediaDetails(notification.item) : void openCommentNotification(notification))}
+                >
+                  <span className="inbox-card__action-icon" aria-hidden="true">
+                    ↗
+                  </span>
+                  <span>Ver título</span>
+                </button>
+                <button
+                  type="button"
+                  className="inbox-card__action-button"
+                  disabled={isPending}
+                  onClick={() => void handleToggleCommentRead(notification)}
+                >
+                  <span className="inbox-card__action-icon" aria-hidden="true">
+                    {notification.readAt ? "◐" : "◉"}
+                  </span>
+                  <span>{notification.readAt ? "No leído" : "Marcar leído"}</span>
+                </button>
+                <button
+                  type="button"
+                  className="inbox-card__action-button inbox-card__action-button--danger"
+                  disabled={isPending}
+                  onClick={() => void handleDeleteComment(notification)}
+                >
+                  <span className="inbox-card__action-icon" aria-hidden="true">
+                    ✕
+                  </span>
+                  <span>Eliminar</span>
+                </button>
+              </div>
+            </div>
           </div>
-          <span>{notification.createdAtLabel}</span>
+
         </div>
 
-        <div className="inbox-card__body">
-          {notification.item ? (
-            <div
-              className="timeline-card__media timeline-card__media--interactive inbox-card__media"
-              onClick={() => openMediaDetails(notification.item!)}
-            >
-              <div className="detail-poster">
-                <img
-                  src={notification.item.posterUrl}
-                  alt={notification.item.title}
-                  className="timeline-card__poster"
-                />
-                <span className="detail-poster__hint" aria-hidden="true">
-                  Ver detalles
-                </span>
-              </div>
-              <div className="timeline-card__media-copy">
-                <p className="meta-line">
-                  {notification.item.mediaType === "tv" ? "Serie" : "Pelicula"} • {notification.item.year}
-                </p>
-                <h3>{notification.item.title}</h3>
-                <p className="inbox-card__comment-quote">“{notification.body}”</p>
-                <p className="inbox-card__post-preview">{postPreview}</p>
-              </div>
+        <div className="inbox-thread-view__messages">
+          <article className="inbox-thread-bubble is-own">
+            <div className="inbox-thread-bubble__topline">
+              <strong>Tu publicación</strong>
             </div>
-          ) : (
-            <div className="inbox-card__comment-fallback">
-              <p className="inbox-card__comment-quote">“{notification.body}”</p>
-              <p className="inbox-card__post-preview">{postPreview}</p>
-            </div>
-          )}
+            <p>{postPreview}</p>
+          </article>
 
-          <div className="inbox-card__actions">
+          <article className="inbox-thread-bubble is-other">
+            <div className="inbox-thread-bubble__topline">
+              <strong>{notification.actorProfile?.display_name ?? "Cineriano"}</strong>
+              <span>{notification.createdAtLabel}</span>
+            </div>
+            <p>{notification.body}</p>
+          </article>
+        </div>
+
+        <div className="inbox-thread-view__composer">
+          <div className="inbox-thread-view__composer-row">
+            <input
+              id="inbox-comment-composer"
+              type="text"
+              value={commentReplyDraft}
+              onChange={(event) => setCommentReplyDraft(event.target.value)}
+              placeholder='Ej: "yo también la vi" o "banco fuerte esta recomendación"'
+            />
             <button
               type="button"
-              className="inbox-card__action-button"
-              onClick={() => void openCommentNotification(notification)}
+              className="primary-button"
+              disabled={isPending || !commentReplyDraft.trim()}
+              onClick={() => void handleCommentReplySubmit(notification, commentReplyDraft)}
             >
-              <span className="inbox-card__action-icon" aria-hidden="true">
-                ↗
-              </span>
-              <span>Ver post</span>
-            </button>
-            <button
-              type="button"
-              className="inbox-card__action-button"
-              onClick={() => void openCommentNotification(notification, { focusCommentInput: true })}
-            >
-              <span className="inbox-card__action-icon" aria-hidden="true">
-                ↩
-              </span>
-              <span>Responder</span>
-            </button>
-            <button
-              type="button"
-              className="inbox-card__action-button"
-              disabled={isPending}
-              onClick={() => void handleToggleCommentRead(notification)}
-            >
-              <span className="inbox-card__action-icon" aria-hidden="true">
-                {notification.readAt ? "◐" : "◉"}
-              </span>
-              <span>{notification.readAt ? "No leido" : "Leido"}</span>
-            </button>
-            <button
-              type="button"
-              className="inbox-card__action-button inbox-card__action-button--danger"
-              disabled={isPending}
-              onClick={() => void handleDeleteComment(notification)}
-            >
-              <span className="inbox-card__action-icon" aria-hidden="true">
-                ✕
-              </span>
-              <span>Eliminar</span>
+              {isPending ? "Enviando..." : "Enviar"}
             </button>
           </div>
         </div>
@@ -528,53 +890,77 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   }
 
   return (
-    <section className="feed-shell">
-      <div className="feed-main">
-        <header className="feed-header">
-          <button
-            type="button"
-            className={`feed-header__tab ${category === "recommendations" ? "is-active" : ""}`}
-            onClick={() => setCategory("recommendations")}
-          >
-            Recomendaciones
-          </button>
-          <button
-            type="button"
-            className={`feed-header__tab ${category === "comments" ? "is-active" : ""}`}
-            onClick={() => setCategory("comments")}
-          >
-            Comentarios
-          </button>
-        </header>
+    <section className={`feed-shell inbox-shell ${isShowingMobileThread ? "is-thread-open-mobile" : ""}`}>
+      <div className="feed-main inbox-main">
+        {!isShowingMobileThread ? (
+          <>
+            <header className="feed-header">
+              <button
+                type="button"
+                className={`feed-header__tab ${category === "recommendations" ? "is-active" : ""}`}
+                onClick={() => setCategory("recommendations")}
+              >
+                Recomendaciones
+              </button>
+              <button
+                type="button"
+                className={`feed-header__tab ${category === "comments" ? "is-active" : ""}`}
+                onClick={() => setCategory("comments")}
+              >
+                Comentarios
+              </button>
+            </header>
 
-        {category === "recommendations" ? (
-          <div className="inbox-subtabs">
-            <button
-              type="button"
-              className={`inbox-subtabs__button ${mode === "received" ? "is-active" : ""}`}
-              onClick={() => setMode("received")}
-            >
-              Recibidas
-            </button>
-            <button
-              type="button"
-              className={`inbox-subtabs__button ${mode === "sent" ? "is-active" : ""}`}
-              onClick={() => setMode("sent")}
-            >
-              Enviadas
-            </button>
-          </div>
-        ) : (
-          <div className="inbox-subtabs inbox-subtabs--summary">
-            <span className="inbox-subtabs__summary">
-              {hasUnreadComments
-                ? "Tenés comentarios nuevos en tus publicaciones"
-                : "Tus comentarios recibidos aparecen acá"}
-            </span>
-          </div>
-        )}
+            {category === "recommendations" ? (
+              <div className="inbox-subtabs">
+                <button
+                  type="button"
+                  className={`inbox-subtabs__button ${mode === "received" ? "is-active" : ""}`}
+                  onClick={() => setMode("received")}
+                >
+                  Recibidas
+                </button>
+                <button
+                  type="button"
+                  className={`inbox-subtabs__button ${mode === "sent" ? "is-active" : ""}`}
+                  onClick={() => setMode("sent")}
+                >
+                  Enviadas
+                </button>
+              </div>
+            ) : (
+              <div className="inbox-subtabs inbox-subtabs--summary">
+                <span className="inbox-subtabs__summary">
+                  {hasUnreadComments
+                    ? "Tenés comentarios nuevos en tus publicaciones"
+                    : "Tus comentarios recibidos aparecen acá"}
+                </span>
+              </div>
+            )}
 
-        <div className="timeline-list">
+          <div className="inbox-mobile-toolbar">
+            <div className="inbox-mobile-toolbar__copy">
+              <strong>{category === "recommendations" ? "Inbox cineriano" : "Comentarios"}</strong>
+              <span>
+                {category === "recommendations"
+                  ? "Busca recomendaciones y respuestas"
+                  : "Busca actividad sobre tus publicaciones"}
+              </span>
+            </div>
+            <label className="inbox-search">
+              <span aria-hidden="true">⌕</span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={category === "recommendations" ? "Buscar conversaciones" : "Buscar comentarios"}
+              />
+            </label>
+            </div>
+          </>
+        ) : null}
+
+        <div className={`inbox-body ${isShowingMobileThread ? "is-mobile-thread-open" : ""}`}>
           {errorMessage ? <div className="timeline-empty">{errorMessage}</div> : null}
           {isLoading ? (
             <div className="timeline-empty">
@@ -583,123 +969,51 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
           ) : null}
           {!isLoading && !errorMessage ? (
             category === "recommendations" ? (
-              visibleMessages.length ? (
-                visibleMessages.map(renderMessage)
+              filteredMessages.length ? (
+                <div className={`inbox-layout ${isMobile ? "is-mobile" : ""}`}>
+                  <div className={`inbox-thread-list ${isShowingMobileThread ? "is-hidden-mobile" : ""}`}>
+                    {filteredMessages.map(renderMessageListItem)}
+                  </div>
+                  <div className={`inbox-thread-panel ${isShowingMobileThread ? "is-visible-mobile" : ""}`}>
+                    {activeMessage ? (
+                      renderActiveMessage(activeMessage)
+                    ) : (
+                      <div className="inbox-empty-state">Elegí una conversación para abrir el chat completo.</div>
+                    )}
+                  </div>
+                </div>
               ) : (
                 <div className="timeline-empty">
-                  {mode === "received"
+                  {normalizedSearchQuery
+                    ? "No encontré conversaciones con esa búsqueda."
+                    : mode === "received"
                     ? "Todavia no recibiste recomendaciones internas."
                     : "Todavia no mandaste recomendaciones a otros cinerianos."}
                 </div>
               )
-            ) : commentNotifications.length ? (
-              commentNotifications.map(renderCommentNotification)
+            ) : filteredCommentNotifications.length ? (
+              <div className={`inbox-layout ${isMobile ? "is-mobile" : ""}`}>
+                <div className={`inbox-thread-list ${isShowingMobileThread ? "is-hidden-mobile" : ""}`}>
+                  {filteredCommentNotifications.map(renderCommentNotificationListItem)}
+                </div>
+                <div className={`inbox-thread-panel ${isShowingMobileThread ? "is-visible-mobile" : ""}`}>
+                  {activeComment ? (
+                    renderActiveComment(activeComment)
+                  ) : (
+                    <div className="inbox-empty-state">Elegí un comentario para abrir el hilo completo.</div>
+                  )}
+                </div>
+              </div>
             ) : (
-              <div className="timeline-empty">Todavía nadie comentó tus publicaciones.</div>
+              <div className="timeline-empty">
+                {normalizedSearchQuery
+                  ? "No encontré comentarios con esa búsqueda."
+                  : "Todavía nadie comentó tus publicaciones."}
+              </div>
             )
           ) : null}
         </div>
       </div>
-
-      <aside className="feed-sidebar">
-        <section className="sidebar-card">
-          <p className="section-eyebrow">Siguiendo</p>
-          <h3 className="sidebar-card__title">Tu gente cineriana</h3>
-          <div className="sidebar-users">
-            {followingProfiles.length ? (
-              followingProfiles.map((profile) => (
-                <button
-                  key={profile.id}
-                  type="button"
-                  className="sidebar-user"
-                  onClick={() => onOpenUserProfile({ userId: profile.id, username: profile.username })}
-                >
-                  <span className="sidebar-user__avatar" aria-hidden="true">
-                    {profile.display_name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="sidebar-user__copy">
-                    <strong>{profile.display_name}</strong>
-                    <span>@{profile.username}</span>
-                  </span>
-                </button>
-              ))
-            ) : (
-              <p className="sidebar-empty">Cuando sigas a otros cinerianos, te los dejo listados aca.</p>
-            )}
-          </div>
-        </section>
-      </aside>
-
-      <ReplyRecommendationModal
-        message={replyingMessage}
-        isSending={Boolean(replyingMessage && pendingMessageId === replyingMessage.id)}
-        onClose={() => setReplyingMessage(null)}
-        onSubmit={(body) => void handleReplySubmit(body)}
-      />
     </section>
-  );
-}
-
-function ReplyRecommendationModal({
-  message,
-  isSending,
-  onClose,
-  onSubmit
-}: {
-  message: RecommendationMessage | null;
-  isSending: boolean;
-  onClose: () => void;
-  onSubmit: (body: string) => void;
-}) {
-  const [body, setBody] = useState("");
-
-  useEffect(() => {
-    if (!message) {
-      setBody("");
-    }
-  }, [message]);
-
-  if (!message) {
-    return null;
-  }
-
-  return (
-    <div className="review-modal__backdrop" role="presentation" onClick={onClose}>
-      <div className="send-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-        <div className="send-modal__header">
-          <div>
-            <p className="section-eyebrow">Responder recomendacion</p>
-            <h3>{message.item.title}</h3>
-            <p className="send-modal__meta">Tu respuesta queda dentro de esta recomendacion</p>
-          </div>
-          <button type="button" className="review-modal__close" onClick={onClose} aria-label="Cerrar">
-            ×
-          </button>
-        </div>
-
-        <label className="send-modal__field">
-          <span>Tu respuesta</span>
-          <textarea
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-            placeholder='Ej: "ya la vi" o "me la guardo para el finde"'
-          />
-        </label>
-
-        <div className="review-modal__actions">
-          <button type="button" className="ghost-button" onClick={onClose}>
-            Cancelar
-          </button>
-          <button
-            type="button"
-            className="primary-button"
-            disabled={isSending || !body.trim()}
-            onClick={() => onSubmit(body)}
-          >
-            {isSending ? "Enviando..." : "Responder"}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

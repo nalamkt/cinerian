@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { signInWithEmail, signInWithGoogle, signUpWithEmail } from "../lib/auth";
+import { signInWithEmailOtp, signInWithGoogle, verifyEmailOtp } from "../lib/auth";
 
 type AuthPanelProps = {
   isSupabaseReady: boolean;
@@ -24,11 +24,9 @@ function getAuthErrorMessage(error: unknown) {
 }
 
 export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
-  const [mode, setMode] = useState<"login" | "register">("register");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [step, setStep] = useState<"request" | "verify">("request");
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -48,30 +46,25 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
       setIsSubmitting(true);
       setMessage(null);
 
-      if (mode === "register") {
-        const { error, data } = await signUpWithEmail({
+      if (step === "request") {
+        const { error } = await signInWithEmailOtp(email);
+        if (error) {
+          throw error;
+        }
+
+        setStep("verify");
+        setMessage("Te mandamos un codigo a tu email. Si no lo ves, revisa spam.");
+      } else {
+        const { error } = await verifyEmailOtp({
           email,
-          password,
-          username,
-          displayName
+          token: otpCode.trim()
         });
 
         if (error) {
           throw error;
         }
 
-        setMessage(
-          data.session
-            ? "Cuenta creada. Ya deberias entrar a la app."
-            : "Cuenta creada. Si activaste confirmacion por email, revisa tu inbox."
-        );
-      } else {
-        const { error } = await signInWithEmail({ email, password });
-        if (error) {
-          throw error;
-        }
-
-        setMessage("Sesion iniciada.");
+        setMessage("Codigo verificado. Entrando a Cinerian...");
       }
     } catch (error) {
       setMessage(getAuthErrorMessage(error));
@@ -109,29 +102,17 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
       <p className="section-eyebrow">Acceso</p>
       <h2>Entra a Cinerian</h2>
       <p className="section-description">
-        Crea tu cuenta o inicia sesion para entrar a la experiencia completa.
+        Entra con Google o recibe un codigo en tu email. Sin contrasena y sin registro manual.
       </p>
 
-      <button type="button" className="ghost-button" onClick={() => void handleGoogleSignIn()}>
+      <button
+        type="button"
+        className="ghost-button"
+        onClick={() => void handleGoogleSignIn()}
+        disabled={isSubmitting}
+      >
         Continuar con Google
       </button>
-
-      <div className="auth-toggle">
-        <button
-          type="button"
-          className={mode === "register" ? "primary-button" : "ghost-button"}
-          onClick={() => setMode("register")}
-        >
-          Crear cuenta
-        </button>
-        <button
-          type="button"
-          className={mode === "login" ? "primary-button" : "ghost-button"}
-          onClick={() => setMode("login")}
-        >
-          Iniciar sesion
-        </button>
-      </div>
 
       <form className="auth-form" onSubmit={handleSubmit}>
         <label className="input-stack">
@@ -142,49 +123,47 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
             onChange={(event) => setEmail(event.target.value)}
             placeholder="vos@cinerian.com"
             required
+            disabled={isSubmitting || step === "verify"}
           />
         </label>
 
-        <label className="input-stack">
-          <span>Contrasena</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Minimo 6 caracteres"
-            required
-          />
-        </label>
-
-        {mode === "register" ? (
-          <>
-            <label className="input-stack">
-              <span>Username</span>
-              <input
-                type="text"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="nalamkt"
-                required
-              />
-            </label>
-
-            <label className="input-stack">
-              <span>Nombre visible</span>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                placeholder="Isidoro"
-                required
-              />
-            </label>
-          </>
+        {step === "verify" ? (
+          <label className="input-stack">
+            <span>Codigo de 6 digitos</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={otpCode}
+              onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="123456"
+              required
+            />
+          </label>
         ) : null}
 
         <button type="submit" className="primary-button" disabled={isSubmitting}>
-          {isSubmitting ? "Procesando..." : mode === "register" ? "Crear cuenta" : "Entrar"}
+          {isSubmitting
+            ? "Procesando..."
+            : step === "request"
+              ? "Recibir codigo"
+              : "Verificar codigo"}
         </button>
+
+        {step === "verify" ? (
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={() => {
+              setStep("request");
+              setOtpCode("");
+              setMessage(null);
+            }}
+            disabled={isSubmitting}
+          >
+            Usar otro email
+          </button>
+        ) : null}
       </form>
 
       {message ? <div className="inline-status">{message}</div> : null}

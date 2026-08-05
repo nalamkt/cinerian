@@ -20,34 +20,30 @@ function buildFallbackUsername(email: string | undefined, userId: string) {
   return (base && base.length >= 3 ? base : `cinerian_${userId.slice(0, 8)}`).slice(0, 24);
 }
 
-export async function signUpWithEmail(input: {
-  email: string;
-  password: string;
-  username: string;
-  displayName: string;
-}) {
+export async function signInWithEmailOtp(email: string) {
   if (!supabase) {
     throw new Error("Supabase no esta configurado.");
   }
 
-  return supabase.auth.signUp({
-    email: input.email,
-    password: input.password,
+  return supabase.auth.signInWithOtp({
+    email,
     options: {
-      data: {
-        username: input.username,
-        display_name: input.displayName
-      }
+      shouldCreateUser: true,
+      emailRedirectTo: window.location.origin
     }
   });
 }
 
-export async function signInWithEmail(input: { email: string; password: string }) {
+export async function verifyEmailOtp(input: { email: string; token: string }) {
   if (!supabase) {
     throw new Error("Supabase no esta configurado.");
   }
 
-  return supabase.auth.signInWithPassword(input);
+  return supabase.auth.verifyOtp({
+    email: input.email,
+    token: input.token,
+    type: "email"
+  });
 }
 
 export async function signInWithGoogle() {

@@ -4,6 +4,7 @@ export type DiscoveryItem = {
   id: number;
   title: string;
   year: string;
+  releaseDate?: string | null;
   mediaType: MediaType;
   overview: string;
   posterUrl: string;
