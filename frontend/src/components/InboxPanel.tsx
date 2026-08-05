@@ -43,11 +43,36 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   const [searchQuery, setSearchQuery] = useState("");
   const [swipedMessageId, setSwipedMessageId] = useState<string | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const [threadSwipeOffset, setThreadSwipeOffset] = useState(0);
+  const [isThreadSwipeAnimating, setIsThreadSwipeAnimating] = useState(false);
   const swipeRef = useRef<{
     id: string | null;
     startX: number;
+    startY: number;
     dragging: boolean;
-  }>({ id: null, startX: 0, dragging: false });
+    hasLockedDirection: boolean;
+    isHorizontal: boolean;
+  }>({
+    id: null,
+    startX: 0,
+    startY: 0,
+    dragging: false,
+    hasLockedDirection: false,
+    isHorizontal: false
+  });
+  const threadSwipeRef = useRef<{
+    startX: number;
+    startY: number;
+    tracking: boolean;
+    hasLockedDirection: boolean;
+    isHorizontal: boolean;
+  }>({
+    startX: 0,
+    startY: 0,
+    tracking: false,
+    hasLockedDirection: false,
+    isHorizontal: false
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -263,6 +288,13 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   }, [activeMessageId, category, mode, isMobile]);
 
   useEffect(() => {
+    if (!isShowingMobileThread) {
+      setThreadSwipeOffset(0);
+      setIsThreadSwipeAnimating(false);
+    }
+  }, [isShowingMobileThread]);
+
+  useEffect(() => {
     if (typeof document === "undefined") {
       return;
     }
@@ -318,7 +350,7 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     }
   }
 
-  function beginSwipe(messageId: string, clientX: number) {
+  function beginSwipe(messageId: string, clientX: number, clientY: number) {
     if (!isMobile) {
       return;
     }
@@ -326,18 +358,45 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     swipeRef.current = {
       id: messageId,
       startX: clientX,
-      dragging: true
+      startY: clientY,
+      dragging: true,
+      hasLockedDirection: false,
+      isHorizontal: false
     };
-    setSwipedMessageId(messageId);
-    setSwipeOffset(0);
   }
 
-  function moveSwipe(clientX: number) {
+  function moveSwipe(clientX: number, clientY: number) {
     if (!swipeRef.current.dragging || !swipeRef.current.id) {
       return;
     }
 
-    const delta = clientX - swipeRef.current.startX;
+    const deltaX = clientX - swipeRef.current.startX;
+    const deltaY = clientY - swipeRef.current.startY;
+
+    if (!swipeRef.current.hasLockedDirection) {
+      if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+        return;
+      }
+
+      swipeRef.current.hasLockedDirection = true;
+      swipeRef.current.isHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
+    }
+
+    if (!swipeRef.current.isHorizontal) {
+      return;
+    }
+
+    const delta = deltaX;
+    if (Math.abs(delta) < 18) {
+      setSwipedMessageId(null);
+      setSwipeOffset(0);
+      return;
+    }
+
+    if (swipedMessageId !== swipeRef.current.id) {
+      setSwipedMessageId(swipeRef.current.id);
+    }
+
     const clamped = Math.max(-104, Math.min(104, delta));
     setSwipeOffset(clamped);
   }
@@ -357,7 +416,10 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     swipeRef.current = {
       id: null,
       startX: 0,
-      dragging: false
+      startY: 0,
+      dragging: false,
+      hasLockedDirection: false,
+      isHorizontal: false
     };
   }
 
@@ -367,8 +429,95 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     swipeRef.current = {
       id: null,
       startX: 0,
-      dragging: false
+      startY: 0,
+      dragging: false,
+      hasLockedDirection: false,
+      isHorizontal: false
     };
+  }
+
+  function closeMobileThread() {
+    setThreadSwipeOffset(0);
+    setIsThreadSwipeAnimating(false);
+    setActiveMessageId(null);
+    setActiveCommentId(null);
+  }
+
+  function beginThreadSwipe(clientX: number, clientY: number) {
+    if (!isMobile || clientX > 32) {
+      return;
+    }
+
+    threadSwipeRef.current = {
+      startX: clientX,
+      startY: clientY,
+      tracking: true,
+      hasLockedDirection: false,
+      isHorizontal: false
+    };
+    setIsThreadSwipeAnimating(false);
+    setThreadSwipeOffset(0);
+  }
+
+  function moveThreadSwipe(clientX: number, clientY: number) {
+    if (!threadSwipeRef.current.tracking) {
+      return;
+    }
+
+    const deltaX = clientX - threadSwipeRef.current.startX;
+    const deltaY = clientY - threadSwipeRef.current.startY;
+
+    if (!threadSwipeRef.current.hasLockedDirection) {
+      if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+        return;
+      }
+
+      threadSwipeRef.current.hasLockedDirection = true;
+      threadSwipeRef.current.isHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
+    }
+
+    if (!threadSwipeRef.current.isHorizontal || deltaX <= 0) {
+      setThreadSwipeOffset(0);
+      return;
+    }
+
+    setThreadSwipeOffset(Math.min(deltaX, 140));
+  }
+
+  function endThreadSwipe(clientX?: number, clientY?: number) {
+    if (!threadSwipeRef.current.tracking) {
+      return;
+    }
+
+    const endX = clientX ?? threadSwipeRef.current.startX;
+    const endY = clientY ?? threadSwipeRef.current.startY;
+    const deltaX = endX - threadSwipeRef.current.startX;
+    const deltaY = endY - threadSwipeRef.current.startY;
+    const shouldClose =
+      threadSwipeRef.current.isHorizontal && deltaX > 72 && Math.abs(deltaY) < Math.abs(deltaX);
+
+    threadSwipeRef.current = {
+      startX: 0,
+      startY: 0,
+      tracking: false,
+      hasLockedDirection: false,
+      isHorizontal: false
+    };
+
+    if (shouldClose) {
+      setIsThreadSwipeAnimating(true);
+      setThreadSwipeOffset(220);
+      window.setTimeout(() => {
+        closeMobileThread();
+      }, 180);
+      return;
+    }
+
+    setIsThreadSwipeAnimating(true);
+    setThreadSwipeOffset(0);
+    window.setTimeout(() => {
+      setIsThreadSwipeAnimating(false);
+    }, 180);
   }
 
   async function handleToggleCommentRead(notification: CommentInboxNotification) {
@@ -493,7 +642,8 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   function renderMessageListItem(message: RecommendationMessage) {
     const counterpart = mode === "received" ? message.senderProfile : message.recipientProfile;
     const isUnread = mode === "received" && !message.readAt;
-    const isSwiped = swipedMessageId === message.id;
+    const supportsThreadActions = mode === "received";
+    const isSwiped = supportsThreadActions && swipedMessageId === message.id;
     const currentOffset = isSwiped ? swipeOffset : 0;
     const preview =
       message.note?.trim() ||
@@ -510,38 +660,54 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
           currentOffset > 0 ? "is-revealing-delete" : ""
         } ${currentOffset < 0 ? "is-revealing-read" : ""}`}
       >
-        <button
-          type="button"
-          className="inbox-thread-swipe__action inbox-thread-swipe__action--delete"
-          onClick={() => {
-            closeSwipeActions();
-            void handleDelete(message);
-          }}
-        >
-          <span aria-hidden="true">✕</span>
-          <span>Eliminar</span>
-        </button>
-        <button
-          type="button"
-          className="inbox-thread-swipe__action inbox-thread-swipe__action--read"
-          onClick={() => {
-            closeSwipeActions();
-            void handleToggleRead(message);
-          }}
-        >
-          <span aria-hidden="true">{message.readAt ? "◐" : "◉"}</span>
-          <span>{message.readAt ? "No leído" : "Leído"}</span>
-        </button>
+        {supportsThreadActions ? (
+          <>
+            <button
+              type="button"
+              className="inbox-thread-swipe__action inbox-thread-swipe__action--delete"
+              onClick={() => {
+                closeSwipeActions();
+                void handleDelete(message);
+              }}
+            >
+              <span aria-hidden="true">✕</span>
+              <span>Eliminar</span>
+            </button>
+            <button
+              type="button"
+              className="inbox-thread-swipe__action inbox-thread-swipe__action--read"
+              onClick={() => {
+                closeSwipeActions();
+                void handleToggleRead(message);
+              }}
+            >
+              <span aria-hidden="true">{message.readAt ? "◐" : "◉"}</span>
+              <span>{message.readAt ? "No leído" : "Leído"}</span>
+            </button>
+          </>
+        ) : null}
         <button
           type="button"
           className={`inbox-thread-item ${isUnread ? "is-unread" : ""} ${
             activeMessage?.id === message.id ? "is-active" : ""
           }`}
           style={isMobile ? { transform: `translateX(${currentOffset}px)` } : undefined}
-          onTouchStart={(event) => beginSwipe(message.id, event.touches[0]?.clientX ?? 0)}
-          onTouchMove={(event) => moveSwipe(event.touches[0]?.clientX ?? 0)}
-          onTouchEnd={endSwipe}
-          onTouchCancel={endSwipe}
+          onTouchStart={(event) =>
+            supportsThreadActions
+              ? beginSwipe(
+                  message.id,
+                  event.touches[0]?.clientX ?? 0,
+                  event.touches[0]?.clientY ?? 0
+                )
+              : undefined
+          }
+          onTouchMove={(event) =>
+            supportsThreadActions
+              ? moveSwipe(event.touches[0]?.clientX ?? 0, event.touches[0]?.clientY ?? 0)
+              : undefined
+          }
+          onTouchEnd={supportsThreadActions ? endSwipe : undefined}
+          onTouchCancel={supportsThreadActions ? endSwipe : undefined}
           onClick={() => {
             if (isSwiped && currentOffset !== 0) {
               closeSwipeActions();
@@ -596,7 +762,24 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     ];
 
     return (
-      <article className="inbox-thread-view">
+      <article
+        className="inbox-thread-view"
+        style={
+          isMobile
+            ? {
+                transform: `translateX(${threadSwipeOffset}px)`,
+                opacity: 1 - Math.min(threadSwipeOffset / 260, 0.22),
+                transition: isThreadSwipeAnimating ? "transform 180ms ease, opacity 180ms ease" : "none"
+              }
+            : undefined
+        }
+        onTouchStart={(event) => beginThreadSwipe(event.touches[0]?.clientX ?? 0, event.touches[0]?.clientY ?? 0)}
+        onTouchMove={(event) => moveThreadSwipe(event.touches[0]?.clientX ?? 0, event.touches[0]?.clientY ?? 0)}
+        onTouchEnd={(event) =>
+          endThreadSwipe(event.changedTouches[0]?.clientX ?? 0, event.changedTouches[0]?.clientY ?? 0)
+        }
+        onTouchCancel={() => endThreadSwipe()}
+      >
         <div className="inbox-thread-view__summary">
           {isMobile ? (
             <button
@@ -659,9 +842,9 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
                   <span className="inbox-card__action-icon" aria-hidden="true">
                     ↗
                   </span>
-                  <span>Ver título</span>
-                </button>
-                {!isMobile ? (
+                    <span>Ver título</span>
+                  </button>
+                {!isMobile && mode === "received" ? (
                   <button
                     type="button"
                     className="inbox-card__action-button inbox-card__action-button--danger"
@@ -761,7 +944,24 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
         : notification.postBody;
 
     return (
-      <article className="inbox-thread-view">
+      <article
+        className="inbox-thread-view"
+        style={
+          isMobile
+            ? {
+                transform: `translateX(${threadSwipeOffset}px)`,
+                opacity: 1 - Math.min(threadSwipeOffset / 260, 0.22),
+                transition: isThreadSwipeAnimating ? "transform 180ms ease, opacity 180ms ease" : "none"
+              }
+            : undefined
+        }
+        onTouchStart={(event) => beginThreadSwipe(event.touches[0]?.clientX ?? 0, event.touches[0]?.clientY ?? 0)}
+        onTouchMove={(event) => moveThreadSwipe(event.touches[0]?.clientX ?? 0, event.touches[0]?.clientY ?? 0)}
+        onTouchEnd={(event) =>
+          endThreadSwipe(event.changedTouches[0]?.clientX ?? 0, event.changedTouches[0]?.clientY ?? 0)
+        }
+        onTouchCancel={() => endThreadSwipe()}
+      >
         <div className="inbox-thread-view__summary">
           {isMobile ? (
             <button

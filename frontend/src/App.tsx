@@ -81,7 +81,7 @@ function LogoutIcon() {
 const dockItems: Array<{ id: AppView; label: string }> = [
   { id: "feed", label: "Inicio" },
   { id: "search", label: "Buscador" },
-  { id: "recommendations", label: "Recomendador" },
+  { id: "recommendations", label: "Descubri" },
   { id: "inbox", label: "Inbox" },
   { id: "user", label: "Mi cuenta" }
 ];
@@ -355,7 +355,9 @@ export default function App() {
             </div>
           </nav>
 
-          <section className="workspace-content">{renderActiveView()}</section>
+          <section className={`workspace-content workspace-content--${selectedProfileRoute ? "profile" : activeView}`}>
+            {renderActiveView()}
+          </section>
         </main>
       </div>
     </MediaDetailsProvider>

@@ -125,6 +125,15 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
       .slice(0, 8);
   }, [profiles, query, userId]);
 
+  function replaceStoredReaction(item: DiscoveryItem, reaction: StoredReaction["reaction"]) {
+    setStoredReactions((current) => [
+      { tmdbId: item.id, mediaType: item.mediaType, reaction },
+      ...current.filter(
+        (entry) => !(entry.tmdbId === item.id && entry.mediaType === item.mediaType)
+      )
+    ]);
+  }
+
   async function handleReaction(item: DiscoveryItem, reaction: StoredReaction["reaction"]) {
     try {
       setIsSyncing(true);
@@ -155,17 +164,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         });
       }
 
-      setStoredReactions((current) => [
-        { tmdbId: item.id, mediaType: item.mediaType, reaction },
-        ...current.filter(
-          (entry) =>
-            !(
-              entry.tmdbId === item.id &&
-              entry.mediaType === item.mediaType &&
-              (entry.reaction === reaction || entry.reaction === "disliked")
-            )
-        )
-      ]);
+      replaceStoredReaction(item, reaction);
     } catch {
       setSyncMessage("No pude guardar esta accion.");
     } finally {
@@ -224,21 +223,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         mediaType: reviewItem.mediaType
       });
 
-      setStoredReactions((current) => [
-        {
-          tmdbId: reviewItem.id,
-          mediaType: reviewItem.mediaType,
-          reaction: "watched"
-        },
-        ...current.filter(
-          (entry) =>
-            !(
-              entry.tmdbId === reviewItem.id &&
-              entry.mediaType === reviewItem.mediaType &&
-              (entry.reaction === "watched" || entry.reaction === "disliked")
-            )
-        )
-      ]);
+      replaceStoredReaction(reviewItem, "watched");
       setReviewItem(null);
       setSyncMessage("Tu reseña ya salió en el feed.");
     } catch {
@@ -257,24 +242,24 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
       <header className="feed-header feed-header--search">
         <button
           type="button"
-          className={`search-tabs__button ${searchMode === "titles" ? "is-active" : ""}`}
+          className={`feed-header__tab ${searchMode === "titles" ? "is-active" : ""}`}
           onClick={() => setSearchMode("titles")}
         >
           Titulos
         </button>
         <button
           type="button"
-          className={`search-tabs__button ${searchMode === "people" ? "is-active" : ""}`}
+          className={`feed-header__tab ${searchMode === "people" ? "is-active" : ""}`}
           onClick={() => setSearchMode("people")}
         >
           Personas
         </button>
         <button
           type="button"
-          className={`search-tabs__button ${searchMode === "talent" ? "is-active" : ""}`}
+          className={`feed-header__tab ${searchMode === "talent" ? "is-active" : ""}`}
           onClick={() => setSearchMode("talent")}
         >
-          Actores / Directores
+          Talento
         </button>
       </header>
 

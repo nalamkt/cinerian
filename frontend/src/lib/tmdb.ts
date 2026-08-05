@@ -7,6 +7,46 @@ const imageBase = "https://image.tmdb.org/t/p/w500";
 const backdropBase = "https://image.tmdb.org/t/p/original";
 const profileBase = "https://image.tmdb.org/t/p/w300";
 
+const MOVIE_GENRE_LABELS: Record<number, string> = {
+  12: "Aventura",
+  14: "Fantasia",
+  16: "Animacion",
+  18: "Drama",
+  27: "Terror",
+  28: "Accion",
+  35: "Comedia",
+  36: "Historia",
+  37: "Western",
+  53: "Thriller",
+  80: "Crimen",
+  99: "Documental",
+  878: "Sci-fi",
+  9648: "Misterio",
+  10402: "Musica",
+  10749: "Romance",
+  10751: "Familia",
+  10752: "Belica"
+};
+
+const TV_GENRE_LABELS: Record<number, string> = {
+  16: "Animacion",
+  18: "Drama",
+  35: "Comedia",
+  37: "Western",
+  80: "Crimen",
+  99: "Documental",
+  9648: "Misterio",
+  10751: "Familia",
+  10759: "Accion",
+  10762: "Infantil",
+  10763: "Noticias",
+  10764: "Reality",
+  10765: "Sci-fi",
+  10766: "Soap",
+  10767: "Talk",
+  10768: "Belica"
+};
+
 function normalizeMediaType(value: string): MediaType {
   return value === "tv" ? "tv" : "movie";
 }
@@ -183,6 +223,8 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
       : typeof item.first_air_date === "string"
         ? item.first_air_date
         : "";
+  const mediaType = normalizeMediaType(String(item.media_type ?? "movie"));
+  const genreLabels = mediaType === "tv" ? TV_GENRE_LABELS : MOVIE_GENRE_LABELS;
   const genres =
     Array.isArray(item.genres)
       ? item.genres
@@ -195,6 +237,10 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
               : null
           )
           .filter((genre): genre is string => Boolean(genre))
+      : Array.isArray(item.genre_ids)
+        ? item.genre_ids
+            .map((genreId) => (typeof genreId === "number" ? genreLabels[genreId] ?? null : null))
+            .filter((genre): genre is string => Boolean(genre))
       : [];
 
   return {
@@ -205,7 +251,7 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
       "Titulo sin nombre",
     year: releaseDate ? releaseDate.slice(0, 4) : "Sin fecha",
     releaseDate: releaseDate || null,
-    mediaType: normalizeMediaType(String(item.media_type ?? "movie")),
+    mediaType,
     overview:
       (typeof item.overview === "string" && item.overview) ||
       "Todavia no tenemos descripcion para este titulo.",

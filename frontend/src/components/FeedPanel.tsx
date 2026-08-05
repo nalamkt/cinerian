@@ -176,6 +176,7 @@ export function FeedPanel({
   const [composerMessage, setComposerMessage] = useState<string | null>(null);
   const postRefs = useRef<Record<string, HTMLElement | null>>({});
   const commentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const editorialRailRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const composerWordCount = useMemo(() => countWords(composerText), [composerText]);
 
   useEffect(() => {
@@ -748,6 +749,21 @@ export function FeedPanel({
     }));
   }
 
+  function scrollEditorialRail(railId: string, direction: "left" | "right") {
+    const railNode = editorialRailRefs.current[railId];
+    if (!railNode) {
+      return;
+    }
+
+    const cardWidth = railNode.firstElementChild instanceof HTMLElement ? railNode.firstElementChild.offsetWidth : 0;
+    const gap = 18;
+    const offset = Math.max(cardWidth + gap, railNode.clientWidth * 0.82);
+    railNode.scrollBy({
+      left: direction === "right" ? offset : -offset,
+      behavior: "smooth"
+    });
+  }
+
   async function handleCommentSubmit(postId: string) {
     const body = (commentDrafts[postId] ?? "").trim();
     if (!body) {
@@ -848,12 +864,40 @@ export function FeedPanel({
                   <article className="timeline-card timeline-card--editorial" key={item.rail.id}>
                     <div className="timeline-editorial">
                       <div className="timeline-editorial__header">
-                        <p className="section-eyebrow">{item.rail.eyebrow}</p>
-                        <h3>{item.rail.title}</h3>
-                        <p>{item.rail.subtitle}</p>
+                        <div>
+                          <p className="section-eyebrow">{item.rail.eyebrow}</p>
+                          <h3>{item.rail.title}</h3>
+                          <p>{item.rail.subtitle}</p>
+                        </div>
+                        <div className="timeline-editorial__controls">
+                          <button
+                            type="button"
+                            className="timeline-editorial__arrow"
+                            onClick={() => scrollEditorialRail(item.rail.id, "left")}
+                            aria-label="Ver títulos anteriores"
+                          >
+                            ←
+                          </button>
+                          <button
+                            type="button"
+                            className="timeline-editorial__arrow"
+                            onClick={() => scrollEditorialRail(item.rail.id, "right")}
+                            aria-label="Ver más títulos"
+                          >
+                            →
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="timeline-editorial__grid">
+                      <div
+                        className="timeline-editorial__carousel"
+                      >
+                        <div
+                          className="timeline-editorial__grid"
+                          ref={(node) => {
+                            editorialRailRefs.current[item.rail.id] = node;
+                          }}
+                        >
                         {item.rail.items.map((editorialItem) => (
                           <button
                             type="button"
@@ -876,10 +920,15 @@ export function FeedPanel({
                                 {editorialItem.mediaType === "tv" ? "Serie" : "Pelicula"} • {editorialItem.year}
                               </span>
                               <strong>{editorialItem.title}</strong>
-                              <p>{truncateOverview(editorialItem.overview, 92)}</p>
+                              <span className="timeline-editorial__genres">
+                                {editorialItem.genres.slice(0, 2).join(" • ") ||
+                                  (editorialItem.mediaType === "tv" ? "Serie" : "Pelicula")}
+                              </span>
+                              <p>{truncateOverview(editorialItem.overview, 58)}</p>
                             </div>
                           </button>
                         ))}
+                        </div>
                       </div>
                     </div>
                   </article>

@@ -45,11 +45,14 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const [sendStatus, setSendStatus] = useState("Enviar");
   const [similarItems, setSimilarItems] = useState<DiscoveryItem[]>([]);
 
-  const reactedIds = useMemo(() => storedReactions.map((entry) => entry.tmdbId), [storedReactions]);
+  const reactedKeys = useMemo(
+    () => new Set(storedReactions.map((entry) => `${entry.mediaType}-${entry.tmdbId}`)),
+    [storedReactions]
+  );
 
   const availableItems = useMemo(() => {
-    return items.filter((item) => !reactedIds.includes(item.id));
-  }, [items, reactedIds]);
+    return items.filter((item) => !reactedKeys.has(`${item.mediaType}-${item.id}`));
+  }, [items, reactedKeys]);
 
   const spotlight = availableItems.length
     ? availableItems[currentIndex % availableItems.length]
@@ -130,7 +133,16 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
 
   useEffect(() => {
     setCurrentIndex(0);
-  }, [reactedIds, items]);
+  }, [reactedKeys, items]);
+
+  function replaceStoredReaction(item: DiscoveryItem, reaction: StoredReaction["reaction"]) {
+    setStoredReactions((current) => [
+      { tmdbId: item.id, mediaType: item.mediaType, reaction },
+      ...current.filter(
+        (entry) => !(entry.tmdbId === item.id && entry.mediaType === item.mediaType)
+      )
+    ]);
+  }
 
   useEffect(() => {
     if (!spotlight) {
@@ -198,17 +210,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
         });
       }
 
-      setStoredReactions((current) => [
-        { tmdbId: target.id, mediaType: target.mediaType, reaction },
-        ...current.filter(
-          (entry) =>
-            !(
-              entry.tmdbId === target.id &&
-              entry.mediaType === target.mediaType &&
-              (entry.reaction === reaction || entry.reaction === "disliked")
-            )
-        )
-      ]);
+      replaceStoredReaction(target, reaction);
     } catch {
       setSyncMessage("No pude guardar esta reaccion.");
       return;
@@ -263,21 +265,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
         tmdbId: reviewItem.id,
         mediaType: reviewItem.mediaType
       });
-      setStoredReactions((current) => [
-        {
-          tmdbId: reviewItem.id,
-          mediaType: reviewItem.mediaType,
-          reaction: "watched"
-        },
-        ...current.filter(
-          (entry) =>
-            !(
-              entry.tmdbId === reviewItem.id &&
-              entry.mediaType === reviewItem.mediaType &&
-              (entry.reaction === "watched" || entry.reaction === "disliked")
-            )
-        )
-      ]);
+      replaceStoredReaction(reviewItem, "watched");
       setReviewItem(null);
       if (spotlight && spotlight.id === reviewItem.id) {
         goNext();

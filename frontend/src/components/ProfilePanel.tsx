@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { type Profile } from "../lib/auth";
 import { fetchFollowerCount } from "../lib/follows";
-import { fetchStoredReactions } from "../lib/reactions";
+import { fetchStoredReactions, REACTIONS_UPDATED_EVENT } from "../lib/reactions";
 import { ProfileTabs } from "./ProfileTabs";
 
 type ProfilePanelProps = {
@@ -30,8 +30,14 @@ export function ProfilePanel({
   const [stats, setStats] = useState({ likes: 0, watched: 0, followers: 0 });
 
   useEffect(() => {
-    void Promise.allSettled([fetchStoredReactions(userId), fetchFollowerCount(userId)])
-      .then((results) => {
+    let isMounted = true;
+
+    async function loadStats() {
+      const results = await Promise.allSettled([fetchStoredReactions(userId), fetchFollowerCount(userId)]);
+      if (!isMounted) {
+        return;
+      }
+
         const reactionsResult = results[0];
         const followersResult = results[1];
         const storedReactions = reactionsResult.status === "fulfilled" ? reactionsResult.value : [];
@@ -42,14 +48,45 @@ export function ProfilePanel({
           watched: storedReactions.filter((entry) => entry.reaction === "watched").length,
           followers: followerCountOverride ?? followers
         });
-      })
-      .catch(() => {
+    }
+
+    function handleReactionsUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (detail?.userId && detail.userId !== userId) {
+        return;
+      }
+
+      void loadStats().catch(() => {
+        if (!isMounted) {
+          return;
+        }
+
         setStats((current) => ({
           likes: 0,
           watched: 0,
           followers: followerCountOverride ?? current.followers ?? 0
         }));
       });
+    }
+
+    void loadStats().catch(() => {
+      if (!isMounted) {
+        return;
+      }
+
+      setStats((current) => ({
+        likes: 0,
+        watched: 0,
+        followers: followerCountOverride ?? current.followers ?? 0
+      }));
+    });
+
+    window.addEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
+    };
   }, [followerCountOverride, userId]);
 
   return (

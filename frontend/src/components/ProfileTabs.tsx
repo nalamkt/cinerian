@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
+import { fetchSentMessages } from "../lib/inbox";
 import {
-  createFeedComment,
   deleteFeedPost,
-  fetchFeedComments,
   fetchUserMediaPosts,
   fetchUserTextPosts,
   updateFeedPost
 } from "../lib/feed";
 import {
   fetchStoredReactions,
+  REACTIONS_UPDATED_EVENT,
   removeStoredReaction,
   type StoredReaction
 } from "../lib/reactions";
 import { getTitleById } from "../lib/tmdb";
-import type { DiscoveryItem, FeedComment, FeedEntry } from "../types";
+import type { DiscoveryItem, FeedEntry, RecommendationMessage } from "../types";
 
 type ProfileTabsProps = {
   userId: string;
@@ -31,46 +31,6 @@ const tabLabels: Record<TabId, string> = {
   posts: "Posts"
 };
 
-function parseRatingPost(body: string) {
-  const fullReviewMatch = body.match(/^Le gusto (.+?), le dio (\d)\/5 y dijo: "([\s\S]+)"\.?$/);
-  if (fullReviewMatch) {
-    return {
-      title: fullReviewMatch[1],
-      quote: fullReviewMatch[3],
-      liked: true
-    };
-  }
-
-  const shortReviewMatch = body.match(/^(Le gusto|No le gusto) (.+?)(?:,| y) le dio (\d)\/5\.?$/);
-  if (shortReviewMatch) {
-    return {
-      title: shortReviewMatch[2],
-      quote: "",
-      liked: shortReviewMatch[1] === "Le gusto"
-    };
-  }
-
-  const fullReviewWithoutStarsMatch = body.match(/^(Le gusto|No le gusto) (.+?) y dijo: "([\s\S]+)"\.?$/);
-  if (fullReviewWithoutStarsMatch) {
-    return {
-      title: fullReviewWithoutStarsMatch[2],
-      quote: fullReviewWithoutStarsMatch[3],
-      liked: fullReviewWithoutStarsMatch[1] === "Le gusto"
-    };
-  }
-
-  const shortReviewWithoutStarsMatch = body.match(/^(Le gusto|No le gusto) (.+?)\.?$/);
-  if (shortReviewWithoutStarsMatch) {
-    return {
-      title: shortReviewWithoutStarsMatch[2],
-      quote: "",
-      liked: shortReviewWithoutStarsMatch[1] === "Le gusto"
-    };
-  }
-
-  return null;
-}
-
 export function ProfileTabs({
   userId,
   readOnly = false,
@@ -81,16 +41,12 @@ export function ProfileTabs({
   const [reactions, setReactions] = useState<StoredReaction[]>([]);
   const [titles, setTitles] = useState<Record<string, DiscoveryItem>>({});
   const [posts, setPosts] = useState<FeedEntry[]>([]);
-  const [mediaPosts, setMediaPosts] = useState<FeedEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
-  const [commentsMap, setCommentsMap] = useState<Record<string, FeedComment[]>>({});
-  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
-  const [submittingCommentFor, setSubmittingCommentFor] = useState<string | null>(null);
+  const [sentRecommendations, setSentRecommendations] = useState<RecommendationMessage[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -99,10 +55,11 @@ export function ProfileTabs({
       setIsLoading(true);
 
       try {
-        const [results, ownPosts, ownMediaPosts] = await Promise.all([
+        const [results, ownPosts, ownMediaPosts, ownSentRecommendations] = await Promise.all([
           fetchStoredReactions(userId),
           fetchUserTextPosts(userId),
-          fetchUserMediaPosts(userId)
+          fetchUserMediaPosts(userId),
+          isOwnProfile ? fetchSentMessages(userId) : Promise.resolve([])
         ]);
         if (!isMounted) {
           return;
@@ -110,7 +67,7 @@ export function ProfileTabs({
 
         setReactions(results);
         setPosts(ownPosts);
-        setMediaPosts(ownMediaPosts);
+        setSentRecommendations(ownSentRecommendations);
 
         const detailed = await Promise.all(
           [
@@ -152,27 +109,29 @@ export function ProfileTabs({
       }
     }
 
+    function handleReactionsUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (detail?.userId && detail.userId !== userId) {
+        return;
+      }
+
+      void loadProfileMedia();
+    }
+
     void loadProfileMedia();
+    window.addEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
 
     return () => {
       isMounted = false;
+      window.removeEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
     };
   }, [userId]);
 
-  useEffect(() => {
-    const recommendationPostIds = mediaPosts
-      .filter((post) => post.type === "rating")
-      .map((post) => post.id);
-
-    if (!recommendationPostIds.length) {
-      setCommentsMap({});
-      return;
-    }
-
-    void fetchFeedComments(recommendationPostIds)
-      .then(setCommentsMap)
-      .catch(() => setCommentsMap({}));
-  }, [mediaPosts]);
+  const visibleTabs = useMemo(
+    () =>
+      (["watched", "liked", ...(isOwnProfile ? (["recommendations"] as TabId[]) : []), "posts"] as TabId[]),
+    [isOwnProfile]
+  );
 
   const tabItems = useMemo(() => {
     return reactions
@@ -254,7 +213,6 @@ export function ProfileTabs({
         userId
       });
       setPosts((current) => current.filter((post) => post.id !== postId));
-      setMediaPosts((current) => current.filter((post) => post.id !== postId));
       if (editingPostId === postId) {
         setEditingPostId(null);
         setEditingBody("");
@@ -266,59 +224,10 @@ export function ProfileTabs({
     }
   }
 
-  function toggleComments(postId: string) {
-    setExpandedComments((current) => ({
-      ...current,
-      [postId]: !current[postId]
-    }));
-  }
-
-  async function handleCommentSubmit(postId: string) {
-    const body = (commentDrafts[postId] ?? "").trim();
-    if (!body) {
-      return;
-    }
-
-    try {
-      setSubmittingCommentFor(postId);
-      await createFeedComment({
-        postId,
-        userId,
-        body
-      });
-      setCommentsMap((current) => ({
-        ...current,
-        [postId]: [
-          ...(current[postId] ?? []),
-          {
-            id: `local-comment-${Date.now()}`,
-            postId,
-            userId,
-            author: isOwnProfile ? "Vos" : "Cineriano",
-            body,
-            createdAtLabel: "Ahora"
-          }
-        ]
-      }));
-      setCommentDrafts((current) => ({
-        ...current,
-        [postId]: ""
-      }));
-      setExpandedComments((current) => ({
-        ...current,
-        [postId]: true
-      }));
-    } catch {
-      setSyncMessage("No pude comentar esta recomendación.");
-    } finally {
-      setSubmittingCommentFor(null);
-    }
-  }
-
   return (
     <section className="profile-tabs">
       <div className="profile-tabs__switcher">
-        {(["watched", "liked", "recommendations", "posts"] as TabId[]).map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab}
             type="button"
@@ -337,143 +246,58 @@ export function ProfileTabs({
           {isOwnProfile ? "Cargando tu videoteca..." : "Cargando este perfil..."}
         </div>
       ) : activeTab === "recommendations" ? (
-        mediaPosts.filter((post) => post.type === "rating").length ? (
+        isOwnProfile && sentRecommendations.length ? (
           <div className="profile-posts">
-            {mediaPosts.filter((post) => post.type === "rating").map((post) => {
-              if (!post.tmdbId || !post.mediaType) {
-                return null;
-              }
+            {sentRecommendations.map((message) => (
+              <article className="profile-post-card profile-post-card--media" key={message.id}>
+                <div className="profile-post-card__topline">
+                  <strong>Recomendación privada enviada</strong>
+                  <span>{message.createdAtLabel}</span>
+                </div>
 
-              const item = titles[`${post.mediaType}-${post.tmdbId}`];
-              const parsedRating = post.type === "rating" ? parseRatingPost(post.body) : null;
-              const comments = commentsMap[post.id] ?? [];
-              const isCommentsOpen = Boolean(expandedComments[post.id]);
-
-              return (
-                <article className="profile-post-card profile-post-card--media" key={post.id}>
-                  <div className="profile-post-card__topline">
-                    <strong>{isOwnProfile ? "Puntuaste este titulo" : "Puntuo este titulo"}</strong>
-                    <span>{post.createdAtLabel}</span>
+                <div className="profile-post-card__media-layout">
+                  <div className="detail-poster detail-poster--profile" onClick={() => openMediaDetails(message.item)}>
+                    <img
+                      src={message.item.posterUrl}
+                      alt={message.item.title}
+                      className="profile-post-card__poster"
+                    />
+                    <span className="detail-poster__hint" aria-hidden="true">
+                      Ver detalles
+                    </span>
                   </div>
 
-                  <div className="profile-post-card__media-layout profile-post-card__media-layout--with-actions">
-                    {item ? (
-                      <div className="detail-poster detail-poster--profile" onClick={() => openMediaDetails(item)}>
-                        <img
-                          src={item.posterUrl}
-                          alt={item.title}
-                          className="profile-post-card__poster"
-                        />
-                        <span className="detail-poster__hint" aria-hidden="true">
-                          Ver detalles
-                        </span>
-                      </div>
+                  <div className="profile-post-card__media-copy">
+                    <strong className="media-linklike" onClick={() => openMediaDetails(message.item)}>
+                      {message.item.title}
+                    </strong>
+                    <span>
+                      {message.item.mediaType === "tv" ? "Serie" : "Pelicula"} • {message.item.year}
+                    </span>
+                    <p className="profile-post-card__text">
+                      Para @{message.recipientProfile?.username ?? "cineriano"} ·{" "}
+                      {message.readAt ? "Vista por la otra persona" : "Pendiente de leer"}
+                    </p>
+                    {message.note.trim() ? (
+                      <p className="profile-post-card__text">"{message.note.trim()}"</p>
+                    ) : (
+                      <p className="profile-post-card__text">
+                        La mandaste sin mensaje extra.
+                      </p>
+                    )}
+                    {message.replies?.length ? (
+                      <p className="profile-post-card__text">
+                        {message.replies.length} {message.replies.length === 1 ? "respuesta" : "respuestas"} en el hilo
+                      </p>
                     ) : null}
-
-                    <div className="profile-post-card__media-copy">
-                      <strong className="media-linklike" onClick={() => item ? openMediaDetails(item) : undefined}>
-                        {item?.title ?? parsedRating?.title ?? "Titulo"}
-                      </strong>
-                      <span>
-                        {item?.mediaType === "tv" ? "Serie" : "Pelicula"}{item?.year ? ` • ${item.year}` : ""}
-                      </span>
-
-                      {parsedRating ? (
-                        <>
-                          <p className="profile-post-card__text">
-                            {parsedRating.quote ||
-                              (parsedRating.liked
-                                ? isOwnProfile
-                                  ? "Te gusto y la marcaste como vista."
-                                  : "Le gusto y la marco como vista."
-                                : isOwnProfile
-                                  ? "No te gusto, pero la dejaste puntuada como vista."
-                                  : "No le gusto, pero la dejo puntuada como vista.")}
-                          </p>
-                        </>
-                      ) : null}
-                    </div>
-
-                    <div className="profile-post-card__inline-actions">
-                      {!readOnly ? (
-                        <button
-                          type="button"
-                          className="recommendation-action-button recommendation-action-button--small profile-remove-button profile-remove-button--inline"
-                          disabled={isSyncing}
-                          onClick={() => void handleDeletePost(post.id)}
-                          data-tooltip="Eliminar"
-                          aria-label="Eliminar"
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M6 6 18 18" />
-                            <path d="M18 6 6 18" />
-                          </svg>
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="recommendation-action-button recommendation-action-button--small profile-comment-button"
-                        onClick={() => toggleComments(post.id)}
-                        data-tooltip="Comentar"
-                        aria-label={isCommentsOpen ? "Ocultar comentarios" : "Abrir comentarios"}
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M6.5 5.5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H10l-4 3.5V15.5h-.5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z" />
-                        </svg>
-                      </button>
-                    </div>
                   </div>
-
-                  {isCommentsOpen ? (
-                    <div className="timeline-card__comments timeline-card__comments--profile">
-                      {comments.length ? (
-                        <div className="timeline-card__comment-list">
-                          {comments.map((comment) => (
-                            <article className="timeline-card__comment" key={comment.id}>
-                              <strong>{comment.author}</strong>
-                              <span>
-                                @{comment.username ?? comment.author.toLowerCase()} · {comment.createdAtLabel}
-                              </span>
-                              <p>{comment.body}</p>
-                            </article>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="timeline-card__comment-empty">Todavía no hay comentarios acá.</p>
-                      )}
-
-                      <div className="timeline-card__comment-form">
-                        <input
-                          type="text"
-                          value={commentDrafts[post.id] ?? ""}
-                          onChange={(event) =>
-                            setCommentDrafts((current) => ({
-                              ...current,
-                              [post.id]: event.target.value
-                            }))
-                          }
-                          placeholder="Deja tu comentario"
-                        />
-                        <button
-                          type="button"
-                          className="primary-button"
-                          disabled={submittingCommentFor === post.id || !(commentDrafts[post.id] ?? "").trim()}
-                          onClick={() => void handleCommentSubmit(post.id)}
-                        >
-                          {submittingCommentFor === post.id ? "Publicando..." : "Comentar"}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
+                </div>
+              </article>
+            ))}
           </div>
         ) : (
           <div className="profile-grid__empty">
-            {isOwnProfile
-              ? "Todavia no tenes titulos puntuados desde Ya la vi."
-              : "Todavia no hay recomendaciones puntuadas en este perfil."}
+            Todavia no mandaste recomendaciones privadas.
           </div>
         )
       ) : activeTab === "posts" ? (

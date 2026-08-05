@@ -64,11 +64,7 @@ export async function saveStoredReaction(input: {
     .eq("tmdb_id", input.item.id)
     .eq("media_type", input.item.mediaType);
 
-  if (input.reaction === "disliked") {
-    deleteQuery = deleteQuery.in("reaction", ["liked", "watched", "disliked"]);
-  } else {
-    deleteQuery = deleteQuery.in("reaction", [input.reaction, "disliked"]);
-  }
+  deleteQuery = deleteQuery.in("reaction", ["liked", "watched", "disliked"]);
 
   const { error: deleteError } = await deleteQuery;
   if (deleteError) {
