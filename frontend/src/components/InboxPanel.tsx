@@ -792,7 +792,8 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
             </button>
           ) : null}
           <div className="inbox-thread-view__header">
-            <div className="inbox-thread-view__header-copy">
+            {isMobile ? (
+              <div className="inbox-thread-view__header-copy">
               <span className="inbox-thread-view__kicker">
                 {message.item.mediaType === "movie" ? "PELICULA" : "SERIE"} • {message.item.year}
               </span>
@@ -818,7 +819,8 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
                   </span>
                 </div>
               </div>
-            </div>
+              </div>
+            ) : null}
             <div className="inbox-thread-view__header-side">
               <div className="inbox-thread-view__actions inbox-thread-view__actions--header">
                 {!isMobile && mode === "received" ? (
@@ -1139,14 +1141,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
             )}
 
           <div className="inbox-mobile-toolbar">
-            <div className="inbox-mobile-toolbar__copy">
-              <strong>{category === "recommendations" ? "Inbox cineriano" : "Comentarios"}</strong>
-              <span>
-                {category === "recommendations"
-                  ? "Busca recomendaciones y respuestas"
-                  : "Busca actividad sobre tus publicaciones"}
-              </span>
-            </div>
             <label className="inbox-search">
               <span aria-hidden="true">⌕</span>
               <input

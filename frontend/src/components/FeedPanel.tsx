@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FEED_SCROLL_TO_TOP_EVENT } from "../App";
 import { demoDiscovery, demoFeed } from "../data/demoData";
 import { useMediaDetails } from "./MediaDetailsModal";
 import {
@@ -174,10 +175,59 @@ export function FeedPanel({
   const [composerText, setComposerText] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
   const [composerMessage, setComposerMessage] = useState<string | null>(null);
+  const [showScrollTopButton, setShowScrollTopButton] = useState(false);
+  const feedShellRef = useRef<HTMLElement | null>(null);
+  const feedScrollContainerRef = useRef<HTMLElement | null>(null);
   const postRefs = useRef<Record<string, HTMLElement | null>>({});
   const commentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const editorialRailRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const composerWordCount = useMemo(() => countWords(composerText), [composerText]);
+
+  function resolveFeedScrollContainer() {
+    const shell = feedShellRef.current;
+    if (!shell) {
+      return null;
+    }
+
+    return shell.closest(".workspace-content") as HTMLElement | null;
+  }
+
+  function scrollFeedToTop() {
+    const container = feedScrollContainerRef.current ?? resolveFeedScrollContainer();
+    if (container) {
+      container.scrollTo({
+        top: 0,
+        behavior: "smooth"
+      });
+    }
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
+  }
+
+  useEffect(() => {
+    const container = resolveFeedScrollContainer();
+    feedScrollContainerRef.current = container;
+
+    function updateScrollState() {
+      const containerScrollTop = container?.scrollTop ?? 0;
+      const windowScrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+      setShowScrollTopButton(Math.max(containerScrollTop, windowScrollTop) > 720);
+    }
+
+    updateScrollState();
+    container?.addEventListener("scroll", updateScrollState, { passive: true });
+    window.addEventListener("scroll", updateScrollState, { passive: true });
+    window.addEventListener(FEED_SCROLL_TO_TOP_EVENT, scrollFeedToTop as EventListener);
+
+    return () => {
+      container?.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener(FEED_SCROLL_TO_TOP_EVENT, scrollFeedToTop as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     async function loadFeed() {
@@ -805,8 +855,9 @@ export function FeedPanel({
   }
 
   return (
-    <section className="feed-shell">
-      <div className="feed-main">
+    <>
+      <section className="feed-shell" ref={feedShellRef}>
+        <div className="feed-main">
         <header className="feed-header">
           <button
             type="button"
@@ -1087,9 +1138,10 @@ export function FeedPanel({
             </div>
           )}
         </div>
-      </div>
 
-      <aside className="feed-sidebar">
+        </div>
+
+        <aside className="feed-sidebar">
         <section className="sidebar-card">
           <p className="section-eyebrow">Estrena esta semana</p>
           {editorialRails.find((rail) => rail.id === "upcoming")?.items?.length ? (
@@ -1181,7 +1233,19 @@ export function FeedPanel({
             )}
           </div>
         </section>
-      </aside>
-    </section>
+        </aside>
+      </section>
+
+      {showScrollTopButton ? (
+        <button
+          type="button"
+          className="feed-scroll-top-button"
+          onClick={scrollFeedToTop}
+          aria-label="Volver arriba"
+        >
+          ↑
+        </button>
+      ) : null}
+    </>
   );
 }

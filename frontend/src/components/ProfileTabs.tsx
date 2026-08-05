@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
-import { fetchSentMessages } from "../lib/inbox";
 import {
   deleteFeedPost,
   fetchUserMediaPosts,
@@ -14,7 +13,7 @@ import {
   type StoredReaction
 } from "../lib/reactions";
 import { getTitleById } from "../lib/tmdb";
-import type { DiscoveryItem, FeedEntry, RecommendationMessage } from "../types";
+import type { DiscoveryItem, FeedEntry } from "../types";
 
 type ProfileTabsProps = {
   userId: string;
@@ -31,6 +30,46 @@ const tabLabels: Record<TabId, string> = {
   posts: "Posts"
 };
 
+function parseRatingPost(body: string) {
+  const fullReviewMatch = body.match(/^Le gusto (.+?), le dio (\d)\/5 y dijo: "([\s\S]+)"\.?$/);
+  if (fullReviewMatch) {
+    return {
+      title: fullReviewMatch[1],
+      quote: fullReviewMatch[3],
+      liked: true
+    };
+  }
+
+  const shortReviewMatch = body.match(/^(Le gusto|No le gusto) (.+?)(?:,| y) le dio (\d)\/5\.?$/);
+  if (shortReviewMatch) {
+    return {
+      title: shortReviewMatch[2],
+      quote: "",
+      liked: shortReviewMatch[1] === "Le gusto"
+    };
+  }
+
+  const fullReviewWithoutStarsMatch = body.match(/^(Le gusto|No le gusto) (.+?) y dijo: "([\s\S]+)"\.?$/);
+  if (fullReviewWithoutStarsMatch) {
+    return {
+      title: fullReviewWithoutStarsMatch[2],
+      quote: fullReviewWithoutStarsMatch[3],
+      liked: fullReviewWithoutStarsMatch[1] === "Le gusto"
+    };
+  }
+
+  const shortReviewWithoutStarsMatch = body.match(/^(Le gusto|No le gusto) (.+?)\.?$/);
+  if (shortReviewWithoutStarsMatch) {
+    return {
+      title: shortReviewWithoutStarsMatch[2],
+      quote: "",
+      liked: shortReviewWithoutStarsMatch[1] === "Le gusto"
+    };
+  }
+
+  return null;
+}
+
 export function ProfileTabs({
   userId,
   readOnly = false,
@@ -41,12 +80,12 @@ export function ProfileTabs({
   const [reactions, setReactions] = useState<StoredReaction[]>([]);
   const [titles, setTitles] = useState<Record<string, DiscoveryItem>>({});
   const [posts, setPosts] = useState<FeedEntry[]>([]);
+  const [mediaPosts, setMediaPosts] = useState<FeedEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
-  const [sentRecommendations, setSentRecommendations] = useState<RecommendationMessage[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -55,11 +94,10 @@ export function ProfileTabs({
       setIsLoading(true);
 
       try {
-        const [results, ownPosts, ownMediaPosts, ownSentRecommendations] = await Promise.all([
+        const [results, ownPosts, ownMediaPosts] = await Promise.all([
           fetchStoredReactions(userId),
           fetchUserTextPosts(userId),
-          fetchUserMediaPosts(userId),
-          isOwnProfile ? fetchSentMessages(userId) : Promise.resolve([])
+          fetchUserMediaPosts(userId)
         ]);
         if (!isMounted) {
           return;
@@ -67,7 +105,7 @@ export function ProfileTabs({
 
         setReactions(results);
         setPosts(ownPosts);
-        setSentRecommendations(ownSentRecommendations);
+        setMediaPosts(ownMediaPosts);
 
         const detailed = await Promise.all(
           [
@@ -127,11 +165,7 @@ export function ProfileTabs({
     };
   }, [userId]);
 
-  const visibleTabs = useMemo(
-    () =>
-      (["watched", "liked", ...(isOwnProfile ? (["recommendations"] as TabId[]) : []), "posts"] as TabId[]),
-    [isOwnProfile]
-  );
+  const visibleTabs = useMemo(() => ["watched", "liked", "recommendations", "posts"] as TabId[], []);
 
   const tabItems = useMemo(() => {
     return reactions
@@ -246,58 +280,77 @@ export function ProfileTabs({
           {isOwnProfile ? "Cargando tu videoteca..." : "Cargando este perfil..."}
         </div>
       ) : activeTab === "recommendations" ? (
-        isOwnProfile && sentRecommendations.length ? (
+        mediaPosts.filter((post) => {
+          if (post.type !== "rating") {
+            return false;
+          }
+
+          const parsed = parseRatingPost(post.body);
+          return Boolean(parsed?.liked);
+        }).length ? (
           <div className="profile-posts">
-            {sentRecommendations.map((message) => (
-              <article className="profile-post-card profile-post-card--media" key={message.id}>
+            {mediaPosts
+              .filter((post) => {
+                if (post.type !== "rating") {
+                  return false;
+                }
+
+                const parsed = parseRatingPost(post.body);
+                return Boolean(parsed?.liked);
+              })
+              .map((post) => {
+                if (!post.tmdbId || !post.mediaType) {
+                  return null;
+                }
+
+                const item = titles[`${post.mediaType}-${post.tmdbId}`];
+                const parsedRating = parseRatingPost(post.body);
+
+                return (
+                  <article className="profile-post-card profile-post-card--media" key={post.id}>
                 <div className="profile-post-card__topline">
-                  <strong>Recomendación privada enviada</strong>
-                  <span>{message.createdAtLabel}</span>
+                      <strong>{isOwnProfile ? "La recomendas" : "La recomienda"}</strong>
+                      <span>{post.createdAtLabel}</span>
                 </div>
 
-                <div className="profile-post-card__media-layout">
-                  <div className="detail-poster detail-poster--profile" onClick={() => openMediaDetails(message.item)}>
+                    <div className="profile-post-card__media-layout">
+                      {item ? (
+                        <div className="detail-poster detail-poster--profile" onClick={() => openMediaDetails(item)}>
                     <img
-                      src={message.item.posterUrl}
-                      alt={message.item.title}
+                            src={item.posterUrl}
+                            alt={item.title}
                       className="profile-post-card__poster"
                     />
                     <span className="detail-poster__hint" aria-hidden="true">
                       Ver detalles
                     </span>
-                  </div>
+                        </div>
+                      ) : null}
 
-                  <div className="profile-post-card__media-copy">
-                    <strong className="media-linklike" onClick={() => openMediaDetails(message.item)}>
-                      {message.item.title}
-                    </strong>
+                      <div className="profile-post-card__media-copy">
+                        <strong className="media-linklike" onClick={() => item ? openMediaDetails(item) : undefined}>
+                          {item?.title ?? parsedRating?.title ?? "Titulo"}
+                        </strong>
                     <span>
-                      {message.item.mediaType === "tv" ? "Serie" : "Pelicula"} • {message.item.year}
+                          {item?.mediaType === "tv" ? "Serie" : "Pelicula"}{item?.year ? ` • ${item.year}` : ""}
                     </span>
-                    <p className="profile-post-card__text">
-                      Para @{message.recipientProfile?.username ?? "cineriano"} ·{" "}
-                      {message.readAt ? "Vista por la otra persona" : "Pendiente de leer"}
-                    </p>
-                    {message.note.trim() ? (
-                      <p className="profile-post-card__text">"{message.note.trim()}"</p>
-                    ) : (
-                      <p className="profile-post-card__text">
-                        La mandaste sin mensaje extra.
-                      </p>
-                    )}
-                    {message.replies?.length ? (
-                      <p className="profile-post-card__text">
-                        {message.replies.length} {message.replies.length === 1 ? "respuesta" : "respuestas"} en el hilo
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              </article>
-            ))}
+                        <p className="profile-post-card__text">
+                          {parsedRating?.quote ||
+                            (isOwnProfile
+                              ? "La viste, te gustó y la dejas como recomendada en tu perfil."
+                              : "La vio, le gustó y la deja como recomendada en su perfil.")}
+                        </p>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
           </div>
         ) : (
           <div className="profile-grid__empty">
-            Todavia no mandaste recomendaciones privadas.
+            {isOwnProfile
+              ? "Todavia no marcaste títulos que te gustaron para recomendar."
+              : "Esta persona todavia no tiene recomendaciones públicas en su perfil."}
           </div>
         )
       ) : activeTab === "posts" ? (

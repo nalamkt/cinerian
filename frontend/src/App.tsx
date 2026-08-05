@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 
 type AppView = "feed" | "search" | "recommendations" | "inbox" | "user";
 const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
+export const FEED_SCROLL_TO_TOP_EVENT = "cinerian:feed-scroll-to-top";
 
 function DockIcon({ id, badgeCount = 0 }: { id: AppView; badgeCount?: number }) {
   if (id === "feed") {
@@ -214,6 +215,11 @@ export default function App() {
   }
 
   function handleChangeView(view: AppView) {
+    if (!selectedProfileRoute && activeView === "feed" && view === "feed") {
+      window.dispatchEvent(new CustomEvent(FEED_SCROLL_TO_TOP_EVENT));
+      return;
+    }
+
     setSelectedProfileRoute(null);
     setActiveView(view);
     if (window.location.pathname !== "/") {
