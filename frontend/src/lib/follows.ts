@@ -86,3 +86,20 @@ export async function fetchFollowingUserIds(userId: string): Promise<string[]> {
 
   return (data ?? []).map((entry) => entry.following_id as string);
 }
+
+export async function fetchFollowerUserIds(userId: string): Promise<string[]> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("user_follows")
+    .select("follower_id")
+    .eq("following_id", userId);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((entry) => entry.follower_id as string);
+}

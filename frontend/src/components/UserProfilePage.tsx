@@ -9,13 +9,15 @@ type UserProfilePageProps = {
   userId?: string;
   username?: string;
   onBack: () => void;
+  onOpenUserProfile?: (profile: { userId: string; username?: string }) => void;
 };
 
 export function UserProfilePage({
   currentUserId,
   userId,
   username,
-  onBack
+  onBack,
+  onOpenUserProfile
 }: UserProfilePageProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [followers, setFollowers] = useState(0);
@@ -182,6 +184,7 @@ export function UserProfilePage({
               : "Explora lo que esta persona vio, guardo y recomendo dentro de Cinerian."
           }
           readOnly={!isOwnProfile}
+          onOpenUserProfile={onOpenUserProfile}
         />
       )}
     </div>

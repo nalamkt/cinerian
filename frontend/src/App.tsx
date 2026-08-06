@@ -18,6 +18,7 @@ import {
 } from "./lib/profileShare";
 import { hasSupabaseEnv } from "./lib/supabase";
 import { useEffect, useMemo, useState } from "react";
+import type { Profile } from "./lib/auth";
 
 type AppView = "feed" | "search" | "recommendations" | "inbox" | "user";
 const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
@@ -90,6 +91,7 @@ const dockItems: Array<{ id: AppView; label: string }> = [
 export default function App() {
   const { session, profile, isLoading, error } = useAuth();
   const sessionUserId = session?.user.id ?? null;
+  const [localProfile, setLocalProfile] = useState<Profile | null>(profile);
   const [activeView, setActiveView] = useState<AppView>(() => {
     if (typeof window === "undefined") {
       return "feed";
@@ -110,19 +112,23 @@ export default function App() {
   } | null>(() => parseSharedProfilePath(window.location.pathname));
   const [shareLabel, setShareLabel] = useState("Compartir perfil");
 
+  useEffect(() => {
+    setLocalProfile(profile);
+  }, [profile]);
+
   const ownProfileAction = useMemo(() => {
     return (
       <div className="profile-hero__actions profile-hero__actions--own">
         <button
           type="button"
           className="profile-share-button"
-          disabled={!profile?.username}
+          disabled={!localProfile?.username}
           onClick={async () => {
-            if (!profile?.username) {
+            if (!localProfile?.username) {
               return;
             }
 
-            const result = await shareProfileLink(profile.username);
+            const result = await shareProfileLink(localProfile.username);
             setShareLabel(result === "shared" ? "Compartido" : "Link copiado");
             window.setTimeout(() => setShareLabel("Compartir perfil"), 1800);
           }}
@@ -134,7 +140,7 @@ export default function App() {
         </button>
       </div>
     );
-  }, [profile?.username, shareLabel]);
+  }, [localProfile?.username, shareLabel]);
 
   useEffect(() => {
     function syncRouteFromLocation() {
@@ -234,6 +240,7 @@ export default function App() {
           currentUserId={session!.user.id}
           userId={selectedProfileRoute.userId}
           username={selectedProfileRoute.username}
+          onOpenUserProfile={handleOpenUserProfile}
           onBack={() => {
             setSelectedProfileRoute(null);
             window.history.pushState({}, "", "/");
@@ -251,10 +258,12 @@ export default function App() {
         return (
           <ProfilePanel
             userId={session!.user.id}
-            profile={profile}
+            profile={localProfile}
             isOwnProfile
             headerAction={ownProfileAction}
             profileMessage="Tu perfil publico va juntando automaticamente lo que marcaste como visto, guardaste en Watchlist y recomendaste en Cinerian."
+            onProfileUpdated={setLocalProfile}
+            onOpenUserProfile={handleOpenUserProfile}
           />
         );
       case "inbox":
@@ -281,7 +290,7 @@ export default function App() {
         return (
           <FeedPanel
             userId={session!.user.id}
-            profile={profile}
+            profile={localProfile}
             onOpenUserProfile={handleOpenUserProfile}
             highlightedPost={highlightedFeedPost}
             onHighlightHandled={() => setHighlightedFeedPost(null)}

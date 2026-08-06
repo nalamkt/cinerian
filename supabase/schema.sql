@@ -5,9 +5,34 @@ create table if not exists public.profiles (
   username text unique not null,
   display_name text not null,
   avatar_url text,
+  banner_url text,
   bio text,
+  favorite_genres text[] not null default '{}',
+  favorite_titles jsonb not null default '[]'::jsonb,
+  featured_collections jsonb not null default '[]'::jsonb,
+  visibility_settings jsonb not null default '{"showFollowers":false,"showFollowing":false,"showCollections":false,"showBadges":false,"showInsights":false,"showActivity":false,"showWatchlist":true}'::jsonb,
   created_at timestamptz not null default timezone('utc', now())
 );
+
+alter table if exists public.profiles
+alter column visibility_settings
+set default '{"showFollowers":false,"showFollowing":false,"showCollections":false,"showBadges":false,"showInsights":false,"showActivity":false,"showWatchlist":true}'::jsonb;
+
+update public.profiles
+set visibility_settings = coalesce(visibility_settings, '{}'::jsonb) || '{"showBadges":false}'::jsonb
+where visibility_settings is null
+   or not (visibility_settings ? 'showBadges')
+   or visibility_settings = '{}'::jsonb
+   or visibility_settings = '{"showFollowers":false,"showFollowing":false,"showCollections":false,"showInsights":false,"showActivity":false,"showWatchlist":false}'::jsonb
+   or visibility_settings = '{"showFollowers":false,"showFollowing":false,"showCollections":false,"showInsights":false,"showActivity":false,"showWatchlist":true}'::jsonb
+   or visibility_settings = '{"showFollowers":true,"showFollowing":true,"showCollections":true,"showInsights":true,"showActivity":true,"showWatchlist":true}'::jsonb;
+
+update public.profiles
+set visibility_settings = '{"showFollowers":false,"showFollowing":false,"showCollections":false,"showBadges":false,"showInsights":false,"showActivity":false,"showWatchlist":true}'::jsonb
+where visibility_settings is null
+   or visibility_settings = '{}'::jsonb
+   or visibility_settings = '{"showFollowers":false,"showFollowing":false,"showCollections":false,"showInsights":false,"showActivity":false,"showWatchlist":false}'::jsonb
+   or visibility_settings = '{"showFollowers":true,"showFollowing":true,"showCollections":true,"showInsights":true,"showActivity":true,"showWatchlist":true}'::jsonb;
 
 create table if not exists public.media_reactions (
   id uuid primary key default gen_random_uuid(),

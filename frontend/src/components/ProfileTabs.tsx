@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import {
+  type Profile,
+  type ProfileCollection,
+  type ProfileVisibilitySettings,
+  updateProfile
+} from "../lib/auth";
+import {
   deleteFeedPost,
   fetchUserMediaPosts,
   fetchUserTextPosts,
@@ -19,15 +25,26 @@ type ProfileTabsProps = {
   userId: string;
   readOnly?: boolean;
   isOwnProfile?: boolean;
+  profile?: Profile | null;
+  favoriteTitles?: DiscoveryItem[];
+  featuredCollections?: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    items: DiscoveryItem[];
+  }>;
+  visibilitySettings?: ProfileVisibilitySettings;
+  onProfileUpdated?: (profile: Profile) => void;
 };
 
-type TabId = "watched" | "liked" | "recommendations" | "posts";
+type TabId = "watched" | "liked" | "recommendations" | "posts" | "curation";
 
 const tabLabels: Record<TabId, string> = {
   watched: "Vistas",
   liked: "Watchlist",
   recommendations: "Mis recomendaciones",
-  posts: "Posts"
+  posts: "Posts",
+  curation: "Mi selección"
 };
 
 function parseRatingPost(body: string) {
@@ -73,7 +90,12 @@ function parseRatingPost(body: string) {
 export function ProfileTabs({
   userId,
   readOnly = false,
-  isOwnProfile = true
+  isOwnProfile = true,
+  profile = null,
+  favoriteTitles = [],
+  featuredCollections = [],
+  visibilitySettings,
+  onProfileUpdated
 }: ProfileTabsProps) {
   const { openMediaDetails } = useMediaDetails();
   const [activeTab, setActiveTab] = useState<TabId>("watched");
@@ -84,8 +106,19 @@ export function ProfileTabs({
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [isEditingCuration, setIsEditingCuration] = useState(false);
+  const [curationFavoriteTitles, setCurationFavoriteTitles] = useState<
+    Array<{ tmdbId: number; mediaType: "movie" | "tv" }>
+  >([]);
+  const [curationCollections, setCurationCollections] = useState<ProfileCollection[]>([]);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
+
+  useEffect(() => {
+    setCurationFavoriteTitles(profile?.favorite_titles ?? []);
+    setCurationCollections(profile?.featured_collections ?? []);
+    setIsEditingCuration(false);
+  }, [profile]);
 
   useEffect(() => {
     let isMounted = true;
@@ -165,7 +198,36 @@ export function ProfileTabs({
     };
   }, [userId]);
 
-  const visibleTabs = useMemo(() => ["watched", "liked", "recommendations", "posts"] as TabId[], []);
+  const visibleTabs = useMemo(() => {
+    const tabs: TabId[] = [];
+
+    if (visibilitySettings?.showWatchlist !== false) {
+      tabs.push("watched", "liked");
+    }
+
+    if (
+      (isOwnProfile || visibilitySettings?.showCollections !== false) &&
+      (favoriteTitles.length || featuredCollections.length || isOwnProfile)
+    ) {
+      tabs.push("curation");
+    }
+
+    tabs.push("recommendations", "posts");
+
+    return tabs;
+  }, [
+    favoriteTitles.length,
+    featuredCollections.length,
+    isOwnProfile,
+    visibilitySettings?.showCollections,
+    visibilitySettings?.showWatchlist
+  ]);
+
+  useEffect(() => {
+    if (!visibleTabs.includes(activeTab)) {
+      setActiveTab(visibleTabs[0] ?? "recommendations");
+    }
+  }, [activeTab, visibleTabs]);
 
   const tabItems = useMemo(() => {
     return reactions
@@ -173,6 +235,28 @@ export function ProfileTabs({
       .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
       .filter((item): item is DiscoveryItem => Boolean(item));
   }, [activeTab, reactions, titles]);
+
+  const candidateTitles = useMemo(
+    () =>
+      Object.values(titles).sort((left, right) =>
+        left.title.localeCompare(right.title, "es", { sensitivity: "base" })
+      ),
+    [titles]
+  );
+  const selectedFavoriteTitleKeys = useMemo(
+    () => new Set(curationFavoriteTitles.map((entry) => `${entry.mediaType}-${entry.tmdbId}`)),
+    [curationFavoriteTitles]
+  );
+  const collectionSelectionKeys = useMemo(
+    () =>
+      Object.fromEntries(
+        curationCollections.map((collection) => [
+          collection.id,
+          new Set(collection.items.map((entry) => `${entry.mediaType}-${entry.tmdbId}`))
+        ])
+      ),
+    [curationCollections]
+  );
 
   async function handleRemove(item: DiscoveryItem) {
     if (activeTab !== "watched" && activeTab !== "liked") {
@@ -258,6 +342,131 @@ export function ProfileTabs({
     }
   }
 
+  function toggleFavoriteTitle(item: DiscoveryItem) {
+    const key = `${item.mediaType}-${item.id}`;
+
+    setCurationFavoriteTitles((current) => {
+      if (current.some((entry) => `${entry.mediaType}-${entry.tmdbId}` === key)) {
+        return current.filter((entry) => `${entry.mediaType}-${entry.tmdbId}` !== key);
+      }
+
+      if (current.length >= 4) {
+        return current;
+      }
+
+      return [...current, { tmdbId: item.id, mediaType: item.mediaType }];
+    });
+  }
+
+  function addCollection() {
+    setCurationCollections((current) => {
+      if (current.length >= 3) {
+        return current;
+      }
+
+      return [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          title: "",
+          description: "",
+          items: []
+        }
+      ];
+    });
+  }
+
+  function updateCollection(
+    collectionId: string,
+    patch: Partial<Pick<ProfileCollection, "title" | "description" | "items">>
+  ) {
+    setCurationCollections((current) =>
+      current.map((collection) =>
+        collection.id === collectionId
+          ? {
+              ...collection,
+              ...patch
+            }
+          : collection
+      )
+    );
+  }
+
+  function removeCollection(collectionId: string) {
+    setCurationCollections((current) =>
+      current.filter((collection) => collection.id !== collectionId)
+    );
+  }
+
+  function toggleCollectionItem(collectionId: string, item: DiscoveryItem) {
+    const key = `${item.mediaType}-${item.id}`;
+
+    setCurationCollections((current) =>
+      current.map((collection) => {
+        if (collection.id !== collectionId) {
+          return collection;
+        }
+
+        const hasItem = collection.items.some(
+          (entry) => `${entry.mediaType}-${entry.tmdbId}` === key
+        );
+
+        if (hasItem) {
+          return {
+            ...collection,
+            items: collection.items.filter(
+              (entry) => `${entry.mediaType}-${entry.tmdbId}` !== key
+            )
+          };
+        }
+
+        if (collection.items.length >= 6) {
+          return collection;
+        }
+
+        return {
+          ...collection,
+          items: [...collection.items, { tmdbId: item.id, mediaType: item.mediaType }]
+        };
+      })
+    );
+  }
+
+  async function handleSaveCuration() {
+    if (!profile || !onProfileUpdated) {
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      const nextProfile = await updateProfile({
+        userId: profile.id,
+        displayName: profile.display_name,
+        username: profile.username,
+        bio: profile.bio ?? "",
+        avatarUrl: profile.avatar_url ?? "",
+        bannerUrl: profile.banner_url ?? "",
+        favoriteGenres: profile.favorite_genres,
+        favoriteTitles: curationFavoriteTitles,
+        featuredCollections: curationCollections
+          .map((collection) => ({
+            ...collection,
+            title: collection.title.trim(),
+            description: collection.description?.trim() ? collection.description.trim() : null
+          }))
+          .filter((collection) => collection.title.length > 0 && collection.items.length > 0),
+        visibilitySettings: profile.visibility_settings
+      });
+      onProfileUpdated(nextProfile);
+      setIsEditingCuration(false);
+    } catch {
+      setSyncMessage("No pude guardar tu selección personal.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
   return (
     <section className="profile-tabs">
       <div className="profile-tabs__switcher">
@@ -279,6 +488,248 @@ export function ProfileTabs({
         <div className="profile-grid__empty">
           {isOwnProfile ? "Cargando tu videoteca..." : "Cargando este perfil..."}
         </div>
+      ) : activeTab === "curation" ? (
+        favoriteTitles.length || featuredCollections.length || isOwnProfile ? (
+          <div className="profile-curation">
+            {isOwnProfile && !readOnly ? (
+              <div className="profile-curation__actions">
+                {isEditingCuration ? (
+                  <>
+                    <button
+                      type="button"
+                      className="profile-follow-button"
+                      disabled={isSyncing}
+                      onClick={() => void handleSaveCuration()}
+                    >
+                      {isSyncing ? "Guardando..." : "Guardar selección"}
+                    </button>
+                    <button
+                      type="button"
+                      className="profile-share-button"
+                      disabled={isSyncing}
+                      onClick={() => {
+                        setCurationFavoriteTitles(profile?.favorite_titles ?? []);
+                        setCurationCollections(profile?.featured_collections ?? []);
+                        setIsEditingCuration(false);
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="profile-share-button"
+                    onClick={() => setIsEditingCuration(true)}
+                  >
+                    Editar selección
+                  </button>
+                )}
+              </div>
+            ) : null}
+
+            {favoriteTitles.length ? (
+              <div className="profile-top-picks">
+                <div className="profile-top-picks__header">
+                  <p className="section-eyebrow">{isOwnProfile ? "Tu top 4" : "Top 4 cineriano"}</p>
+                  <h3>{isOwnProfile ? "Tus elegidas para definir tu perfil" : "Sus títulos fijados"}</h3>
+                </div>
+
+                <div className="profile-top-picks__grid">
+                  {favoriteTitles.map((item) => (
+                    <article
+                      key={`${item.mediaType}-${item.id}`}
+                      className="profile-top-pick profile-top-pick--interactive"
+                      onClick={() => openMediaDetails(item)}
+                    >
+                      <img src={item.posterUrl} alt={item.title} className="profile-top-pick__poster" />
+                      <div className="profile-top-pick__meta">
+                        <strong>{item.title}</strong>
+                        <span>
+                          {item.year}
+                          {item.genres.length ? ` · ${item.genres.slice(0, 2).join(" · ")}` : ""}
+                        </span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {featuredCollections.length ? (
+              <div className="profile-collections">
+                <div className="profile-collections__header">
+                  <p className="section-eyebrow">Colecciones</p>
+                  <h3>
+                    {isOwnProfile
+                      ? "Tus listas curadas dentro del perfil"
+                      : "Listas curadas de este perfil"}
+                  </h3>
+                </div>
+
+                <div className="profile-collections__list">
+                  {featuredCollections.map((collection) => (
+                    <article key={collection.id} className="profile-collection-card">
+                      <div className="profile-collection-card__copy">
+                        <h4>{collection.title}</h4>
+                        {collection.description ? <p>{collection.description}</p> : null}
+                      </div>
+
+                      <div className="profile-collection-card__grid">
+                        {collection.items.map((item) => (
+                          <article
+                            key={`${collection.id}-${item.mediaType}-${item.id}`}
+                            className="profile-collection-card__item"
+                            onClick={() => openMediaDetails(item)}
+                          >
+                            <img src={item.posterUrl} alt={item.title} />
+                            <span>{item.title}</span>
+                          </article>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {isOwnProfile && isEditingCuration ? (
+              <>
+                <div className="profile-editor__section">
+                  <div className="profile-editor__section-copy">
+                    <strong>Top 4 del perfil</strong>
+                    <p>Fijá hasta 4 títulos de tu historial para que sean tu carta de presentación.</p>
+                  </div>
+
+                  {candidateTitles.length ? (
+                    <div className="profile-editor__title-grid">
+                      {candidateTitles.map((item) => {
+                        const isActive = selectedFavoriteTitleKeys.has(`${item.mediaType}-${item.id}`);
+
+                        return (
+                          <button
+                            key={`${item.mediaType}-${item.id}`}
+                            type="button"
+                            className={`profile-editor__title-card ${isActive ? "is-active" : ""}`}
+                            onClick={() => toggleFavoriteTitle(item)}
+                            disabled={!isActive && curationFavoriteTitles.length >= 4}
+                          >
+                            <img src={item.posterUrl} alt={item.title} />
+                            <span>{item.title}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="empty-like-state">
+                      Cuando marques vistas o guardes títulos, vas a poder elegir tu top 4 desde acá.
+                    </div>
+                  )}
+                </div>
+
+                <div className="profile-editor__section">
+                  <div className="profile-editor__section-copy">
+                    <strong>Colecciones personales</strong>
+                    <p>Armá hasta 3 listas curadas para mostrar tu criterio y no solo tu actividad.</p>
+                  </div>
+
+                  <div className="profile-editor__collection-actions">
+                    <button
+                      type="button"
+                      className="profile-follow-button"
+                      onClick={addCollection}
+                      disabled={curationCollections.length >= 3}
+                    >
+                      {curationCollections.length >= 3 ? "Limite alcanzado" : "Agregar coleccion"}
+                    </button>
+                  </div>
+
+                  {curationCollections.length ? (
+                    <div className="profile-editor__collections">
+                      {curationCollections.map((collection, index) => (
+                        <article key={collection.id} className="profile-editor__collection-card">
+                          <div className="profile-editor__collection-topline">
+                            <strong>Coleccion {index + 1}</strong>
+                            <button
+                              type="button"
+                              className="profile-grid__remove"
+                              onClick={() => removeCollection(collection.id)}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+
+                          <label className="profile-editor__field">
+                            <span>Titulo</span>
+                            <input
+                              type="text"
+                              value={collection.title}
+                              onChange={(event) =>
+                                updateCollection(collection.id, { title: event.target.value.slice(0, 40) })
+                              }
+                              placeholder="Ej: Thrillers que recomiendo a cualquiera"
+                            />
+                          </label>
+
+                          <label className="profile-editor__field">
+                            <span>Descripcion</span>
+                            <textarea
+                              value={collection.description ?? ""}
+                              onChange={(event) =>
+                                updateCollection(collection.id, {
+                                  description: event.target.value.slice(0, 180)
+                                })
+                              }
+                              rows={3}
+                              placeholder="Contá qué une esta colección o para quién la armaste."
+                            />
+                          </label>
+
+                          {candidateTitles.length ? (
+                            <div className="profile-editor__mini-grid">
+                              {candidateTitles.map((item) => {
+                                const isActive = collectionSelectionKeys[collection.id]?.has(
+                                  `${item.mediaType}-${item.id}`
+                                );
+
+                                return (
+                                  <button
+                                    key={`${collection.id}-${item.mediaType}-${item.id}`}
+                                    type="button"
+                                    className={`profile-editor__mini-card ${isActive ? "is-active" : ""}`}
+                                    onClick={() => toggleCollectionItem(collection.id, item)}
+                                    disabled={!isActive && collection.items.length >= 6}
+                                  >
+                                    <img src={item.posterUrl} alt={item.title} />
+                                    <span>{item.title}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="empty-like-state">
+                              Primero necesitás tener títulos en tu actividad para armar una colección.
+                            </div>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-like-state">
+                      Todavía no armaste colecciones. Este espacio puede ser buenísimo para mostrar tu criterio.
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <div className="profile-grid__empty">
+            {isOwnProfile
+              ? "Todavia no armaste una selección personal para tu perfil."
+              : "Este perfil todavía no tiene una selección curada visible."}
+          </div>
+        )
       ) : activeTab === "recommendations" ? (
         mediaPosts.filter((post) => {
           if (post.type !== "rating") {

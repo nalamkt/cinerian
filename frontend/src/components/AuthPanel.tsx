@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { signInWithEmailOtp, signInWithGoogle, verifyEmailOtp } from "../lib/auth";
+import { sendMagicLink, signInWithGoogle } from "../lib/auth";
 
 type AuthPanelProps = {
   isSupabaseReady: boolean;
@@ -25,8 +25,6 @@ function getAuthErrorMessage(error: unknown) {
 
 export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
   const [email, setEmail] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [step, setStep] = useState<"request" | "verify">("request");
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -46,26 +44,12 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
       setIsSubmitting(true);
       setMessage(null);
 
-      if (step === "request") {
-        const { error } = await signInWithEmailOtp(email);
-        if (error) {
-          throw error;
-        }
-
-        setStep("verify");
-        setMessage("Te mandamos un codigo a tu email. Si no lo ves, revisa spam.");
-      } else {
-        const { error } = await verifyEmailOtp({
-          email,
-          token: otpCode.trim()
-        });
-
-        if (error) {
-          throw error;
-        }
-
-        setMessage("Codigo verificado. Entrando a Cinerian...");
+      const { error } = await sendMagicLink(email);
+      if (error) {
+        throw error;
       }
+
+      setMessage("Te mandamos un link para entrar directo. Si no lo ves, revisa spam.");
     } catch (error) {
       setMessage(getAuthErrorMessage(error));
     } finally {
@@ -102,7 +86,7 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
       <p className="section-eyebrow">Acceso</p>
       <h2>Entra a Cinerian</h2>
       <p className="section-description">
-        Entra con Google o recibe un codigo en tu email. Sin contrasena y sin registro manual.
+        Entra con Google o recibe un link magico en tu email. Sin contrasena y sin registro manual.
       </p>
 
       <button
@@ -123,47 +107,13 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
             onChange={(event) => setEmail(event.target.value)}
             placeholder="vos@cinerian.com"
             required
-            disabled={isSubmitting || step === "verify"}
+            disabled={isSubmitting}
           />
         </label>
 
-        {step === "verify" ? (
-          <label className="input-stack">
-            <span>Codigo de 6 digitos</span>
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={otpCode}
-              onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="123456"
-              required
-            />
-          </label>
-        ) : null}
-
         <button type="submit" className="primary-button" disabled={isSubmitting}>
-          {isSubmitting
-            ? "Procesando..."
-            : step === "request"
-              ? "Recibir codigo"
-              : "Verificar codigo"}
+          {isSubmitting ? "Procesando..." : "Recibir link magico"}
         </button>
-
-        {step === "verify" ? (
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={() => {
-              setStep("request");
-              setOtpCode("");
-              setMessage(null);
-            }}
-            disabled={isSubmitting}
-          >
-            Usar otro email
-          </button>
-        ) : null}
       </form>
 
       {message ? <div className="inline-status">{message}</div> : null}
