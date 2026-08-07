@@ -326,6 +326,18 @@ export async function sendMagicLink(email: string) {
   });
 }
 
+export async function verifyEmailOtp(input: { email: string; token: string }) {
+  if (!supabase) {
+    throw new Error("Supabase no esta configurado.");
+  }
+
+  return supabase.auth.verifyOtp({
+    email: input.email,
+    token: input.token,
+    type: "email"
+  });
+}
+
 export async function signInWithGoogle() {
   if (!supabase) {
     throw new Error("Supabase no esta configurado.");
