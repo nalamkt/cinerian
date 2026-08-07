@@ -8,6 +8,12 @@ export type ProfileCollection = {
   items: Array<{ tmdbId: number; mediaType: "movie" | "tv" }>;
 };
 
+export type CurrentWatchingEntry = {
+  tmdbId: number;
+  mediaType: "tv";
+  addedAt: string;
+};
+
 export type ProfileVisibilitySettings = {
   showFollowers: boolean;
   showFollowing: boolean;
@@ -28,6 +34,7 @@ export type Profile = {
   favorite_genres: string[];
   favorite_titles: Array<{ tmdbId: number; mediaType: "movie" | "tv" }>;
   featured_collections: ProfileCollection[];
+  current_watching: CurrentWatchingEntry[];
   visibility_settings: ProfileVisibilitySettings;
 };
 
@@ -50,6 +57,9 @@ type ProfileRow = {
         items?: Array<{ tmdbId?: number | string; mediaType?: "movie" | "tv" | string }>;
       }>
     | null;
+  current_watching:
+    | Array<{ tmdbId?: number | string; mediaType?: "tv" | string; addedAt?: string | null }>
+    | null;
   visibility_settings:
     | Partial<ProfileVisibilitySettings>
     | null;
@@ -71,11 +81,12 @@ type UpdateProfileInput = {
   favoriteGenres: string[];
   favoriteTitles: Array<{ tmdbId: number; mediaType: "movie" | "tv" }>;
   featuredCollections: ProfileCollection[];
+  currentWatching: CurrentWatchingEntry[];
   visibilitySettings: ProfileVisibilitySettings;
 };
 
 const PROFILE_SELECT =
-  "id, username, display_name, avatar_url, banner_url, bio, favorite_genres, favorite_titles, featured_collections, visibility_settings";
+  "id, username, display_name, avatar_url, banner_url, bio, favorite_genres, favorite_titles, featured_collections, current_watching, visibility_settings";
 const LEGACY_PROFILE_SELECT = "id, username, display_name, avatar_url, bio";
 
 function defaultVisibilitySettings(): ProfileVisibilitySettings {
@@ -135,6 +146,18 @@ function normalizeProfileRow(row: ProfileRow): Profile {
           }))
           .filter((collection) => collection.title.length > 0 && collection.items.length > 0)
       : [],
+    current_watching: Array.isArray(row.current_watching)
+      ? row.current_watching
+          .map((entry) => ({
+            tmdbId: Number(entry.tmdbId),
+            mediaType: "tv" as const,
+            addedAt:
+              typeof entry.addedAt === "string" && entry.addedAt.trim().length
+                ? entry.addedAt
+                : new Date().toISOString()
+          }))
+          .filter((entry) => Number.isFinite(entry.tmdbId))
+      : [],
     visibility_settings: {
       ...defaultVisibilitySettings(),
       ...(row.visibility_settings ?? {})
@@ -143,18 +166,29 @@ function normalizeProfileRow(row: ProfileRow): Profile {
 }
 
 function isMissingProfileColumnsError(error: unknown) {
-  if (!(error instanceof Error)) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" &&
+          error !== null &&
+          "message" in error &&
+          typeof (error as { message?: unknown }).message === "string"
+        ? (error as { message: string }).message
+        : null;
+
+  if (!message) {
     return false;
   }
 
-  const message = error.message.toLowerCase();
+  const normalizedMessage = message.toLowerCase();
   return (
-    message.includes("banner_url") ||
-    message.includes("favorite_genres") ||
-    message.includes("favorite_titles") ||
-    message.includes("featured_collections") ||
-    message.includes("visibility_settings") ||
-    message.includes("column")
+    normalizedMessage.includes("banner_url") ||
+    normalizedMessage.includes("favorite_genres") ||
+    normalizedMessage.includes("favorite_titles") ||
+    normalizedMessage.includes("featured_collections") ||
+    normalizedMessage.includes("current_watching") ||
+    normalizedMessage.includes("visibility_settings") ||
+    normalizedMessage.includes("column")
   );
 }
 
@@ -171,6 +205,7 @@ function normalizeLegacyProfileRow(
     favorite_genres: [],
     favorite_titles: [],
     featured_collections: [],
+    current_watching: [],
     visibility_settings: defaultVisibilitySettings()
   };
 }
@@ -363,6 +398,7 @@ export async function ensureProfile({
     favorite_genres: [],
     favorite_titles: [],
     featured_collections: [],
+    current_watching: [],
     visibility_settings: defaultVisibilitySettings()
   };
 
@@ -413,6 +449,7 @@ export async function updateProfile(input: UpdateProfileInput): Promise<Profile>
     favorite_genres: input.favoriteGenres,
     favorite_titles: input.favoriteTitles,
     featured_collections: input.featuredCollections,
+    current_watching: input.currentWatching,
     visibility_settings: input.visibilitySettings
   };
 

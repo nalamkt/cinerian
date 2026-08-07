@@ -1,5 +1,12 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { type Profile, type ProfileVisibilitySettings, updateProfile } from "../lib/auth";
+import {
+  defaultEditorialPreferences,
+  fetchUserEditorialPreferences,
+  saveUserEditorialPreferences
+} from "../lib/editorial";
+import type { EditorialPreferences } from "../types";
+import { EditorialPreferencesPicker } from "./EditorialPreferencesPicker";
 
 type EditProfileFormProps = {
   profile: Profile;
@@ -57,6 +64,23 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editorialPreferences, setEditorialPreferences] = useState<EditorialPreferences>(
+    defaultEditorialPreferences()
+  );
+  const [isLoadingEditorial, setIsLoadingEditorial] = useState(true);
+
+  useEffect(() => {
+    void fetchUserEditorialPreferences(profile.id)
+      .then((preferences) => {
+        setEditorialPreferences(preferences ?? defaultEditorialPreferences());
+      })
+      .catch(() => {
+        setEditorialPreferences(defaultEditorialPreferences());
+      })
+      .finally(() => {
+        setIsLoadingEditorial(false);
+      });
+  }, [profile.id]);
 
   function updateField<Key extends keyof FormState>(key: Key, value: FormState[Key]) {
     setForm((current) => ({
@@ -130,7 +154,15 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
         favoriteGenres: form.favoriteGenres,
         favoriteTitles: profile.favorite_titles,
         featuredCollections: profile.featured_collections,
+        currentWatching: profile.current_watching,
         visibilitySettings: form.visibilitySettings
+      });
+      await saveUserEditorialPreferences({
+        userId: profile.id,
+        preferences: {
+          ...editorialPreferences,
+          completedOnboarding: true
+        }
       });
 
       onSaved(nextProfile);
@@ -288,6 +320,18 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
             );
           })}
         </div>
+      </div>
+
+      <div className="profile-editor__section">
+        {isLoadingEditorial ? (
+          <div className="inline-status">Cargando tu radar editorial...</div>
+        ) : (
+          <EditorialPreferencesPicker
+            preferences={editorialPreferences}
+            onChange={setEditorialPreferences}
+            compact
+          />
+        )}
       </div>
 
       {error ? <div className="inline-status">{error}</div> : null}

@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FEED_SCROLL_TO_TOP_EVENT } from "../App";
+import { FEED_REFRESH_EDITORIAL_EVENT, FEED_SCROLL_TO_TOP_EVENT } from "../App";
 import { demoDiscovery, demoFeed } from "../data/demoData";
+import {
+  defaultEditorialPreferences,
+  EDITORIAL_PREFERENCES_UPDATED_EVENT,
+  fetchPersonalizedEditorialNews,
+  fetchUserEditorialPreferences
+} from "../lib/editorial";
 import { useMediaDetails } from "./MediaDetailsModal";
 import {
   createFeedComment,
@@ -21,7 +27,13 @@ import {
   searchTitles
 } from "../lib/tmdb";
 import { fetchStoredReactions, REACTIONS_UPDATED_EVENT, type StoredReaction } from "../lib/reactions";
-import type { DiscoveryItem, FeedComment, FeedEntry } from "../types";
+import type {
+  DiscoveryItem,
+  EditorialNewsItem,
+  FeedComment,
+  FeedEntry
+} from "../types";
+import { EditorialOnboardingModal } from "./EditorialOnboardingModal";
 
 function findMediaFromPost(body: string) {
   const lowered = body.toLowerCase();
@@ -51,7 +63,8 @@ type EditorialRail = {
 
 type TimelineItem =
   | { type: "post"; entry: FeedEntry; media: DiscoveryItem | null }
-  | { type: "editorial"; rail: EditorialRail };
+  | { type: "editorial"; rail: EditorialRail }
+  | { type: "news-post"; item: EditorialNewsItem };
 
 const COMPOSER_WORD_LIMIT = 130;
 
@@ -175,13 +188,33 @@ export function FeedPanel({
   const [composerText, setComposerText] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
   const [composerMessage, setComposerMessage] = useState<string | null>(null);
+  const [editorialNews, setEditorialNews] = useState<EditorialNewsItem[]>([]);
+  const [pendingEditorialNews, setPendingEditorialNews] = useState<EditorialNewsItem[]>([]);
+  const [showEditorialRefreshNotice, setShowEditorialRefreshNotice] = useState(false);
+  const [editorialVisibleCount, setEditorialVisibleCount] = useState(4);
+  const [shouldShowEditorialOnboarding, setShouldShowEditorialOnboarding] = useState(false);
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
   const feedShellRef = useRef<HTMLElement | null>(null);
   const feedScrollContainerRef = useRef<HTMLElement | null>(null);
   const postRefs = useRef<Record<string, HTMLElement | null>>({});
   const commentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const editorialRailRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const editorialNewsRef = useRef<EditorialNewsItem[]>([]);
   const composerWordCount = useMemo(() => countWords(composerText), [composerText]);
+
+  function hasNewEditorialItems(nextItems: EditorialNewsItem[], currentItems: EditorialNewsItem[]) {
+    if (!nextItems.length) {
+      return false;
+    }
+
+    if (!currentItems.length) {
+      return true;
+    }
+
+    const currentTopIds = currentItems.slice(0, 4).map((item) => item.id).join("|");
+    const nextTopIds = nextItems.slice(0, 4).map((item) => item.id).join("|");
+    return currentTopIds !== nextTopIds;
+  }
 
   function resolveFeedScrollContainer() {
     const shell = feedShellRef.current;
@@ -208,6 +241,10 @@ export function FeedPanel({
   }
 
   useEffect(() => {
+    editorialNewsRef.current = editorialNews;
+  }, [editorialNews]);
+
+  useEffect(() => {
     const container = resolveFeedScrollContainer();
     feedScrollContainerRef.current = container;
 
@@ -228,6 +265,81 @@ export function FeedPanel({
       window.removeEventListener(FEED_SCROLL_TO_TOP_EVENT, scrollFeedToTop as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadEditorialLayer(options?: { background?: boolean }) {
+      try {
+        const preferences = await fetchUserEditorialPreferences(userId);
+        if (!isMounted) {
+          return;
+        }
+
+        setShouldShowEditorialOnboarding(!preferences?.completedOnboarding);
+
+        const effectivePreferences =
+          preferences?.completedOnboarding ? preferences : defaultEditorialPreferences();
+        const news = await fetchPersonalizedEditorialNews(userId, effectivePreferences, 12);
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (options?.background && hasNewEditorialItems(news, editorialNewsRef.current)) {
+          setPendingEditorialNews(news);
+          setShowEditorialRefreshNotice(true);
+          return;
+        }
+
+        setEditorialNews(news);
+        setEditorialVisibleCount((current) => {
+          const target = Math.min(news.length, Math.max(current, 4));
+          return target;
+        });
+        setPendingEditorialNews([]);
+        setShowEditorialRefreshNotice(false);
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+
+        setEditorialNews([]);
+        setPendingEditorialNews([]);
+        setShowEditorialRefreshNotice(false);
+        setShouldShowEditorialOnboarding(false);
+      }
+    }
+
+    function handleEditorialPreferencesUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (detail?.userId && detail.userId !== userId) {
+        return;
+      }
+
+      void loadEditorialLayer();
+    }
+
+    function handleEditorialRefreshRequest() {
+      void loadEditorialLayer({ background: true });
+    }
+
+    void loadEditorialLayer();
+    window.addEventListener(
+      EDITORIAL_PREFERENCES_UPDATED_EVENT,
+      handleEditorialPreferencesUpdated as EventListener
+    );
+    window.addEventListener(FEED_REFRESH_EDITORIAL_EVENT, handleEditorialRefreshRequest as EventListener);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener(
+        EDITORIAL_PREFERENCES_UPDATED_EVENT,
+        handleEditorialPreferencesUpdated as EventListener
+      );
+      window.removeEventListener(FEED_REFRESH_EDITORIAL_EVENT, handleEditorialRefreshRequest as EventListener);
+    };
+  }, [userId]);
 
   useEffect(() => {
     async function loadFeed() {
@@ -332,7 +444,7 @@ export function FeedPanel({
             id: "upcoming",
             eyebrow: "Estrenos",
             title: "Para agendar esta semana",
-            subtitle: "Peliculas que vienen entrando fuerte y vale la pena seguir.",
+            subtitle: "Una mezcla de estrenos de cine y algunas llegadas fuertes a plataformas.",
             items: upcoming.slice(0, 3)
           },
           {
@@ -471,13 +583,33 @@ export function FeedPanel({
     [becauseYouWatchedRail, circleRail, editorialRails]
   );
 
+  const maxEditorialNewsSlots = useMemo(() => {
+    if (!postsWithMedia.length) {
+      return 1;
+    }
+
+    return Math.max(1, 1 + Math.floor((postsWithMedia.length - 1) / 4));
+  }, [postsWithMedia.length]);
+
+  const visibleEditorialNews = useMemo(
+    () => editorialNews.slice(0, Math.min(editorialVisibleCount, maxEditorialNewsSlots)),
+    [editorialNews, editorialVisibleCount, maxEditorialNewsSlots]
+  );
+
   const discoverTimeline = useMemo<TimelineItem[]>(() => {
     if (!postsWithMedia.length) {
-      return effectiveEditorialRails.map((rail) => ({ type: "editorial", rail }));
+      return [
+        ...visibleEditorialNews.slice(0, 1).map((item) => ({ type: "news-post", item }) as TimelineItem),
+        ...effectiveEditorialRails.map((rail) => ({ type: "editorial", rail }) as TimelineItem)
+      ];
     }
 
     const nextTimeline: TimelineItem[] = [];
-    const railsQueue = [...effectiveEditorialRails];
+    const newsQueue = [...visibleEditorialNews];
+    const railsQueue: TimelineItem[] = effectiveEditorialRails.map((rail) => ({
+      type: "editorial",
+      rail
+    }));
 
     postsWithMedia.forEach(({ entry, media }, index) => {
       nextTimeline.push({
@@ -486,27 +618,30 @@ export function FeedPanel({
         media
       });
 
-      const shouldInjectRail = railsQueue.length > 0 && (index === 0 || (index + 1) % 3 === 0);
+      const shouldInjectNews = newsQueue.length > 0 && (index === 0 || (index + 1) % 4 === 0);
+      if (shouldInjectNews) {
+        const newsItem = newsQueue.shift();
+        if (newsItem) {
+          nextTimeline.push({
+            type: "news-post",
+            item: newsItem
+          });
+        }
+      }
+
+      const shouldInjectRail = railsQueue.length > 0 && (index + 1) % 5 === 0;
       if (shouldInjectRail) {
         const rail = railsQueue.shift();
         if (rail) {
-          nextTimeline.push({
-            type: "editorial",
-            rail
-          });
+          nextTimeline.push(rail);
         }
       }
     });
 
-    railsQueue.forEach((rail) => {
-      nextTimeline.push({
-        type: "editorial",
-        rail
-      });
-    });
+    railsQueue.forEach((rail) => nextTimeline.push(rail));
 
     return nextTimeline;
-  }, [effectiveEditorialRails, postsWithMedia]);
+  }, [effectiveEditorialRails, postsWithMedia, visibleEditorialNews]);
 
   const visibleTimeline = useMemo<TimelineItem[]>(
     () =>
@@ -814,6 +949,25 @@ export function FeedPanel({
     });
   }
 
+  function openEditorialArticle(url: string) {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function applyPendingEditorialNews() {
+    if (!pendingEditorialNews.length) {
+      return;
+    }
+
+    setEditorialNews(pendingEditorialNews);
+    setPendingEditorialNews([]);
+    setShowEditorialRefreshNotice(false);
+  }
+
+  function handleFeedEndReached() {
+    scrollFeedToTop();
+    window.dispatchEvent(new CustomEvent(FEED_REFRESH_EDITORIAL_EVENT));
+  }
+
   async function handleCommentSubmit(postId: string) {
     const body = (commentDrafts[postId] ?? "").trim();
     if (!body) {
@@ -907,6 +1061,14 @@ export function FeedPanel({
           </div>
         </section>
 
+        {showEditorialRefreshNotice ? (
+          <div className="feed-refresh-notice">
+            <button type="button" className="feed-refresh-notice__button" onClick={applyPendingEditorialNews}>
+              Cargar noticias nuevas
+            </button>
+          </div>
+        ) : null}
+
         <div className="timeline-list">
           {visibleTimeline.length ? (
             visibleTimeline.map((item) => {
@@ -981,6 +1143,61 @@ export function FeedPanel({
                         ))}
                         </div>
                       </div>
+                    </div>
+                  </article>
+                );
+              }
+
+              if (item.type === "news-post") {
+                const newsItem = item.item;
+
+                return (
+                  <article className="timeline-card timeline-card--editorial-post" key={newsItem.id}>
+                    <div className="timeline-card__avatar timeline-card__avatar--editorial">E</div>
+
+                    <div className="timeline-card__content">
+                      <div className="timeline-card__topline">
+                        <div>
+                          <strong className="timeline-card__author-label">Radar editorial</strong>
+                          <span className="timeline-card__handle-label">
+                            {newsItem.sourceLabel}
+                            {newsItem.sourceSection ? ` • ${newsItem.sourceSection}` : ""}
+                          </span>
+                          <span className="timeline-card__meta">· {newsItem.publishedAtLabel}</span>
+                        </div>
+                      </div>
+
+                      <p className="timeline-card__text timeline-card__text--light">
+                        {newsItem.badge} para tu home
+                      </p>
+
+                      <button
+                        type="button"
+                        className="timeline-card__media timeline-card__media--interactive timeline-card__media--editorial-post"
+                        onClick={() => openEditorialArticle(newsItem.url)}
+                      >
+                        {newsItem.imageUrl ? (
+                          <div className="timeline-card__editorial-cover">
+                            <img src={newsItem.imageUrl} alt={newsItem.title} className="timeline-card__poster" />
+                          </div>
+                        ) : (
+                          <div className="timeline-card__editorial-cover timeline-card__editorial-cover--empty">
+                            <span className="timeline-editorial__badge">{newsItem.badge}</span>
+                          </div>
+                        )}
+                        <div className="timeline-card__media-copy">
+                          <div className="timeline-card__editorial-meta">
+                            <span className="timeline-editorial__badge">{newsItem.badge}</span>
+                            {newsItem.author ? <span className="meta-line">{newsItem.author}</span> : null}
+                          </div>
+                          <h3>{newsItem.title}</h3>
+                          {newsItem.genreTags.length ? (
+                            <p className="timeline-card__genres">{newsItem.genreTags.join(" · ")}</p>
+                          ) : null}
+                          <p>{truncateOverview(newsItem.summary, 180)}</p>
+                          <span className="timeline-card__editorial-link">Abrir nota</span>
+                        </div>
+                      </button>
                     </div>
                   </article>
                 );
@@ -1139,6 +1356,20 @@ export function FeedPanel({
           )}
         </div>
 
+        {activeFeedMode === "discover" && postsWithMedia.length ? (
+          <section className="feed-endcap">
+            <p className="section-eyebrow">Hasta aca llegaste</p>
+            <h3>Subi para refrescar el home</h3>
+            <p>
+              Cuando se termina la conversacion social, frenamos ahi para no llenarte de noticias viejas.
+              Volve arriba y buscamos si ya entraron notas nuevas de hoy.
+            </p>
+            <button type="button" className="primary-button" onClick={handleFeedEndReached}>
+              Ir arriba y buscar nuevas
+            </button>
+          </section>
+        ) : null}
+
         </div>
 
         <aside className="feed-sidebar">
@@ -1168,12 +1399,13 @@ export function FeedPanel({
                     <span>
                       {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {formatSidebarRelease(item.releaseDate)}
                     </span>
+                    {item.providers.length ? <span>{item.providers.slice(0, 2).join(" · ")}</span> : null}
                   </div>
                 </button>
               ))}
             </div>
           ) : (
-            <p className="sidebar-empty">No encontre estrenos nuevos entre hoy, 5 de agosto de 2026, y los proximos dias.</p>
+            <p className="sidebar-empty">No encontre estrenos fuertes para esta semana en cines o plataformas.</p>
           )}
         </section>
 
@@ -1245,6 +1477,18 @@ export function FeedPanel({
         >
           ↑
         </button>
+      ) : null}
+
+      {shouldShowEditorialOnboarding ? (
+        <EditorialOnboardingModal
+          userId={userId}
+          onComplete={(preferences) => {
+            setShouldShowEditorialOnboarding(false);
+            void fetchPersonalizedEditorialNews(userId, preferences, 8)
+              .then(setEditorialNews)
+              .catch(() => setEditorialNews([]));
+          }}
+        />
       ) : null}
     </>
   );

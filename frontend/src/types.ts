@@ -1,5 +1,54 @@
 export type MediaType = "movie" | "tv";
 
+export type EditorialTopic =
+  | "movies"
+  | "series"
+  | "releases"
+  | "trailers"
+  | "awards"
+  | "casting"
+  | "mainstream"
+  | "auteur";
+
+export type EditorialGenre =
+  | "action"
+  | "animation"
+  | "comedy"
+  | "documentary"
+  | "drama"
+  | "fantasy"
+  | "horror"
+  | "romance"
+  | "scifi"
+  | "thriller";
+
+export type EditorialBadge = "Noticia" | "Estreno" | "Trailer" | "Tendencia";
+
+export type EditorialPreferences = {
+  selectedTopics: EditorialTopic[];
+  selectedGenres: EditorialGenre[];
+  completedOnboarding: boolean;
+  updatedAt?: string | null;
+};
+
+export type EditorialNewsItem = {
+  id: string;
+  sourceKey: string;
+  title: string;
+  url: string;
+  summary: string;
+  imageUrl: string | null;
+  author: string | null;
+  sourceLabel: string;
+  sourceSection: string | null;
+  publishedAt: string;
+  publishedAtLabel: string;
+  mediaScope: "movie" | "series" | "mixed" | "tv";
+  badge: EditorialBadge;
+  editorialTags: EditorialTopic[];
+  genreTags: EditorialGenre[];
+};
+
 export type DiscoveryItem = {
   id: number;
   title: string;
@@ -11,6 +60,13 @@ export type DiscoveryItem = {
   genres: string[];
   providers: string[];
   score: number;
+};
+
+export type SeriesAiringInfo = {
+  statusLabel: string | null;
+  nextEpisodeLabel: string | null;
+  nextEpisodeDate: string | null;
+  nextEpisodeDayLabel: string | null;
 };
 
 export type MediaDetails = {

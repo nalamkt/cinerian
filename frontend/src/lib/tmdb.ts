@@ -1,4 +1,12 @@
-import type { DiscoveryItem, MediaDetails, MediaType, TalentCredit, TalentDetails, TalentSearchItem } from "../types";
+import type {
+  DiscoveryItem,
+  MediaDetails,
+  MediaType,
+  SeriesAiringInfo,
+  TalentCredit,
+  TalentDetails,
+  TalentSearchItem
+} from "../types";
 import { demoDiscovery } from "../data/demoData";
 
 const apiKey = import.meta.env.VITE_TMDB_API_KEY;
@@ -145,6 +153,19 @@ function formatDate(dateString: string | null) {
   return `${Number(day)} ${months[Number(month) - 1] ?? month}, ${year}`;
 }
 
+function formatWeekday(dateString: string | null) {
+  if (!dateString) {
+    return null;
+  }
+
+  const parsed = new Date(`${dateString}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("es-AR", { weekday: "long" }).format(parsed);
+}
+
 function formatBudget(amount: number | null) {
   if (!amount || amount <= 0) {
     return null;
@@ -277,6 +298,140 @@ function isUpcomingThisWeek(dateString: string | null | undefined) {
   const end = start + 1000 * 60 * 60 * 24 * 10;
 
   return releaseTime >= start && releaseTime <= end;
+}
+
+function getTodayRange() {
+  const today = new Date();
+  const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 10);
+  const recentStartDate = new Date(startDate);
+  recentStartDate.setDate(recentStartDate.getDate() - 6);
+
+  const formatIsoDate = (value: Date) => value.toISOString().slice(0, 10);
+
+  return {
+    start: formatIsoDate(startDate),
+    end: formatIsoDate(endDate),
+    recentStart: formatIsoDate(recentStartDate)
+  };
+}
+
+function uniqueDiscoveryItems(items: DiscoveryItem[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.mediaType}-${item.id}`;
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function curateUpcomingItems(items: DiscoveryItem[], options?: { limit?: number; maxStreaming?: number }) {
+  const limit = options?.limit ?? 10;
+  const maxStreaming = options?.maxStreaming ?? 2;
+
+  const theatrical: DiscoveryItem[] = [];
+  const streaming: DiscoveryItem[] = [];
+
+  items.forEach((item) => {
+    if (item.providers.length) {
+      streaming.push(item);
+      return;
+    }
+
+    theatrical.push(item);
+  });
+
+  const selected: DiscoveryItem[] = [];
+  const remainingTheatrical = [...theatrical];
+  const remainingStreaming = [...streaming];
+  let streamingCount = 0;
+
+  while (selected.length < limit && (remainingTheatrical.length || remainingStreaming.length)) {
+    if (remainingTheatrical.length) {
+      selected.push(remainingTheatrical.shift()!);
+      continue;
+    }
+
+    if (remainingStreaming.length && streamingCount < maxStreaming) {
+      selected.push(remainingStreaming.shift()!);
+      streamingCount += 1;
+      continue;
+    }
+
+    break;
+  }
+
+  while (selected.length < limit && remainingStreaming.length && streamingCount < maxStreaming) {
+    selected.push(remainingStreaming.shift()!);
+    streamingCount += 1;
+  }
+
+  return selected;
+}
+
+async function enrichItemsWithProviders(items: DiscoveryItem[]) {
+  const enriched = await Promise.all(
+    items.map(async (item) => {
+      if (!apiKey) {
+        return item;
+      }
+
+      try {
+        const url = new URL(`${baseUrl}/${item.mediaType}/${item.id}/watch/providers`);
+        url.searchParams.set("api_key", apiKey);
+
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+          return item;
+        }
+
+        const payload = (await response.json()) as Record<string, unknown>;
+        return {
+          ...item,
+          providers: getProvidersLabel(payload)
+        };
+      } catch {
+        return item;
+      }
+    })
+  );
+
+  return enriched;
+}
+
+async function fetchDiscoveredCatalog(
+  mediaType: MediaType,
+  query: Record<string, string>,
+  page = 1
+): Promise<DiscoveryItem[]> {
+  if (!apiKey) {
+    return demoDiscovery;
+  }
+
+  const url = new URL(`${baseUrl}/discover/${mediaType}`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("language", "es-MX");
+  url.searchParams.set("include_adult", "false");
+  url.searchParams.set("page", String(page));
+
+  Object.entries(query).forEach(([key, value]) => {
+    url.searchParams.set(key, value);
+  });
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error("No pude descubrir estrenos desde TMDB.");
+  }
+
+  const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+  return (payload.results ?? [])
+    .filter(isSupportedCatalogResult)
+    .map((item) => normalizeItem({ ...item, media_type: mediaType }));
 }
 
 function normalizeCredit(item: Record<string, unknown>): TalentCredit | null {
@@ -425,11 +580,65 @@ export async function getTrendingTitles(): Promise<DiscoveryItem[]> {
 }
 
 export async function getUpcomingTitles(): Promise<DiscoveryItem[]> {
-  const items = await fetchCatalogCollection("/movie/upcoming", { mediaType: "movie" });
-  return items
-    .filter((item) => isUpcomingThisWeek(item.releaseDate))
-    .sort((a, b) => (a.releaseDate ?? "").localeCompare(b.releaseDate ?? ""))
-    .slice(0, 6);
+  const { recentStart, start, end } = getTodayRange();
+
+  if (!apiKey) {
+    return demoDiscovery.slice(0, 6);
+  }
+
+  const [theatricalMovies, upcomingMovies, streamingMovies, streamingSeries] = await Promise.all([
+    fetchDiscoveredCatalog("movie", {
+      region: "AR",
+      with_release_type: "3|2",
+      "release_date.gte": recentStart,
+      "release_date.lte": end,
+      sort_by: "popularity.desc"
+    }),
+    fetchCatalogCollection("/movie/upcoming", { mediaType: "movie" }),
+    fetchDiscoveredCatalog("movie", {
+      watch_region: "AR",
+      with_watch_monetization_types: "flatrate",
+      with_release_type: "4",
+      "release_date.gte": recentStart,
+      "release_date.lte": end,
+      sort_by: "popularity.desc"
+    }),
+    fetchDiscoveredCatalog("tv", {
+      watch_region: "AR",
+      with_watch_monetization_types: "flatrate",
+      "first_air_date.gte": recentStart,
+      "first_air_date.lte": end,
+      sort_by: "popularity.desc"
+    })
+  ]);
+
+  const combined = uniqueDiscoveryItems([
+    ...theatricalMovies.filter((item) => {
+      if (!item.releaseDate) {
+        return false;
+      }
+
+      return item.releaseDate >= recentStart && item.releaseDate <= end;
+    }),
+    ...upcomingMovies.filter((item) => isUpcomingThisWeek(item.releaseDate)),
+    ...streamingMovies.filter((item) => item.releaseDate && item.releaseDate >= recentStart && item.releaseDate <= end),
+    ...streamingSeries.filter((item) => item.releaseDate && item.releaseDate >= start && item.releaseDate <= end)
+  ])
+    .sort((left, right) => {
+      const leftDate = left.releaseDate ?? "9999-12-31";
+      const rightDate = right.releaseDate ?? "9999-12-31";
+      if (leftDate !== rightDate) {
+        return leftDate.localeCompare(rightDate);
+      }
+
+      return right.score - left.score;
+    });
+
+  const enriched = await enrichItemsWithProviders(combined);
+  return curateUpcomingItems(enriched, {
+    limit: 10,
+    maxStreaming: 2
+  });
 }
 
 export async function getNowPlayingTitles(): Promise<DiscoveryItem[]> {
@@ -587,6 +796,53 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
     trailerUrl: getTrailerUrl(payload),
     creators,
     cast
+  };
+}
+
+export async function getSeriesAiringInfo(tmdbId: number): Promise<SeriesAiringInfo | null> {
+  if (!apiKey) {
+    return null;
+  }
+
+  const detailUrl = new URL(`${baseUrl}/tv/${tmdbId}`);
+  detailUrl.searchParams.set("api_key", apiKey);
+  detailUrl.searchParams.set("language", "es-MX");
+
+  const response = await fetch(detailUrl.toString());
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as Record<string, unknown>;
+  const nextEpisode =
+    typeof payload.next_episode_to_air === "object" && payload.next_episode_to_air !== null
+      ? (payload.next_episode_to_air as Record<string, unknown>)
+      : null;
+  const nextEpisodeDate =
+    nextEpisode && typeof nextEpisode.air_date === "string" ? nextEpisode.air_date : null;
+  const nextEpisodeName =
+    nextEpisode && typeof nextEpisode.name === "string" ? nextEpisode.name : null;
+  const seasonNumber =
+    nextEpisode && typeof nextEpisode.season_number === "number"
+      ? Number(nextEpisode.season_number)
+      : null;
+  const episodeNumber =
+    nextEpisode && typeof nextEpisode.episode_number === "number"
+      ? Number(nextEpisode.episode_number)
+      : null;
+
+  const nextEpisodeLabel =
+    nextEpisodeDate && seasonNumber && episodeNumber
+      ? `${nextEpisodeName ?? "Próximo episodio"} · T${seasonNumber}E${episodeNumber} · ${formatDate(nextEpisodeDate)}`
+      : nextEpisodeDate
+        ? `${nextEpisodeName ?? "Próximo episodio"} · ${formatDate(nextEpisodeDate)}`
+        : null;
+
+  return {
+    statusLabel: typeof payload.status === "string" ? payload.status : null,
+    nextEpisodeLabel,
+    nextEpisodeDate,
+    nextEpisodeDayLabel: nextEpisodeDate ? formatWeekday(nextEpisodeDate) : null
   };
 }
 

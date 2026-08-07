@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import {
+  type CurrentWatchingEntry,
   type Profile,
   type ProfileCollection,
   type ProfileVisibilitySettings,
@@ -18,8 +19,8 @@ import {
   removeStoredReaction,
   type StoredReaction
 } from "../lib/reactions";
-import { getTitleById } from "../lib/tmdb";
-import type { DiscoveryItem, FeedEntry } from "../types";
+import { getSeriesAiringInfo, getTitleById, searchTitles } from "../lib/tmdb";
+import type { DiscoveryItem, FeedEntry, SeriesAiringInfo } from "../types";
 
 type ProfileTabsProps = {
   userId: string;
@@ -37,11 +38,18 @@ type ProfileTabsProps = {
   onProfileUpdated?: (profile: Profile) => void;
 };
 
-type TabId = "watched" | "liked" | "recommendations" | "posts" | "curation";
+type TabId = "watched" | "liked" | "watching" | "recommendations" | "posts" | "curation";
+
+type WatchingItem = {
+  entry: CurrentWatchingEntry;
+  item: DiscoveryItem;
+  airing: SeriesAiringInfo | null;
+};
 
 const tabLabels: Record<TabId, string> = {
   watched: "Vistas",
   liked: "Watchlist",
+  watching: "Viendo",
   recommendations: "Mis recomendaciones",
   posts: "Posts",
   curation: "Mi selección"
@@ -107,6 +115,12 @@ export function ProfileTabs({
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [isEditingCuration, setIsEditingCuration] = useState(false);
+  const [watchingEntries, setWatchingEntries] = useState<CurrentWatchingEntry[]>([]);
+  const [watchingItems, setWatchingItems] = useState<WatchingItem[]>([]);
+  const [watchingQuery, setWatchingQuery] = useState("");
+  const [watchingResults, setWatchingResults] = useState<DiscoveryItem[]>([]);
+  const [isWatchingSearchOpen, setIsWatchingSearchOpen] = useState(false);
+  const [isWatchingSearchLoading, setIsWatchingSearchLoading] = useState(false);
   const [curationFavoriteTitles, setCurationFavoriteTitles] = useState<
     Array<{ tmdbId: number; mediaType: "movie" | "tv" }>
   >([]);
@@ -117,8 +131,87 @@ export function ProfileTabs({
   useEffect(() => {
     setCurationFavoriteTitles(profile?.favorite_titles ?? []);
     setCurationCollections(profile?.featured_collections ?? []);
+    setWatchingEntries(profile?.current_watching ?? []);
     setIsEditingCuration(false);
   }, [profile]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadWatchingItems() {
+      if (!watchingEntries.length) {
+        setWatchingItems([]);
+        return;
+      }
+
+      const resolved = await Promise.all(
+        watchingEntries.map(async (entry) => {
+          const [item, airing] = await Promise.all([
+            getTitleById(entry.tmdbId, "tv"),
+            getSeriesAiringInfo(entry.tmdbId)
+          ]);
+
+          if (!item || item.mediaType !== "tv") {
+            return null;
+          }
+
+          return {
+            entry,
+            item,
+            airing
+          } satisfies WatchingItem;
+        })
+      );
+
+      if (!isMounted) {
+        return;
+      }
+
+      setWatchingItems(
+        resolved
+          .filter((entry): entry is WatchingItem => Boolean(entry))
+          .sort((left, right) => right.entry.addedAt.localeCompare(left.entry.addedAt))
+      );
+    }
+
+    void loadWatchingItems().catch(() => {
+      if (isMounted) {
+        setWatchingItems([]);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [watchingEntries]);
+
+  useEffect(() => {
+    if (!isWatchingSearchOpen) {
+      setWatchingQuery("");
+      setWatchingResults([]);
+      return;
+    }
+
+    const trimmed = watchingQuery.trim();
+    if (!trimmed) {
+      setWatchingResults([]);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setIsWatchingSearchLoading(true);
+        const results = await searchTitles(trimmed);
+        setWatchingResults(results.filter((item) => item.mediaType === "tv").slice(0, 8));
+      } catch {
+        setWatchingResults([]);
+      } finally {
+        setIsWatchingSearchLoading(false);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isWatchingSearchOpen, watchingQuery]);
 
   useEffect(() => {
     let isMounted = true;
@@ -203,6 +296,10 @@ export function ProfileTabs({
 
     if (visibilitySettings?.showWatchlist !== false) {
       tabs.push("watched", "liked");
+    }
+
+    if (isOwnProfile) {
+      tabs.push("watching");
     }
 
     if (
@@ -342,6 +439,63 @@ export function ProfileTabs({
     }
   }
 
+  async function saveWatchingEntries(nextEntries: CurrentWatchingEntry[]) {
+    if (!profile || !onProfileUpdated) {
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      const nextProfile = await updateProfile({
+        userId: profile.id,
+        displayName: profile.display_name,
+        username: profile.username,
+        bio: profile.bio ?? "",
+        avatarUrl: profile.avatar_url ?? "",
+        bannerUrl: profile.banner_url ?? "",
+        favoriteGenres: profile.favorite_genres,
+        favoriteTitles: profile.favorite_titles,
+        featuredCollections: profile.featured_collections,
+        currentWatching: nextEntries,
+        visibilitySettings: profile.visibility_settings
+      });
+      onProfileUpdated(nextProfile);
+      setWatchingEntries(nextEntries);
+    } catch {
+      setSyncMessage("No pude guardar la lista de series que estás viendo.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function handleAddWatching(item: DiscoveryItem) {
+    if (item.mediaType !== "tv") {
+      return;
+    }
+
+    const alreadyAdded = watchingEntries.some((entry) => entry.tmdbId === item.id);
+    if (alreadyAdded) {
+      return;
+    }
+
+    await saveWatchingEntries([
+      {
+        tmdbId: item.id,
+        mediaType: "tv",
+        addedAt: new Date().toISOString()
+      },
+      ...watchingEntries
+    ]);
+    setWatchingQuery("");
+    setWatchingResults([]);
+    setIsWatchingSearchOpen(false);
+  }
+
+  async function handleRemoveWatching(tmdbId: number) {
+    await saveWatchingEntries(watchingEntries.filter((entry) => entry.tmdbId !== tmdbId));
+  }
+
   function toggleFavoriteTitle(item: DiscoveryItem) {
     const key = `${item.mediaType}-${item.id}`;
 
@@ -456,6 +610,7 @@ export function ProfileTabs({
             description: collection.description?.trim() ? collection.description.trim() : null
           }))
           .filter((collection) => collection.title.length > 0 && collection.items.length > 0),
+        currentWatching: profile.current_watching,
         visibilitySettings: profile.visibility_settings
       });
       onProfileUpdated(nextProfile);
@@ -730,6 +885,131 @@ export function ProfileTabs({
               : "Este perfil todavía no tiene una selección curada visible."}
           </div>
         )
+      ) : activeTab === "watching" ? (
+        <div className="profile-watching">
+          <div className="profile-watching__toolbar">
+            <div>
+              <p className="section-eyebrow">Privado</p>
+              <h3>Series que estás viendo ahora</h3>
+              <p className="profile-secondary__copy">
+                Esta sección solo la ves vos. Podés anotar qué venís siguiendo y cuándo sale lo próximo.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="profile-share-button"
+              onClick={() => setIsWatchingSearchOpen((current) => !current)}
+            >
+              {isWatchingSearchOpen ? "Cerrar" : "Agregar serie"}
+            </button>
+          </div>
+
+          {isWatchingSearchOpen ? (
+            <div className="profile-watching__search">
+              <input
+                type="search"
+                value={watchingQuery}
+                onChange={(event) => setWatchingQuery(event.target.value)}
+                placeholder="Buscá una serie para sumar a Viendo"
+              />
+
+              {isWatchingSearchLoading ? (
+                <div className="profile-grid__empty">Buscando series...</div>
+              ) : watchingQuery.trim() && watchingResults.length ? (
+                <div className="profile-watching-search-results">
+                  {watchingResults.map((item) => {
+                    const isAdded = watchingEntries.some((entry) => entry.tmdbId === item.id);
+
+                    return (
+                      <article key={`${item.mediaType}-${item.id}`} className="liked-card">
+                        <img src={item.posterUrl} alt={item.title} className="liked-card__poster" />
+                        <div className="liked-card__copy">
+                          <strong>{item.title}</strong>
+                          <span>
+                            Serie{item.year ? ` • ${item.year}` : ""}
+                          </span>
+                          <p>{item.genres.slice(0, 2).join(" · ") || "Sin género cargado"}</p>
+                          <div className="liked-card__actions">
+                            <button
+                              type="button"
+                              className="profile-follow-button"
+                              disabled={isAdded || isSyncing}
+                              onClick={() => void handleAddWatching(item)}
+                            >
+                              {isAdded ? "Ya está en Viendo" : "Agregar"}
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : watchingQuery.trim() ? (
+                <div className="profile-grid__empty">No encontré series para esa búsqueda.</div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {watchingItems.length ? (
+            <div className="profile-watching__list">
+              {watchingItems.map(({ entry, item, airing }) => (
+                <article key={entry.tmdbId} className="profile-watching-card">
+                  <div className="detail-poster detail-poster--grid" onClick={() => openMediaDetails(item)}>
+                    <img
+                      src={item.posterUrl}
+                      alt={item.title}
+                      className="profile-grid__poster profile-grid__poster--interactive"
+                    />
+                    <span className="detail-poster__hint" aria-hidden="true">
+                      Ver detalles
+                    </span>
+                  </div>
+
+                  <div className="profile-watching-card__copy">
+                    <div className="profile-watching-card__topline">
+                      <div>
+                        <strong className="media-linklike" onClick={() => openMediaDetails(item)}>
+                          {item.title}
+                        </strong>
+                        <span>
+                          Serie{item.year ? ` • ${item.year}` : ""}
+                          {airing?.statusLabel ? ` • ${airing.statusLabel}` : ""}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="profile-grid__remove"
+                        disabled={isSyncing}
+                        onClick={() => void handleRemoveWatching(entry.tmdbId)}
+                      >
+                        Quitar
+                      </button>
+                    </div>
+
+                    <div className="profile-watching-card__schedule">
+                      <p>
+                        {airing?.nextEpisodeLabel
+                          ? airing.nextEpisodeLabel
+                          : "Sin próximo episodio confirmado por ahora."}
+                      </p>
+                      <span>
+                        {airing?.nextEpisodeDayLabel
+                          ? `Si se mantiene, el próximo cae ${airing.nextEpisodeDayLabel}.`
+                          : "La info de salida puede variar según TMDB."}
+                      </span>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="profile-grid__empty">
+              Todavía no cargaste series en Viendo. Sumá una desde el buscador para arrancar.
+            </div>
+          )}
+        </div>
       ) : activeTab === "recommendations" ? (
         mediaPosts.filter((post) => {
           if (post.type !== "rating") {

@@ -40,6 +40,26 @@ La app HTML/CSS/JS original fue movida a `legacy/classic-web/` para limpiar la r
 4. Instalar dependencias
 5. Levantar con `pnpm dev`
 
+### Setup rapido para quien clona el repo
+
+```bash
+cd frontend
+cp .env.example .env
+pnpm install
+pnpm dev
+```
+
+Despues de copiar el archivo, hay que pedirle al equipo estos valores:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_TMDB_API_KEY`
+
+Importante:
+
+- `frontend/.env` queda local y no se sube al repo
+- `frontend/.env.example` si se versiona para que cualquiera vea que variables necesita
+
 ## Proximo paso recomendado
 
 El paso 3 ideal es conectar el feed y las reacciones reales, porque Auth y perfiles ya quedan listos con esta base:

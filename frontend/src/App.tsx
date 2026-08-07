@@ -23,6 +23,7 @@ import type { Profile } from "./lib/auth";
 type AppView = "feed" | "search" | "recommendations" | "inbox" | "user";
 const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
 export const FEED_SCROLL_TO_TOP_EVENT = "cinerian:feed-scroll-to-top";
+export const FEED_REFRESH_EDITORIAL_EVENT = "cinerian:feed-refresh-editorial";
 
 function DockIcon({ id, badgeCount = 0 }: { id: AppView; badgeCount?: number }) {
   if (id === "feed") {
@@ -223,6 +224,7 @@ export default function App() {
   function handleChangeView(view: AppView) {
     if (!selectedProfileRoute && activeView === "feed" && view === "feed") {
       window.dispatchEvent(new CustomEvent(FEED_SCROLL_TO_TOP_EVENT));
+      window.dispatchEvent(new CustomEvent(FEED_REFRESH_EDITORIAL_EVENT));
       return;
     }
 

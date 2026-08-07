@@ -10,9 +10,13 @@ create table if not exists public.profiles (
   favorite_genres text[] not null default '{}',
   favorite_titles jsonb not null default '[]'::jsonb,
   featured_collections jsonb not null default '[]'::jsonb,
+  current_watching jsonb not null default '[]'::jsonb,
   visibility_settings jsonb not null default '{"showFollowers":false,"showFollowing":false,"showCollections":false,"showBadges":false,"showInsights":false,"showActivity":false,"showWatchlist":true}'::jsonb,
   created_at timestamptz not null default timezone('utc', now())
 );
+
+alter table if exists public.profiles
+add column if not exists current_watching jsonb not null default '[]'::jsonb;
 
 alter table if exists public.profiles
 alter column visibility_settings
