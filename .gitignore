@@ -24,3 +24,5 @@ build/
 
 # XAMPP temp artifacts
 _tmp_*
+.vercel
+.env*

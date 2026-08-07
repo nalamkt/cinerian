@@ -62,7 +62,28 @@ export function useAuth() {
       }
     }
 
+    async function recoverSession() {
+      if (!supabase) {
+        return;
+      }
+
+      try {
+        const {
+          data: { session }
+        } = await supabase.auth.getSession();
+
+        if (!session) {
+          return;
+        }
+
+        await supabase.auth.refreshSession();
+      } catch {
+        // Let the regular auth listener and bootstrap flow own visible errors.
+      }
+    }
+
     void bootstrap();
+    void recoverSession();
 
     if (!supabase) {
       return () => {
@@ -72,7 +93,7 @@ export function useAuth() {
 
     const {
       data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!session?.user) {
         setState({
           session: null,
@@ -88,6 +109,13 @@ export function useAuth() {
         session,
         isLoading: true
       }));
+
+      if (event === "TOKEN_REFRESHED") {
+        setState((current) => ({
+          ...current,
+          session
+        }));
+      }
 
       void ensureProfile({ user: session.user })
         .then((profile) => {
@@ -108,9 +136,30 @@ export function useAuth() {
         });
     });
 
+    function handleVisibilityRecovery() {
+      if (document.visibilityState === "visible") {
+        void recoverSession();
+      }
+    }
+
+    function handlePageShowRecovery() {
+      void recoverSession();
+    }
+
+    function handleOnlineRecovery() {
+      void recoverSession();
+    }
+
+    window.addEventListener("pageshow", handlePageShowRecovery);
+    window.addEventListener("online", handleOnlineRecovery);
+    document.addEventListener("visibilitychange", handleVisibilityRecovery);
+
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+      window.removeEventListener("pageshow", handlePageShowRecovery);
+      window.removeEventListener("online", handleOnlineRecovery);
+      document.removeEventListener("visibilitychange", handleVisibilityRecovery);
     };
   }, []);
 

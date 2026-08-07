@@ -2866,7 +2866,10 @@ textarea {
   width: min(100%, 680px);
   display: grid;
   gap: 20px;
-  padding: 28px;
+  padding: 28px 28px calc(28px + env(safe-area-inset-bottom));
+  max-height: min(calc(100dvh - 48px), 840px);
+  overflow: auto;
+  overscroll-behavior: contain;
   border-radius: 32px;
   border: 1px solid var(--panel-edge);
   background: rgba(28, 22, 17, 0.97);
@@ -3971,6 +3974,12 @@ textarea {
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom) * -1);
+  padding-top: 10px;
+  padding-bottom: max(2px, env(safe-area-inset-bottom));
+  background:
+    linear-gradient(180deg, rgba(28, 22, 17, 0), rgba(28, 22, 17, 0.94) 24%, rgba(28, 22, 17, 0.98));
 }
 
 .media-modal__backdrop {
@@ -4947,7 +4956,7 @@ textarea {
   .review-modal,
   .send-modal {
     width: min(100%, 760px);
-    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
     padding: 24px;
     border-radius: 28px;
   }
@@ -5841,7 +5850,8 @@ textarea {
   }
 
   .review-modal {
-    padding: 22px 18px;
+    max-height: calc(100dvh - 24px);
+    padding: 22px 18px calc(22px + env(safe-area-inset-bottom));
     border-radius: 24px;
   }
 
