@@ -163,14 +163,16 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
 
         {emailMethod === "token" && step === "verify" ? (
           <label className="input-stack">
-            <span>Codigo de 6 digitos</span>
+            <span>Token del email</span>
             <input
               type="text"
-              inputMode="numeric"
+              inputMode="text"
               autoComplete="one-time-code"
               value={otpCode}
-              onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="123456"
+              onChange={(event) =>
+                setOtpCode(event.target.value.replace(/\s/g, "").slice(0, 12))
+              }
+              placeholder="Pega el token del email"
               required
             />
           </label>
