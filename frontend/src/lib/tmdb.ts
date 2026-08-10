@@ -670,6 +670,27 @@ export async function getSimilarTitles(tmdbId: number, mediaType: MediaType): Pr
     .map((item) => normalizeItem({ ...item, media_type: mediaType }));
 }
 
+export async function getWatchProviders(tmdbId: number, mediaType: MediaType): Promise<string[]> {
+  if (!apiKey) {
+    return [];
+  }
+
+  try {
+    const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}/watch/providers`);
+    url.searchParams.set("api_key", apiKey);
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    return getProvidersLabel(payload);
+  } catch {
+    return [];
+  }
+}
+
 export async function getTitleById(tmdbId: number, mediaType: MediaType): Promise<DiscoveryItem | null> {
   if (!apiKey) {
     return demoDiscovery.find((item) => item.id === tmdbId && item.mediaType === mediaType) ?? null;

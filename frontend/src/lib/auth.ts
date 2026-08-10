@@ -24,6 +24,15 @@ export type ProfileVisibilitySettings = {
   showWatchlist: boolean;
 };
 
+export type Gender = "hombre" | "mujer" | "otro" | "no_dice";
+
+export const GENDER_OPTIONS: Array<{ id: Gender; label: string }> = [
+  { id: "hombre", label: "Hombre" },
+  { id: "mujer", label: "Mujer" },
+  { id: "otro", label: "Otro" },
+  { id: "no_dice", label: "Prefiero no decir" }
+];
+
 export type Profile = {
   id: string;
   username: string;
@@ -36,6 +45,8 @@ export type Profile = {
   featured_collections: ProfileCollection[];
   current_watching: CurrentWatchingEntry[];
   visibility_settings: ProfileVisibilitySettings;
+  gender: Gender | null;
+  birth_date: string | null;
 };
 
 type ProfileRow = {
@@ -45,6 +56,8 @@ type ProfileRow = {
   avatar_url: string | null;
   banner_url: string | null;
   bio: string | null;
+  gender: string | null;
+  birth_date: string | null;
   favorite_genres: string[] | null;
   favorite_titles:
     | Array<{ tmdbId?: number | string; mediaType?: "movie" | "tv" | string }>
@@ -83,10 +96,12 @@ type UpdateProfileInput = {
   featuredCollections: ProfileCollection[];
   currentWatching: CurrentWatchingEntry[];
   visibilitySettings: ProfileVisibilitySettings;
+  gender: Gender | null;
+  birthDate: string | null;
 };
 
 const PROFILE_SELECT =
-  "id, username, display_name, avatar_url, banner_url, bio, favorite_genres, favorite_titles, featured_collections, current_watching, visibility_settings";
+  "id, username, display_name, avatar_url, banner_url, bio, gender, birth_date, favorite_genres, favorite_titles, featured_collections, current_watching, visibility_settings";
 const LEGACY_PROFILE_SELECT = "id, username, display_name, avatar_url, bio";
 
 function defaultVisibilitySettings(): ProfileVisibilitySettings {
@@ -101,6 +116,12 @@ function defaultVisibilitySettings(): ProfileVisibilitySettings {
   };
 }
 
+function normalizeGender(value: string | null): Gender | null {
+  return value === "hombre" || value === "mujer" || value === "otro" || value === "no_dice"
+    ? value
+    : null;
+}
+
 function normalizeProfileRow(row: ProfileRow): Profile {
   return {
     id: row.id,
@@ -109,6 +130,8 @@ function normalizeProfileRow(row: ProfileRow): Profile {
     avatar_url: row.avatar_url,
     banner_url: row.banner_url,
     bio: row.bio,
+    gender: normalizeGender(row.gender),
+    birth_date: row.birth_date,
     favorite_genres: Array.isArray(row.favorite_genres)
       ? row.favorite_genres.filter((genre): genre is string => typeof genre === "string")
       : [],
@@ -183,6 +206,8 @@ function isMissingProfileColumnsError(error: unknown) {
   const normalizedMessage = message.toLowerCase();
   return (
     normalizedMessage.includes("banner_url") ||
+    normalizedMessage.includes("gender") ||
+    normalizedMessage.includes("birth_date") ||
     normalizedMessage.includes("favorite_genres") ||
     normalizedMessage.includes("favorite_titles") ||
     normalizedMessage.includes("featured_collections") ||
@@ -202,6 +227,8 @@ function normalizeLegacyProfileRow(
     avatar_url: row.avatar_url,
     banner_url: null,
     bio: row.bio,
+    gender: null,
+    birth_date: null,
     favorite_genres: [],
     favorite_titles: [],
     featured_collections: [],
@@ -407,6 +434,8 @@ export async function ensureProfile({
     avatar_url: safeAvatarUrl,
     banner_url: null,
     bio: null,
+    gender: null,
+    birth_date: null,
     favorite_genres: [],
     favorite_titles: [],
     featured_collections: [],
@@ -458,6 +487,8 @@ export async function updateProfile(input: UpdateProfileInput): Promise<Profile>
     bio: input.bio?.trim() ? input.bio.trim() : null,
     avatar_url: input.avatarUrl?.trim() ? input.avatarUrl.trim() : null,
     banner_url: input.bannerUrl?.trim() ? input.bannerUrl.trim() : null,
+    gender: input.gender,
+    birth_date: input.birthDate?.trim() ? input.birthDate.trim() : null,
     favorite_genres: input.favoriteGenres,
     favorite_titles: input.favoriteTitles,
     featured_collections: input.featuredCollections,

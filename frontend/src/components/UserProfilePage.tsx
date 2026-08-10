@@ -121,6 +121,9 @@ export function UserProfilePage({
     }
 
     const result = await shareProfileLink(profile.username);
+    if (result === "cancelled") {
+      return;
+    }
     setShareLabel(result === "shared" ? "Compartido" : "Link copiado");
     window.setTimeout(() => setShareLabel("Compartir perfil"), 1800);
   }
@@ -130,11 +133,17 @@ export function UserProfilePage({
       <div className="profile-hero__actions">
         <button
           type="button"
-          className="profile-share-button"
+          className="recommendation-action-button recommendation-action-button--small"
           onClick={() => void handleShareProfile()}
           disabled={!profile?.username}
+          data-tooltip={shareLabel}
+          aria-label={shareLabel}
         >
-          {shareLabel}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15V4" />
+            <path d="M7 8 12 3 17 8" />
+            <path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+          </svg>
         </button>
         {isOwnProfile ? (
           <span className="profile-follow-badge">Este sos vos</span>
