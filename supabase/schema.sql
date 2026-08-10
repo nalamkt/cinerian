@@ -19,6 +19,12 @@ alter table if exists public.profiles
 add column if not exists current_watching jsonb not null default '[]'::jsonb;
 
 alter table if exists public.profiles
+add column if not exists gender text;
+
+alter table if exists public.profiles
+add column if not exists birth_date date;
+
+alter table if exists public.profiles
 alter column visibility_settings
 set default '{"showFollowers":false,"showFollowing":false,"showCollections":false,"showBadges":false,"showInsights":false,"showActivity":false,"showWatchlist":true}'::jsonb;
 

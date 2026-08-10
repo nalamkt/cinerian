@@ -41,27 +41,14 @@ export function ProfilePanel({
   const favoriteGenres = profile?.favorite_genres ?? [];
   const featuredCollections = profile?.featured_collections ?? [];
   const visibilitySettings = profile?.visibility_settings;
-  const canShowWatchStats = visibilitySettings?.showWatchlist !== false;
-  const canShowPeople =
-    visibilitySettings?.showFollowers !== false || visibilitySettings?.showFollowing !== false;
-  const canShowExtras = visibilitySettings?.showActivity !== false;
   const canShowBadges = visibilitySettings?.showBadges !== false;
-  const [stats, setStats] = useState({ likes: 0, watched: 0, followers: 0 });
+  const [stats, setStats] = useState({ likes: 0, watched: 0, followers: 0, following: 0 });
   const [isEditing, setIsEditing] = useState(false);
-  const [favoriteTitles, setFavoriteTitles] = useState<DiscoveryItem[]>([]);
-  const [resolvedCollections, setResolvedCollections] = useState<
-    Array<{
-      id: string;
-      title: string;
-      description: string | null;
-      items: DiscoveryItem[];
-    }>
-  >([]);
   const [followerProfiles, setFollowerProfiles] = useState<Profile[]>([]);
   const [followingProfiles, setFollowingProfiles] = useState<Profile[]>([]);
-  const [isPeoplePopupOpen, setIsPeoplePopupOpen] = useState(false);
+  const [peoplePopupTab, setPeoplePopupTab] = useState<"followers" | "following" | null>(null);
+  const [peopleSearchQuery, setPeopleSearchQuery] = useState("");
   const [identityBadges, setIdentityBadges] = useState<string[]>([]);
-  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   const [tasteInsights, setTasteInsights] = useState({
     topGenre: "Sin definir",
     topDecade: "Sin definir",
@@ -129,7 +116,8 @@ export function ProfilePanel({
       setStats({
         likes: storedReactions.filter((entry) => entry.reaction === "liked").length,
         watched: storedReactions.filter((entry) => entry.reaction === "watched").length,
-        followers: followerCountOverride ?? followers
+        followers: followerCountOverride ?? followers,
+        following: followingIds.length
       });
       setFollowerProfiles(allProfiles.filter((entry) => followerIds.includes(entry.id)));
       setFollowingProfiles(allProfiles.filter((entry) => followingIds.includes(entry.id)));
@@ -203,7 +191,8 @@ export function ProfilePanel({
         setStats((current) => ({
           likes: 0,
           watched: 0,
-          followers: followerCountOverride ?? current.followers ?? 0
+          followers: followerCountOverride ?? current.followers ?? 0,
+          following: current.following ?? 0
         }));
         setFollowerProfiles([]);
         setFollowingProfiles([]);
@@ -230,7 +219,8 @@ export function ProfilePanel({
       setStats((current) => ({
         likes: 0,
         watched: 0,
-        followers: followerCountOverride ?? current.followers ?? 0
+        followers: followerCountOverride ?? current.followers ?? 0,
+        following: current.following ?? 0
       }));
       setFollowerProfiles([]);
       setFollowingProfiles([]);
@@ -262,84 +252,24 @@ export function ProfilePanel({
     }
   }, [profile]);
 
-  useEffect(() => {
-    if (!canShowPeople && isPeoplePopupOpen) {
-      setIsPeoplePopupOpen(false);
-    }
-  }, [canShowPeople, isPeoplePopupOpen]);
+  function openPeoplePopup(tab: "followers" | "following") {
+    setPeopleSearchQuery("");
+    setPeoplePopupTab(tab);
+  }
 
-  useEffect(() => {
-    let isMounted = true;
+  function closePeoplePopup() {
+    setPeoplePopupTab(null);
+  }
 
-    async function loadCollections() {
-      if (!featuredCollections.length) {
-        setResolvedCollections([]);
-        return;
-      }
-
-      const resolved = await Promise.all(
-        featuredCollections.map(async (collection) => {
-          const items = await Promise.all(
-            collection.items.map((entry) => getTitleById(entry.tmdbId, entry.mediaType))
-          );
-
-          return {
-            id: collection.id,
-            title: collection.title,
-            description: collection.description,
-            items: items.filter((item): item is DiscoveryItem => Boolean(item))
-          };
-        })
-      );
-
-      if (!isMounted) {
-        return;
-      }
-
-      setResolvedCollections(resolved.filter((collection) => collection.items.length));
-    }
-
-    void loadCollections().catch(() => {
-      if (isMounted) {
-        setResolvedCollections([]);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [featuredCollections]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadFavoriteTitles() {
-      if (!profile?.favorite_titles?.length) {
-        setFavoriteTitles([]);
-        return;
-      }
-
-      const resolved = await Promise.all(
-        profile.favorite_titles.map((entry) => getTitleById(entry.tmdbId, entry.mediaType))
-      );
-
-      if (!isMounted) {
-        return;
-      }
-
-      setFavoriteTitles(resolved.filter((item): item is DiscoveryItem => Boolean(item)));
-    }
-
-    void loadFavoriteTitles().catch(() => {
-      if (isMounted) {
-        setFavoriteTitles([]);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [profile]);
+  const activePeopleList = peoplePopupTab === "following" ? followingProfiles : followerProfiles;
+  const normalizedPeopleQuery = peopleSearchQuery.trim().toLowerCase();
+  const filteredPeopleList = normalizedPeopleQuery
+    ? activePeopleList.filter(
+        (entry) =>
+          entry.display_name.toLowerCase().includes(normalizedPeopleQuery) ||
+          entry.username.toLowerCase().includes(normalizedPeopleQuery)
+      )
+    : activePeopleList;
 
   return (
     <section className="panel profile-panel">
@@ -380,32 +310,22 @@ export function ProfilePanel({
             </div>
           </div>
 
-          {canShowWatchStats || canShowPeople ? (
-            <div className="profile-stats">
-              {canShowWatchStats ? (
-                <div className="profile-stat">
-                  <strong>{stats.likes}</strong>
-                  <span>Watchlist</span>
-                </div>
-              ) : null}
-              {canShowWatchStats ? (
-                <div className="profile-stat">
-                  <strong>{stats.watched}</strong>
-                  <span>Vistas</span>
-                </div>
-              ) : null}
-              {canShowPeople ? (
-                <button
-                  type="button"
-                  className="profile-stat profile-stat--button"
-                  onClick={() => setIsPeoplePopupOpen(true)}
-                >
-                  <strong>{stats.followers}</strong>
-                  <span>Seguidores</span>
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+          <div className="profile-stats-inline">
+            <button
+              type="button"
+              className="profile-stats-inline__item profile-stats-inline__item--button"
+              onClick={() => openPeoplePopup("followers")}
+            >
+              <strong>{stats.followers}</strong> Seguidores
+            </button>
+            <button
+              type="button"
+              className="profile-stats-inline__item profile-stats-inline__item--button"
+              onClick={() => openPeoplePopup("following")}
+            >
+              <strong>{stats.following}</strong> Seguidos
+            </button>
+          </div>
 
           <p className="profile-bio">
             {bio ??
@@ -425,87 +345,6 @@ export function ProfilePanel({
             </div>
           ) : null}
 
-          {canShowExtras ? (
-            <div className="profile-secondary">
-              <div className="profile-secondary__header">
-                <div>
-                  <p className="section-eyebrow">Extras del perfil</p>
-                  <p className="profile-secondary__copy">
-                    Actividad, resumenes e insights personales.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="profile-share-button"
-                  onClick={() => setIsDetailsExpanded((current) => !current)}
-                >
-                  {isDetailsExpanded ? "Ver menos" : "Ver mas"}
-                </button>
-              </div>
-
-              {isDetailsExpanded ? (
-                <>
-                  <div className="profile-summary-grid">
-                    <article className="profile-summary-card">
-                      <span className="profile-summary-card__label">Recomendaciones</span>
-                      <strong>{activitySummary.recommendations}</strong>
-                      <p>
-                        {isOwnProfile
-                          ? "Titulos que dejaste visibles como parte de tu gusto."
-                          : "Titulos recomendados dentro de este perfil."}
-                      </p>
-                    </article>
-                    <article className="profile-summary-card">
-                      <span className="profile-summary-card__label">Posts propios</span>
-                      <strong>{activitySummary.posts}</strong>
-                      <p>
-                        {isOwnProfile
-                          ? "Textos y opiniones publicadas por vos."
-                          : "Textos y opiniones que esta persona compartio."}
-                      </p>
-                    </article>
-                    <article className="profile-summary-card">
-                      <span className="profile-summary-card__label">Ultimo movimiento</span>
-                      <strong>{activitySummary.lastActivityLabel}</strong>
-                      <p>
-                        {isOwnProfile
-                          ? "La senal mas reciente de tu actividad."
-                          : "Lo ultimo que movio dentro de Cinerian."}
-                      </p>
-                    </article>
-                  </div>
-
-                  {isOwnProfile && visibilitySettings?.showInsights !== false ? (
-                    <div className="profile-insights">
-                      <div className="profile-insights__header">
-                        <div>
-                          <p className="section-eyebrow">Insights de gusto</p>
-                          <h3>Lo que tu historial dice de vos</h3>
-                          <p>{tasteInsights.profileMood}</p>
-                        </div>
-                      </div>
-
-                      <div className="profile-insights__grid">
-                        <article className="profile-insight-card">
-                          <span>Genero dominante</span>
-                          <strong>{tasteInsights.topGenre}</strong>
-                        </article>
-                        <article className="profile-insight-card">
-                          <span>Decada favorita</span>
-                          <strong>{tasteInsights.topDecade}</strong>
-                        </article>
-                        <article className="profile-insight-card">
-                          <span>Balance de formato</span>
-                          <strong>{tasteInsights.formatSplit}</strong>
-                        </article>
-                      </div>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-          ) : null}
-
           {canShowBadges && identityBadges.length ? (
             <div className="profile-badges">
               {identityBadges.map((badge) => (
@@ -519,116 +358,69 @@ export function ProfilePanel({
         </div>
       </div>
 
-      {isPeoplePopupOpen && canShowPeople ? (
-        <div className="profile-people-popup__backdrop" onClick={() => setIsPeoplePopupOpen(false)}>
-          <div className="profile-people-popup" onClick={(event) => event.stopPropagation()}>
-            <div className="profile-people-popup__header">
-              <div>
-                <p className="section-eyebrow">Red del perfil</p>
-                <h3>Seguidores y seguidos</h3>
-              </div>
+      {peoplePopupTab ? (
+        <div className="profile-people-popup__backdrop" onClick={closePeoplePopup}>
+          <div className="profile-people-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="profile-people-modal__header">
+              <h3>{peoplePopupTab === "following" ? "Seguidos" : "Seguidores"}</h3>
               <button
                 type="button"
-                className="media-modal__back"
-                onClick={() => setIsPeoplePopupOpen(false)}
+                className="profile-people-modal__close"
+                onClick={closePeoplePopup}
                 aria-label="Cerrar"
               >
                 ×
               </button>
             </div>
 
-            <div className="profile-people-grid">
-              {visibilitySettings?.showFollowers !== false ? (
-                <div className="profile-people-card">
-                  <div className="profile-people-card__header">
-                    <div>
-                      <p className="section-eyebrow">Seguidores</p>
-                      <h3>Quienes siguen este perfil</h3>
-                    </div>
-                    <strong>{followerProfiles.length}</strong>
-                  </div>
-                  {followerProfiles.length ? (
-                    <div className="profile-people-list">
-                      {followerProfiles.map((entry) => (
-                        <button
-                          key={entry.id}
-                          type="button"
-                          className="profile-people-user"
-                          onClick={() => {
-                            onOpenUserProfile?.({ userId: entry.id, username: entry.username });
-                            setIsPeoplePopupOpen(false);
-                          }}
-                          disabled={!onOpenUserProfile}
-                        >
-                          <span className="profile-people-user__avatar" aria-hidden="true">
-                            {entry.avatar_url ? (
-                              <img src={entry.avatar_url} alt="" className="profile-avatar__image" />
-                            ) : (
-                              entry.display_name.slice(0, 1).toUpperCase()
-                            )}
-                          </span>
-                          <span className="profile-people-user__copy">
-                            <strong>{entry.display_name}</strong>
-                            <span>@{entry.username}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="profile-grid__empty">
-                      {isOwnProfile
+            <div className="profile-people-modal__search">
+              <input
+                type="search"
+                value={peopleSearchQuery}
+                onChange={(event) => setPeopleSearchQuery(event.target.value)}
+                placeholder="Buscar"
+              />
+            </div>
+
+            <div className="profile-people-modal__list">
+              {filteredPeopleList.length ? (
+                filteredPeopleList.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    className="profile-people-user"
+                    onClick={() => {
+                      onOpenUserProfile?.({ userId: entry.id, username: entry.username });
+                      closePeoplePopup();
+                    }}
+                    disabled={!onOpenUserProfile}
+                  >
+                    <span className="profile-people-user__avatar" aria-hidden="true">
+                      {entry.avatar_url ? (
+                        <img src={entry.avatar_url} alt="" className="profile-avatar__image" />
+                      ) : (
+                        entry.display_name.slice(0, 1).toUpperCase()
+                      )}
+                    </span>
+                    <span className="profile-people-user__copy">
+                      <strong>{entry.display_name}</strong>
+                      <span>@{entry.username}</span>
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="profile-grid__empty">
+                  {normalizedPeopleQuery
+                    ? "No encontramos a nadie con ese nombre."
+                    : peoplePopupTab === "following"
+                      ? isOwnProfile
+                        ? "Todavia no seguis a nadie desde este perfil."
+                        : "Este perfil todavia no sigue a otras personas."
+                      : isOwnProfile
                         ? "Todavia no tenes seguidores visibles."
                         : "Este perfil todavia no tiene seguidores visibles."}
-                    </div>
-                  )}
                 </div>
-              ) : null}
-
-              {visibilitySettings?.showFollowing !== false ? (
-                <div className="profile-people-card">
-                  <div className="profile-people-card__header">
-                    <div>
-                      <p className="section-eyebrow">Seguidos</p>
-                      <h3>A quienes sigue</h3>
-                    </div>
-                    <strong>{followingProfiles.length}</strong>
-                  </div>
-                  {followingProfiles.length ? (
-                    <div className="profile-people-list">
-                      {followingProfiles.map((entry) => (
-                        <button
-                          key={entry.id}
-                          type="button"
-                          className="profile-people-user"
-                          onClick={() => {
-                            onOpenUserProfile?.({ userId: entry.id, username: entry.username });
-                            setIsPeoplePopupOpen(false);
-                          }}
-                          disabled={!onOpenUserProfile}
-                        >
-                          <span className="profile-people-user__avatar" aria-hidden="true">
-                            {entry.avatar_url ? (
-                              <img src={entry.avatar_url} alt="" className="profile-avatar__image" />
-                            ) : (
-                              entry.display_name.slice(0, 1).toUpperCase()
-                            )}
-                          </span>
-                          <span className="profile-people-user__copy">
-                            <strong>{entry.display_name}</strong>
-                            <span>@{entry.username}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="profile-grid__empty">
-                      {isOwnProfile
-                        ? "Todavia no seguis a nadie desde este perfil."
-                        : "Este perfil todavia no sigue a otras personas."}
-                    </div>
-                  )}
-                </div>
-              ) : null}
+              )}
             </div>
           </div>
         </div>
@@ -685,10 +477,10 @@ export function ProfilePanel({
         readOnly={readOnly}
         isOwnProfile={isOwnProfile}
         profile={profile}
-        favoriteTitles={favoriteTitles}
-        featuredCollections={resolvedCollections}
         visibilitySettings={visibilitySettings}
         onProfileUpdated={onProfileUpdated}
+        activitySummary={activitySummary}
+        tasteInsights={tasteInsights}
       />
     </section>
   );

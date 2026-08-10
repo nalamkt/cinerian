@@ -1,3 +1,4 @@
+import { AboutYouOnboardingModal } from "./components/AboutYouOnboardingModal";
 import { AuthPanel } from "./components/AuthPanel";
 import { CinerianLogo } from "./components/CinerianLogo";
 import { FeedPanel } from "./components/FeedPanel";
@@ -122,19 +123,28 @@ export default function App() {
       <div className="profile-hero__actions profile-hero__actions--own">
         <button
           type="button"
-          className="profile-share-button"
+          className="recommendation-action-button recommendation-action-button--small"
           disabled={!localProfile?.username}
+          data-tooltip={shareLabel}
+          aria-label={shareLabel}
           onClick={async () => {
             if (!localProfile?.username) {
               return;
             }
 
             const result = await shareProfileLink(localProfile.username);
+            if (result === "cancelled") {
+              return;
+            }
             setShareLabel(result === "shared" ? "Compartido" : "Link copiado");
             window.setTimeout(() => setShareLabel("Compartir perfil"), 1800);
           }}
         >
-          {shareLabel}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15V4" />
+            <path d="M7 8 12 3 17 8" />
+            <path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+          </svg>
         </button>
         <button type="button" className="profile-mobile-logout" onClick={() => void signOut()}>
           Cerrar sesión
@@ -331,6 +341,10 @@ export default function App() {
 
   return (
     <MediaDetailsProvider userId={session.user.id}>
+      {localProfile && localProfile.gender === null ? (
+        <AboutYouOnboardingModal profile={localProfile} onComplete={setLocalProfile} />
+      ) : null}
+
       <div className="app-shell app-shell--immersive">
         {error ? <div className="app-alert app-alert--floating">{error}</div> : null}
         {isLoading ? <div className="app-alert app-alert--floating">Cargando sesion...</div> : null}
