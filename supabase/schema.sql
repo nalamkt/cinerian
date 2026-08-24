@@ -49,10 +49,16 @@ create table if not exists public.media_reactions (
   user_id uuid not null references public.profiles(id) on delete cascade,
   tmdb_id bigint not null,
   media_type text not null check (media_type in ('movie', 'tv')),
-  reaction text not null check (reaction in ('liked', 'disliked', 'watched', 'watchlist')),
-  rating smallint check (rating between 1 and 5),
+  -- Un titulo esta siempre en exactamente uno de estos estados por usuario:
+  --   liked     -> la vio y le gusto
+  --   disliked  -> la vio y no le gusto
+  --   watchlist -> guardada, todavia no la vio
+  --   ignored   -> la paso de largo en Descubri
+  reaction text not null check (reaction in ('liked', 'disliked', 'watchlist', 'ignored')),
   created_at timestamptz not null default timezone('utc', now())
 );
+
+create index if not exists media_reactions_user_id_idx on public.media_reactions (user_id);
 
 create table if not exists public.feed_posts (
   id uuid primary key default gen_random_uuid(),
@@ -129,10 +135,32 @@ create policy "profiles are public read"
   on public.profiles for select
   using (true);
 
-create policy "users manage own profile"
-  on public.profiles for all
+-- depende de public.invites (supabase/invites.sql) -- aplicar ese archivo antes que este bloque
+drop policy if exists "users manage own profile" on public.profiles;
+
+-- Crear el perfil exige una invitacion redimida. La unica excepcion es el primer
+-- perfil de la app (el dueno, que nadie invito): apenas existe una fila en
+-- profiles esa clausula queda muerta para siempre.
+create policy "users create own profile with invite"
+  on public.profiles for insert
+  with check (
+    auth.uid() = id
+    and (
+      not exists (select 1 from public.profiles)
+      or exists (select 1 from public.invites where redeemed_by = auth.uid())
+    )
+  );
+
+-- Editar y borrar el propio perfil no exige invitacion: si no, quien nunca fue
+-- invitado (el usuario raiz) no podria ni completar su onboarding.
+create policy "users update own profile"
+  on public.profiles for update
   using (auth.uid() = id)
   with check (auth.uid() = id);
+
+create policy "users delete own profile"
+  on public.profiles for delete
+  using (auth.uid() = id);
 
 create policy "feed is public read"
   on public.feed_posts for select

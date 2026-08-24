@@ -10,8 +10,9 @@ import {
   saveStoredReaction,
   type StoredReaction
 } from "../lib/reactions";
+import { fetchSocialRecommendations } from "../lib/recommendations";
 import { buildWatchedPostBody } from "../lib/reviews";
-import { getRecommendationTitlesByPage, getSimilarTitles, getTitleDetails } from "../lib/tmdb";
+import { getSimilarTitles, getTitleDetails } from "../lib/tmdb";
 import type { DiscoveryItem, MediaDetails } from "../types";
 
 type RecommendationPanelProps = {
@@ -63,7 +64,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   );
 
   useEffect(() => {
-    void getRecommendationTitlesByPage(1)
+    void fetchSocialRecommendations(userId, 1)
       .then((results) => {
         if (results.length) {
           setItems(results);
@@ -73,7 +74,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       .catch(() => {
         setItems(demoDiscovery);
       });
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (availableItems.length >= 6) {
@@ -85,7 +86,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     }
 
     const nextPage = page + 1;
-    void getRecommendationTitlesByPage(nextPage)
+    void fetchSocialRecommendations(userId, nextPage)
       .then((results) => {
         if (!results.length) {
           return;
@@ -102,7 +103,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       .catch(() => {
         // Keep current pool if a new page fails.
       });
-  }, [availableItems.length, items.length, page]);
+  }, [availableItems.length, items.length, page, userId]);
 
   useEffect(() => {
     async function loadStoredReactions() {
@@ -200,7 +201,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
         reaction
       });
 
-      if (reaction === "liked") {
+      if (reaction === "watchlist") {
         await createFeedPost({
           userId,
           postType: "watchlist",
@@ -222,7 +223,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   }
 
   function handleLike() {
-    void registerReaction("liked");
+    void registerReaction("watchlist");
   }
 
   function handleShare() {
@@ -238,7 +239,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   }
 
   function handleSkip() {
-    void registerReaction("disliked");
+    void registerReaction("ignored");
   }
 
   async function handleReviewSubmit(input: { liked: boolean; comment: string }) {
@@ -246,13 +247,15 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       return;
     }
 
+    const watchedReaction = input.liked ? "liked" : "disliked";
+
     try {
       setIsSyncing(true);
       setSyncMessage(null);
       await saveStoredReaction({
         userId,
         item: reviewItem,
-        reaction: "watched"
+        reaction: watchedReaction
       });
       await createFeedPost({
         userId,
@@ -265,7 +268,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
         tmdbId: reviewItem.id,
         mediaType: reviewItem.mediaType
       });
-      replaceStoredReaction(reviewItem, "watched");
+      replaceStoredReaction(reviewItem, watchedReaction);
       setReviewItem(null);
       if (spotlight && spotlight.id === reviewItem.id) {
         goNext();

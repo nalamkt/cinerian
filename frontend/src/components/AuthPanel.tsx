@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { sendMagicLink, signInWithGoogle } from "../lib/auth";
+import type { InviteInfo } from "../lib/invites";
 
 type AuthPanelProps = {
   isSupabaseReady: boolean;
+  inviteInfo?: InviteInfo | null;
 };
 
 function getAuthErrorMessage(error: unknown) {
@@ -23,7 +25,7 @@ function getAuthErrorMessage(error: unknown) {
   return error.message;
 }
 
-export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
+export function AuthPanel({ isSupabaseReady, inviteInfo }: AuthPanelProps) {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -88,6 +90,18 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
       <p className="section-description">
         Entra con Google o recibe un link magico en tu email. Sin contrasena y sin registro manual.
       </p>
+
+      {inviteInfo ? (
+        <div className="inline-status">
+          Te invitó <strong>{inviteInfo.inviterDisplayName}</strong> (@{inviteInfo.inviterUsername}). Al
+          registrarte vas a empezar a seguirlo automáticamente.
+        </div>
+      ) : (
+        <div className="inline-status">
+          Cinerian es por invitación. Si sos nuevo, necesitás un link de invitación de alguien que ya
+          esté adentro.
+        </div>
+      )}
 
       <button
         type="button"

@@ -12,6 +12,7 @@ import { UserProfilePage } from "./components/UserProfilePage";
 import { useAuth } from "./hooks/useAuth";
 import { signOut } from "./lib/auth";
 import { fetchUnreadInboxCount, INBOX_UPDATED_EVENT } from "./lib/inbox";
+import { createAndShareInvite, fetchInviteByCode, PENDING_INVITE_STORAGE_KEY, type InviteInfo } from "./lib/invites";
 import {
   buildSharedProfilePath,
   parseSharedProfilePath,
@@ -113,14 +114,80 @@ export default function App() {
     username: string;
   } | null>(() => parseSharedProfilePath(window.location.pathname));
   const [shareLabel, setShareLabel] = useState("Compartir perfil");
+  const [inviteLabel, setInviteLabel] = useState("Invitar");
+  const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
 
   useEffect(() => {
     setLocalProfile(profile);
   }, [profile]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const codeFromUrl = new URLSearchParams(window.location.search).get("invite");
+    if (codeFromUrl) {
+      window.localStorage.setItem(PENDING_INVITE_STORAGE_KEY, codeFromUrl);
+    }
+
+    const pendingCode = codeFromUrl || window.localStorage.getItem(PENDING_INVITE_STORAGE_KEY);
+    if (!pendingCode) {
+      return;
+    }
+
+    let isMounted = true;
+    fetchInviteByCode(pendingCode)
+      .then((info) => {
+        if (isMounted) {
+          setInviteInfo(info);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setInviteInfo(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const ownProfileAction = useMemo(() => {
     return (
       <div className="profile-hero__actions profile-hero__actions--own">
+        <button
+          type="button"
+          className="recommendation-action-button recommendation-action-button--small"
+          disabled={!sessionUserId}
+          data-tooltip={inviteLabel}
+          aria-label={inviteLabel}
+          onClick={async () => {
+            if (!sessionUserId) {
+              return;
+            }
+
+            try {
+              const result = await createAndShareInvite(sessionUserId);
+              if (result === "cancelled") {
+                return;
+              }
+              setInviteLabel(result === "shared" ? "Invitación enviada" : "Link copiado");
+            } catch {
+              setInviteLabel("No se pudo invitar");
+            } finally {
+              window.setTimeout(() => setInviteLabel("Invitar"), 1800);
+            }
+          }}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M19 8v6" />
+            <path d="M22 11h-6" />
+          </svg>
+        </button>
         <button
           type="button"
           className="recommendation-action-button recommendation-action-button--small"
@@ -151,7 +218,7 @@ export default function App() {
         </button>
       </div>
     );
-  }, [localProfile?.username, shareLabel]);
+  }, [sessionUserId, inviteLabel, localProfile?.username, shareLabel]);
 
   useEffect(() => {
     function syncRouteFromLocation() {
@@ -332,7 +399,7 @@ export default function App() {
           <div className="auth-shell__form">
             {error ? <div className="app-alert">{error}</div> : null}
             {isLoading ? <div className="app-alert">Cargando sesion...</div> : null}
-            <AuthPanel isSupabaseReady={hasSupabaseEnv} />
+            <AuthPanel isSupabaseReady={hasSupabaseEnv} inviteInfo={inviteInfo} />
           </div>
         </div>
       </div>

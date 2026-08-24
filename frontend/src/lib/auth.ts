@@ -383,11 +383,16 @@ export async function getCurrentSession(): Promise<Session | null> {
   return data.session;
 }
 
+export type EnsureProfileResult = {
+  profile: Profile;
+  wasCreated: boolean;
+};
+
 export async function ensureProfile({
   user,
   username,
   displayName
-}: EnsureProfileInput): Promise<Profile> {
+}: EnsureProfileInput): Promise<EnsureProfileResult> {
   if (!supabase) {
     throw new Error("Supabase no esta configurado.");
   }
@@ -412,7 +417,7 @@ export async function ensureProfile({
 
   const existingProfile = await selectProfileById(user.id);
   if (existingProfile) {
-    return existingProfile;
+    return { profile: existingProfile, wasCreated: false };
   }
 
   const payload = {
@@ -455,13 +460,13 @@ export async function ensureProfile({
         throw legacyInsert.error ?? new Error("No pude leer el perfil.");
       }
 
-      return normalizeLegacyProfileRow(legacyInsert.data);
+      return { profile: normalizeLegacyProfileRow(legacyInsert.data), wasCreated: true };
     }
 
     throw error ?? new Error("No pude leer el perfil.");
   }
 
-  return normalizeProfileRow(data);
+  return { profile: normalizeProfileRow(data), wasCreated: true };
 }
 
 export async function updateProfile(input: UpdateProfileInput): Promise<Profile> {

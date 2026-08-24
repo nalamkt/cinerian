@@ -9,8 +9,9 @@ import { listProfiles, type Profile } from "../lib/auth";
 import {
   fetchStoredReactions,
   REACTIONS_UPDATED_EVENT,
-  removeStoredReaction,
+  removeStoredRatedReaction,
   saveStoredReaction,
+  type RecommendationReaction,
   type StoredReaction
 } from "../lib/reactions";
 import { buildWatchedPostBody } from "../lib/reviews";
@@ -23,6 +24,11 @@ type SearchPanelProps = {
 };
 
 type SearchMode = "titles" | "people" | "talent";
+
+/** Vista = marcada con pulgar arriba o abajo (ya no existe un estado 'watched' aparte). */
+function isWatchedReaction(reaction: RecommendationReaction | undefined) {
+  return reaction === "liked" || reaction === "disliked";
+}
 
 export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   const { openMediaDetails } = useMediaDetails();
@@ -144,7 +150,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         reaction
       });
 
-      if (reaction === "liked") {
+      if (reaction === "watchlist") {
         await createFeedPost({
           userId,
           postType: "watchlist",
@@ -154,7 +160,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         });
       }
 
-      if (reaction === "watched") {
+      if (reaction === "liked" || reaction === "disliked") {
         await createFeedPost({
           userId,
           postType: "rating",
@@ -174,18 +180,22 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
 
   async function handleWatchedToggle(item: DiscoveryItem) {
     const key = `${item.mediaType}-${item.id}`;
-    const isWatched = reactionMap[key] === "watched";
+    const isWatched = isWatchedReaction(reactionMap[key]);
 
     try {
       setIsSyncing(true);
       setSyncMessage(null);
 
       if (isWatched) {
-        await removeStoredReaction(userId, item, "watched");
+        await removeStoredRatedReaction(userId, item);
         setStoredReactions((current) =>
           current.filter(
             (entry) =>
-              !(entry.tmdbId === item.id && entry.mediaType === item.mediaType && entry.reaction === "watched")
+              !(
+                entry.tmdbId === item.id &&
+                entry.mediaType === item.mediaType &&
+                (entry.reaction === "liked" || entry.reaction === "disliked")
+              )
           )
         );
         setSyncMessage("La saque de vistas.");
@@ -209,7 +219,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
       await saveStoredReaction({
         userId,
         item: reviewItem,
-        reaction: "watched"
+        reaction: input.liked ? "liked" : "disliked"
       });
       await createFeedPost({
         userId,
@@ -223,7 +233,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         mediaType: reviewItem.mediaType
       });
 
-      replaceStoredReaction(reviewItem, "watched");
+      replaceStoredReaction(reviewItem, input.liked ? "liked" : "disliked");
       setReviewItem(null);
       setSyncMessage("Tu reseña ya salió en el feed.");
     } catch {
@@ -333,20 +343,20 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
                   <button
                     type="button"
                     className={`recommendation-action-button recommendation-action-button--small ${
-                      reactionMap[`${item.mediaType}-${item.id}`] === "liked"
+                      reactionMap[`${item.mediaType}-${item.id}`] === "watchlist"
                         ? "recommendation-action-button--primary"
                         : ""
                     }`}
                     disabled={isSyncing}
                     onClick={(event) => {
                       event.stopPropagation();
-                      void handleReaction(item, "liked");
+                      void handleReaction(item, "watchlist");
                     }}
                     data-tooltip={
-                      reactionMap[`${item.mediaType}-${item.id}`] === "liked" ? "Guardada" : "Guardar"
+                      reactionMap[`${item.mediaType}-${item.id}`] === "watchlist" ? "Guardada" : "Guardar"
                     }
                     aria-label={
-                      reactionMap[`${item.mediaType}-${item.id}`] === "liked" ? "Guardada" : "Guardar"
+                      reactionMap[`${item.mediaType}-${item.id}`] === "watchlist" ? "Guardada" : "Guardar"
                     }
                   >
                     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -372,7 +382,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
                   <button
                     type="button"
                     className={`recommendation-action-button recommendation-action-button--small ${
-                      reactionMap[`${item.mediaType}-${item.id}`] === "watched"
+                      isWatchedReaction(reactionMap[`${item.mediaType}-${item.id}`])
                         ? "recommendation-action-button--primary"
                         : ""
                     }`}
@@ -382,10 +392,10 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
                       void handleWatchedToggle(item);
                     }}
                     data-tooltip={
-                      reactionMap[`${item.mediaType}-${item.id}`] === "watched" ? "Vista" : "Ya la vi"
+                      isWatchedReaction(reactionMap[`${item.mediaType}-${item.id}`]) ? "Vista" : "Ya la vi"
                     }
                     aria-label={
-                      reactionMap[`${item.mediaType}-${item.id}`] === "watched" ? "Vista" : "Ya la vi"
+                      isWatchedReaction(reactionMap[`${item.mediaType}-${item.id}`]) ? "Vista" : "Ya la vi"
                     }
                   >
                     <svg viewBox="0 0 24 24" aria-hidden="true">

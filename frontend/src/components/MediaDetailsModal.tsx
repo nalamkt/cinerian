@@ -4,7 +4,12 @@ import { TalentDetailsModal } from "./TalentDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { createFeedPost, fetchFeedPosts } from "../lib/feed";
 import { getProviderSearchUrl } from "../lib/providerLinks";
-import { fetchStoredReactions, removeStoredReaction, saveStoredReaction } from "../lib/reactions";
+import {
+  fetchStoredReactions,
+  removeStoredRatedReaction,
+  removeStoredReaction,
+  saveStoredReaction
+} from "../lib/reactions";
 import { buildWatchedPostBody } from "../lib/reviews";
 import { buildSharedMediaUrl, shareMediaLink } from "../lib/share";
 import { getTitleById, getTitleDetails } from "../lib/tmdb";
@@ -491,13 +496,13 @@ function MediaDetailsModal({
           (entry) =>
             entry.tmdbId === item.id &&
             entry.mediaType === item.mediaType &&
-            entry.reaction === "liked"
+            entry.reaction === "watchlist"
         );
         const isWatched = reactions.some(
           (entry) =>
             entry.tmdbId === item.id &&
             entry.mediaType === item.mediaType &&
-            entry.reaction === "watched"
+            (entry.reaction === "liked" || entry.reaction === "disliked")
         );
 
         setSaveLabel(isSaved ? "Guardado" : "Guardar");
@@ -552,7 +557,7 @@ function MediaDetailsModal({
       };
 
       if (saveLabel === "Guardado") {
-        await removeStoredReaction(userId, normalizedItem, "liked");
+        await removeStoredReaction(userId, normalizedItem, "watchlist");
         setSaveLabel("Quitado");
         window.setTimeout(() => setSaveLabel("Guardar"), 1800);
         return;
@@ -561,7 +566,7 @@ function MediaDetailsModal({
       await saveStoredReaction({
         userId,
         item: normalizedItem,
-        reaction: "liked"
+        reaction: "watchlist"
       });
       setSaveLabel("Guardado");
     } catch {
@@ -589,7 +594,7 @@ function MediaDetailsModal({
       };
 
       if (watchedLabel === "Vista") {
-        await removeStoredReaction(userId, normalizedItem, "watched");
+        await removeStoredRatedReaction(userId, normalizedItem);
         setWatchedLabel("Quitada");
         window.setTimeout(() => setWatchedLabel("Ya la vi"), 1800);
         return;
@@ -612,7 +617,7 @@ function MediaDetailsModal({
       await saveStoredReaction({
         userId,
         item: reviewItem,
-        reaction: "watched"
+        reaction: input.liked ? "liked" : "disliked"
       });
       await createFeedPost({
         userId,

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
-import { ensureProfile, getCurrentSession, type Profile } from "../lib/auth";
+import type { Session, User } from "@supabase/supabase-js";
+import { ensureProfile, getCurrentSession, signOut, type Profile } from "../lib/auth";
+import { followUser } from "../lib/follows";
+import { PENDING_INVITE_STORAGE_KEY, redeemInvite } from "../lib/invites";
 import { supabase } from "../lib/supabase";
 
 type AuthState = {
@@ -9,6 +11,47 @@ type AuthState = {
   isLoading: boolean;
   error: string | null;
 };
+
+function isRlsRejection(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return message.includes("row-level security") || message.includes("policy");
+}
+
+async function establishProfile(user: User): Promise<Profile> {
+  const pendingCode =
+    typeof window === "undefined" ? null : window.localStorage.getItem(PENDING_INVITE_STORAGE_KEY);
+
+  let redeemedInviterId: string | null = null;
+  if (pendingCode) {
+    try {
+      const redemption = await redeemInvite(pendingCode, user.id);
+      redeemedInviterId = redemption?.inviterId ?? null;
+    } catch {
+      redeemedInviterId = null;
+    }
+  }
+
+  try {
+    const { profile, wasCreated } = await ensureProfile({ user });
+
+    if (pendingCode && typeof window !== "undefined") {
+      window.localStorage.removeItem(PENDING_INVITE_STORAGE_KEY);
+    }
+
+    if (wasCreated && redeemedInviterId) {
+      await followUser(user.id, redeemedInviterId);
+    }
+
+    return profile;
+  } catch (error) {
+    if (isRlsRejection(error)) {
+      await signOut();
+      throw new Error("Invitacion invalida o ya usada. Necesitas un link de invitacion para crear tu cuenta.");
+    }
+
+    throw error;
+  }
+}
 
 export function useAuth() {
   const [state, setState] = useState<AuthState>({
@@ -38,7 +81,7 @@ export function useAuth() {
           return;
         }
 
-        const profile = await ensureProfile({ user: session.user });
+        const profile = await establishProfile(session.user);
         if (!isMounted) {
           return;
         }
@@ -54,11 +97,13 @@ export function useAuth() {
           return;
         }
 
-        setState((current) => ({
-          ...current,
+        const currentSession = await getCurrentSession();
+        setState({
+          session: currentSession,
+          profile: null,
           isLoading: false,
           error: error instanceof Error ? error.message : "No pude iniciar la sesion."
-        }));
+        });
       }
     }
 
@@ -89,7 +134,7 @@ export function useAuth() {
         isLoading: true
       }));
 
-      void ensureProfile({ user: session.user })
+      void establishProfile(session.user)
         .then((profile) => {
           setState({
             session,
@@ -98,9 +143,10 @@ export function useAuth() {
             error: null
           });
         })
-        .catch((error) => {
+        .catch(async (error) => {
+          const currentSession = await getCurrentSession();
           setState({
-            session,
+            session: currentSession,
             profile: null,
             isLoading: false,
             error: error instanceof Error ? error.message : "No pude cargar el perfil."

@@ -11,7 +11,9 @@ import { deleteFeedPost, fetchUserTextPosts, updateFeedPost } from "../lib/feed"
 import {
   fetchStoredReactions,
   REACTIONS_UPDATED_EVENT,
+  removeStoredRatedReaction,
   removeStoredReaction,
+  type RecommendationReaction,
   type StoredReaction
 } from "../lib/reactions";
 import { getSeriesAiringInfo, getTitleById, searchTitles } from "../lib/tmdb";
@@ -37,7 +39,7 @@ type ProfileTabsProps = {
   };
 };
 
-type TabId = "watched" | "liked" | "watching" | "posts" | "insights";
+type TabId = "watched" | "watchlist" | "watching" | "posts" | "insights";
 
 type WatchingItem = {
   entry: CurrentWatchingEntry;
@@ -45,9 +47,16 @@ type WatchingItem = {
   airing: SeriesAiringInfo | null;
 };
 
+// La pestana "Vistas" agrupa dos reacciones, asi que el id de pestana ya no
+// mapea 1:1 contra el valor guardado en la base.
+const TAB_REACTIONS: Partial<Record<TabId, RecommendationReaction[]>> = {
+  watched: ["liked", "disliked"],
+  watchlist: ["watchlist"]
+};
+
 const tabLabels: Record<TabId, string> = {
   watched: "Vistas",
-  liked: "Watchlist",
+  watchlist: "Watchlist",
   watching: "Viendo",
   posts: "Posts",
   insights: "Insights"
@@ -187,7 +196,7 @@ export function ProfileTabs({
 
         const detailed = await Promise.all(
           results
-            .filter((entry) => entry.reaction === "liked" || entry.reaction === "watched")
+            .filter((entry) => entry.reaction !== "ignored")
             .map((entry) => ({ tmdbId: entry.tmdbId, mediaType: entry.mediaType }))
             .map(async (entry) => {
               const title = await getTitleById(entry.tmdbId, entry.mediaType);
@@ -243,7 +252,7 @@ export function ProfileTabs({
     const tabs: TabId[] = [];
 
     if (visibilitySettings?.showWatchlist !== false) {
-      tabs.push("watched", "liked");
+      tabs.push("watched", "watchlist");
     }
 
     if (isOwnProfile) {
@@ -268,36 +277,44 @@ export function ProfileTabs({
   const [typeFilter, setTypeFilter] = useState<"all" | "movie" | "tv">("all");
 
   const tabItems = useMemo(() => {
+    const tabReactions = TAB_REACTIONS[activeTab] ?? [];
     return reactions
-      .filter((entry) => entry.reaction === activeTab)
+      .filter((entry) => tabReactions.includes(entry.reaction))
       .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
       .filter((item): item is DiscoveryItem => Boolean(item))
       .filter((item) => typeFilter === "all" || item.mediaType === typeFilter);
   }, [activeTab, reactions, titles, typeFilter]);
 
   const tabCounts: Partial<Record<TabId, number>> = {
-    watched: reactions.filter((entry) => entry.reaction === "watched").length,
-    liked: reactions.filter((entry) => entry.reaction === "liked").length,
+    watched: reactions.filter(
+      (entry) => entry.reaction === "liked" || entry.reaction === "disliked"
+    ).length,
+    watchlist: reactions.filter((entry) => entry.reaction === "watchlist").length,
     watching: watchingEntries.length,
     posts: posts.length
   };
 
   async function handleRemove(item: DiscoveryItem) {
-    if (activeTab !== "watched" && activeTab !== "liked") {
+    const tabReactions = TAB_REACTIONS[activeTab];
+    if (!tabReactions) {
       return;
     }
 
     try {
       setIsSyncing(true);
       setSyncMessage(null);
-      await removeStoredReaction(userId, item, activeTab);
+      if (activeTab === "watched") {
+        await removeStoredRatedReaction(userId, item);
+      } else {
+        await removeStoredReaction(userId, item, "watchlist");
+      }
       setReactions((current) =>
         current.filter(
           (entry) =>
             !(
               entry.tmdbId === item.id &&
               entry.mediaType === item.mediaType &&
-              entry.reaction === activeTab
+              tabReactions.includes(entry.reaction)
             )
         )
       );

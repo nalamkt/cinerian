@@ -93,7 +93,7 @@ export function ProfilePanel({
       const followerIds = followerIdsResult.status === "fulfilled" ? followerIdsResult.value : [];
       const followingIds = followingIdsResult.status === "fulfilled" ? followingIdsResult.value : [];
       const uniqueTasteEntries = storedReactions
-        .filter((entry) => entry.reaction === "liked" || entry.reaction === "watched")
+        .filter((entry) => entry.reaction !== "ignored")
         .filter(
           (entry, index, all) =>
             all.findIndex(
@@ -114,8 +114,10 @@ export function ProfilePanel({
         .slice(0, 4);
 
       setStats({
-        likes: storedReactions.filter((entry) => entry.reaction === "liked").length,
-        watched: storedReactions.filter((entry) => entry.reaction === "watched").length,
+        likes: storedReactions.filter((entry) => entry.reaction === "watchlist").length,
+        watched: storedReactions.filter(
+          (entry) => entry.reaction === "liked" || entry.reaction === "disliked"
+        ).length,
         followers: followerCountOverride ?? followers,
         following: followingIds.length
       });

@@ -18,7 +18,7 @@ export function buildSharedProfileUrl(username: string) {
   return new URL(buildSharedProfilePath(username), window.location.origin).toString();
 }
 
-function canUseNativeShare() {
+export function canUseNativeShare() {
   if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
     return false;
   }
