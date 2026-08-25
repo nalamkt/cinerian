@@ -1,5 +1,6 @@
 import { getTitleById } from "./tmdb";
 import { listProfiles, type Profile } from "./auth";
+import { trackProductEvent } from "./analytics";
 import { supabase } from "./supabase";
 import type {
   CommentInboxNotification,
@@ -288,6 +289,17 @@ export async function sendRecommendationMessage(input: {
   if (error) {
     throw error;
   }
+
+  await trackProductEvent({
+    eventName: "recommendation_sent",
+    userId: input.senderId,
+    featureKey: "inbox",
+    metadata: {
+      recipientId: input.recipientId,
+      tmdbId: input.item.id,
+      mediaType: input.item.mediaType
+    }
+  });
 
   dispatchInboxUpdate(input.senderId);
   dispatchInboxUpdate(input.recipientId);

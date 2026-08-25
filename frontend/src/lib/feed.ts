@@ -1,4 +1,5 @@
 import { emitInboxUpdate } from "./inbox";
+import { trackProductEvent } from "./analytics";
 import { supabase } from "./supabase";
 import type { FeedComment, FeedEntry, MediaType } from "../types";
 
@@ -149,6 +150,17 @@ export async function createFeedPost(input: {
   if (error) {
     throw error;
   }
+
+  await trackProductEvent({
+    eventName: "feed_post_created",
+    userId: input.userId,
+    featureKey: "feed",
+    metadata: {
+      postType: input.postType,
+      tmdbId: input.tmdbId ?? null,
+      mediaType: input.mediaType ?? null
+    }
+  });
 }
 
 export async function fetchFeedPosts(): Promise<FeedEntry[]> {
@@ -326,4 +338,14 @@ export async function createFeedComment(input: { postId: string; userId: string;
       emitInboxUpdate(post.user_id);
     }
   }
+
+  await trackProductEvent({
+    eventName: "feed_comment_created",
+    userId: input.userId,
+    featureKey: "feed",
+    metadata: {
+      postId: input.postId,
+      notifiedOwner: post.user_id !== input.userId
+    }
+  });
 }

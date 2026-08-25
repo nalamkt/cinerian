@@ -10,6 +10,9 @@ import { SearchPanel } from "./components/SearchPanel";
 import { SharedUserPage } from "./components/SharedUserPage";
 import { UserProfilePage } from "./components/UserProfilePage";
 import { useAuth } from "./hooks/useAuth";
+import { usePublicFeatureFlags } from "./hooks/usePublicFeatureFlags";
+import { getAccessControl, type AppView } from "./lib/access";
+import { trackProductEvent } from "./lib/analytics";
 import { signOut } from "./lib/auth";
 import { fetchUnreadInboxCount, INBOX_UPDATED_EVENT } from "./lib/inbox";
 import {
@@ -18,10 +21,8 @@ import {
   shareProfileLink
 } from "./lib/profileShare";
 import { hasSupabaseEnv } from "./lib/supabase";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "./lib/auth";
-
-type AppView = "feed" | "search" | "recommendations" | "inbox" | "user";
 const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
 export const FEED_SCROLL_TO_TOP_EVENT = "cinerian:feed-scroll-to-top";
 export const FEED_REFRESH_EDITORIAL_EVENT = "cinerian:feed-refresh-editorial";
@@ -90,8 +91,15 @@ const dockItems: Array<{ id: AppView; label: string }> = [
   { id: "user", label: "Mi cuenta" }
 ];
 
+type ViewSessionRef = {
+  startedAt: number;
+  view: AppView;
+  userId: string;
+};
+
 export default function App() {
   const { session, profile, isLoading, error } = useAuth();
+  const { enabledFeatures } = usePublicFeatureFlags();
   const sessionUserId = session?.user.id ?? null;
   const [localProfile, setLocalProfile] = useState<Profile | null>(profile);
   const [activeView, setActiveView] = useState<AppView>(() => {
@@ -113,10 +121,37 @@ export default function App() {
     username: string;
   } | null>(() => parseSharedProfilePath(window.location.pathname));
   const [shareLabel, setShareLabel] = useState("Compartir perfil");
+  const viewSessionRef = useRef<ViewSessionRef | null>(null);
+  const accessControl = useMemo(
+    () =>
+      getAccessControl({
+        session,
+        profile: localProfile,
+        enabledFeatureOverrides: enabledFeatures
+      }),
+    [enabledFeatures, localProfile, session]
+  );
+  const visibleDockItems = useMemo(
+    () => dockItems.filter((item) => accessControl.canAccessView(item.id)),
+    [accessControl]
+  );
 
   useEffect(() => {
     setLocalProfile(profile);
   }, [profile]);
+
+  useEffect(() => {
+    if (selectedProfileRoute) {
+      return;
+    }
+
+    if (accessControl.canAccessView(activeView)) {
+      return;
+    }
+
+    const fallbackView = visibleDockItems[0]?.id ?? "user";
+    setActiveView(fallbackView);
+  }, [accessControl, activeView, selectedProfileRoute, visibleDockItems]);
 
   const ownProfileAction = useMemo(() => {
     return (
@@ -171,6 +206,71 @@ export default function App() {
   }, [activeView]);
 
   useEffect(() => {
+    const currentTrackedView: AppView = selectedProfileRoute ? "user" : activeView;
+
+    function startViewSession() {
+      if (!sessionUserId) {
+        viewSessionRef.current = null;
+        return;
+      }
+
+      viewSessionRef.current = {
+        startedAt: Date.now(),
+        view: currentTrackedView,
+        userId: sessionUserId
+      };
+    }
+
+    function flushViewSession(reason: "view_change" | "background" | "pagehide") {
+      const currentSession = viewSessionRef.current;
+      if (!currentSession) {
+        return;
+      }
+
+      viewSessionRef.current = null;
+      const durationMs = Date.now() - currentSession.startedAt;
+      if (durationMs < 3_000 || durationMs > 2 * 60 * 60 * 1000) {
+        return;
+      }
+
+      void trackProductEvent({
+        eventName: "view_session_recorded",
+        userId: currentSession.userId,
+        featureKey: currentSession.view,
+        metadata: {
+          durationMs,
+          durationSeconds: Math.round(durationMs / 1000),
+          reason,
+          view: currentSession.view
+        }
+      });
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        flushViewSession("background");
+        return;
+      }
+
+      startViewSession();
+    }
+
+    function handlePageHide() {
+      flushViewSession("pagehide");
+    }
+
+    startViewSession();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
+      flushViewSession("view_change");
+    };
+  }, [activeView, selectedProfileRoute, sessionUserId]);
+
+  useEffect(() => {
     if (!sessionUserId) {
       setUnreadInboxCount(0);
       return;
@@ -211,6 +311,16 @@ export default function App() {
   }, [sessionUserId]);
 
   function handleOpenUserProfile(profileRef: { userId: string; username?: string }) {
+    void trackProductEvent({
+      eventName: "profile_opened",
+      userId: session?.user.id ?? null,
+      featureKey: "user",
+      metadata: {
+        targetUserId: profileRef.userId,
+        hasUsername: Boolean(profileRef.username)
+      }
+    });
+
     if (profileRef.userId === session!.user.id) {
       setSelectedProfileRoute(null);
       setActiveView("user");
@@ -263,8 +373,14 @@ export default function App() {
 
     switch (activeView) {
       case "search":
+        if (!accessControl.canAccessView("search")) {
+          break;
+        }
         return <SearchPanel userId={session!.user.id} onOpenUserProfile={handleOpenUserProfile} />;
       case "recommendations":
+        if (!accessControl.canAccessView("recommendations")) {
+          break;
+        }
         return <RecommendationPanel userId={session!.user.id} />;
       case "user":
         return (
@@ -279,6 +395,9 @@ export default function App() {
           />
         );
       case "inbox":
+        if (!accessControl.canAccessView("inbox")) {
+          break;
+        }
         return (
           <InboxPanel
             userId={session!.user.id}
@@ -303,6 +422,8 @@ export default function App() {
           <FeedPanel
             userId={session!.user.id}
             profile={localProfile}
+            canAccessEditorial={accessControl.canAccessFeature("editorial")}
+            canAccessPremieres={accessControl.canAccessFeature("premieres")}
             onOpenUserProfile={handleOpenUserProfile}
             highlightedPost={highlightedFeedPost}
             onHighlightHandled={() => setHighlightedFeedPost(null)}
@@ -356,7 +477,7 @@ export default function App() {
                 <CinerianLogo className="dock__brand-logo" />
               </div>
               <div className="dock__nav">
-                {dockItems.map((item) => (
+                {visibleDockItems.map((item) => (
                   <button
                     key={item.id}
                     type="button"

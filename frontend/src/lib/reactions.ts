@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { trackProductEvent } from "./analytics";
 import type { DiscoveryItem, MediaType } from "../types";
 
 export const REACTIONS_UPDATED_EVENT = "cinerian:reactions-updated";
@@ -82,6 +83,17 @@ export async function saveStoredReaction(input: {
   if (insertError) {
     throw insertError;
   }
+
+  await trackProductEvent({
+    eventName: "reaction_saved",
+    userId: input.userId,
+    featureKey: "recommendations",
+    metadata: {
+      tmdbId: input.item.id,
+      mediaType: input.item.mediaType,
+      reaction: input.reaction
+    }
+  });
 
   notifyReactionsUpdated(input.userId);
 }
