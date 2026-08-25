@@ -43,6 +43,8 @@ function findMediaFromPost(body: string) {
 type FeedPanelProps = {
   userId: string;
   profile: Profile | null;
+  canAccessEditorial?: boolean;
+  canAccessPremieres?: boolean;
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
   highlightedPost?: {
     postId: string;
@@ -167,6 +169,8 @@ function extractMediaSearchTitle(entry: FeedEntry) {
 export function FeedPanel({
   userId,
   profile,
+  canAccessEditorial = true,
+  canAccessPremieres = true,
   onOpenUserProfile,
   highlightedPost,
   onHighlightHandled
@@ -578,9 +582,19 @@ export function FeedPanel({
     };
   }, [followingPostsWithMedia, reactedKeySet]);
 
+  const visibleEditorialRails = useMemo(
+    () => editorialRails.filter((rail) => canAccessPremieres || rail.id !== "upcoming"),
+    [canAccessPremieres, editorialRails]
+  );
+
   const effectiveEditorialRails = useMemo(
-    () => [becauseYouWatchedRail, circleRail, ...editorialRails].filter(Boolean) as EditorialRail[],
-    [becauseYouWatchedRail, circleRail, editorialRails]
+    () =>
+      [
+        becauseYouWatchedRail,
+        circleRail,
+        ...(canAccessEditorial ? visibleEditorialRails : [])
+      ].filter(Boolean) as EditorialRail[],
+    [becauseYouWatchedRail, canAccessEditorial, circleRail, visibleEditorialRails]
   );
 
   const maxEditorialNewsSlots = useMemo(() => {
@@ -592,8 +606,11 @@ export function FeedPanel({
   }, [postsWithMedia.length]);
 
   const visibleEditorialNews = useMemo(
-    () => editorialNews.slice(0, Math.min(editorialVisibleCount, maxEditorialNewsSlots)),
-    [editorialNews, editorialVisibleCount, maxEditorialNewsSlots]
+    () =>
+      canAccessEditorial
+        ? editorialNews.slice(0, Math.min(editorialVisibleCount, maxEditorialNewsSlots))
+        : [],
+    [canAccessEditorial, editorialNews, editorialVisibleCount, maxEditorialNewsSlots]
   );
 
   const discoverTimeline = useMemo<TimelineItem[]>(() => {
@@ -1373,6 +1390,7 @@ export function FeedPanel({
         </div>
 
         <aside className="feed-sidebar">
+        {canAccessPremieres ? (
         <section className="sidebar-card">
           <p className="section-eyebrow">Estrena esta semana</p>
           {editorialRails.find((rail) => rail.id === "upcoming")?.items?.length ? (
@@ -1408,6 +1426,7 @@ export function FeedPanel({
             <p className="sidebar-empty">No encontre estrenos fuertes para esta semana en cines o plataformas.</p>
           )}
         </section>
+        ) : null}
 
         <section className="sidebar-card">
           <p className="section-eyebrow">En conversacion</p>

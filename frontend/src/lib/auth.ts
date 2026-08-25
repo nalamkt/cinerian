@@ -1,4 +1,5 @@
 import type { Session, User } from "@supabase/supabase-js";
+import { trackProductEvent } from "./analytics";
 import { supabase } from "./supabase";
 
 export type ProfileCollection = {
@@ -344,6 +345,13 @@ export async function sendMagicLink(email: string) {
     throw new Error("Supabase no esta configurado.");
   }
 
+  await trackProductEvent({
+    eventName: "auth_magic_link_requested",
+    metadata: {
+      emailDomain: email.includes("@") ? email.split("@")[1] : null
+    }
+  });
+
   return supabase.auth.signInWithOtp({
     email,
     options: {
@@ -353,10 +361,26 @@ export async function sendMagicLink(email: string) {
   });
 }
 
+export async function verifyEmailOtp(input: { email: string; token: string }) {
+  if (!supabase) {
+    throw new Error("Supabase no esta configurado.");
+  }
+
+  return supabase.auth.verifyOtp({
+    email: input.email,
+    token: input.token,
+    type: "email"
+  });
+}
+
 export async function signInWithGoogle() {
   if (!supabase) {
     throw new Error("Supabase no esta configurado.");
   }
+
+  await trackProductEvent({
+    eventName: "auth_google_started"
+  });
 
   return supabase.auth.signInWithOAuth({
     provider: "google",
@@ -460,11 +484,21 @@ export async function ensureProfile({
         throw legacyInsert.error ?? new Error("No pude leer el perfil.");
       }
 
+      await trackProductEvent({
+        eventName: "profile_created",
+        userId: user.id
+      });
+
       return { profile: normalizeLegacyProfileRow(legacyInsert.data), wasCreated: true };
     }
 
     throw error ?? new Error("No pude leer el perfil.");
   }
+
+  await trackProductEvent({
+    eventName: "profile_created",
+    userId: user.id
+  });
 
   return { profile: normalizeProfileRow(data), wasCreated: true };
 }
