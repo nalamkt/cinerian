@@ -17,6 +17,8 @@ export type StoredReaction = {
   tmdbId: number;
   mediaType: MediaType;
   reaction: RecommendationReaction;
+  /** Cuando se guardo. Lo usa el recomendador para comparar contra tu circulo. */
+  createdAt: string | null;
 };
 
 function notifyReactionsUpdated(userId: string) {
@@ -38,7 +40,7 @@ export async function fetchStoredReactions(userId: string): Promise<StoredReacti
 
   const { data, error } = await supabase
     .from("media_reactions")
-    .select("tmdb_id, media_type, reaction")
+    .select("tmdb_id, media_type, reaction, created_at")
     .eq("user_id", userId)
     .in("reaction", ALL_REACTIONS);
 
@@ -49,7 +51,8 @@ export async function fetchStoredReactions(userId: string): Promise<StoredReacti
   return (data ?? []).map((entry) => ({
     tmdbId: Number(entry.tmdb_id),
     mediaType: entry.media_type as MediaType,
-    reaction: entry.reaction as RecommendationReaction
+    reaction: entry.reaction as RecommendationReaction,
+    createdAt: (entry.created_at as string | null) ?? null
   }));
 }
 
@@ -106,6 +109,7 @@ export type FollowedRatedReaction = {
   tmdbId: number;
   mediaType: MediaType;
   reaction: "liked" | "disliked";
+  createdAt: string | null;
 };
 
 /** Trae solo las reacciones que implican haber visto el titulo: son las unicas que puntuan. */
@@ -118,7 +122,7 @@ export async function fetchRatedReactionsForUserIds(
 
   const { data, error } = await supabase
     .from("media_reactions")
-    .select("user_id, tmdb_id, media_type, reaction")
+    .select("user_id, tmdb_id, media_type, reaction, created_at")
     .in("reaction", RATED_REACTIONS)
     .in("user_id", userIds);
 
@@ -130,7 +134,8 @@ export async function fetchRatedReactionsForUserIds(
     userId: entry.user_id as string,
     tmdbId: Number(entry.tmdb_id),
     mediaType: entry.media_type as MediaType,
-    reaction: entry.reaction as "liked" | "disliked"
+    reaction: entry.reaction as "liked" | "disliked",
+    createdAt: (entry.created_at as string | null) ?? null
   }));
 }
 

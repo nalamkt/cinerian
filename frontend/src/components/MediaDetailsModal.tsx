@@ -279,7 +279,7 @@ export function MediaDetailsSheet({
                         <circle cx="12" cy="12" r="2.5" />
                       </svg>
                     </button>
-                    <span className="media-modal__action-label">Marcar vista</span>
+                    <span className="media-modal__action-label">Ya la vi</span>
                   </div>
                 ) : null}
                 {canSave && onSave ? (
@@ -664,7 +664,24 @@ function MediaDetailsModal({
           }
         }}
       >
-        <div className="media-modal__panel" role="presentation" onClick={(event) => event.stopPropagation()}>
+        {/*
+          El panel ocupa todo el ancho aunque la ficha este centrada y sea mas
+          angosta, asi que los costados oscuros tambien son el panel. Por eso no
+          alcanza con frenar la propagacion: hay que cerrar cuando el clic cae
+          en el panel mismo, y frenarla solo cuando cae dentro de la ficha.
+        */}
+        <div
+          className="media-modal__panel"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              onClose();
+              return;
+            }
+
+            event.stopPropagation();
+          }}
+        >
           <MediaDetailsSheet
             item={item}
             details={details}

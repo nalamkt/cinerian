@@ -225,15 +225,21 @@ function getProvidersLabel(payload: Record<string, unknown>) {
 }
 
 function getTrailerUrl(payload: Record<string, unknown>) {
-  const videos = (payload.videos as { results?: Array<Record<string, unknown>> } | undefined)?.results ?? [];
-  const trailer = videos.find(
-    (video) =>
-      video.site === "YouTube" &&
-      video.type === "Trailer" &&
-      typeof video.key === "string"
+  const videos =
+    (payload.videos as { results?: Array<Record<string, unknown>> } | undefined)?.results ?? [];
+
+  const playable = videos.filter(
+    (video) => video.site === "YouTube" && typeof video.key === "string"
   );
 
-  return trailer ? `https://www.youtube.com/embed/${trailer.key}` : null;
+  // Preferencia: trailer en español > trailer en cualquier idioma > teaser.
+  const pick =
+    playable.find((video) => video.type === "Trailer" && video.iso_639_1 === "es") ??
+    playable.find((video) => video.type === "Trailer") ??
+    playable.find((video) => video.type === "Teaser") ??
+    null;
+
+  return pick ? `https://www.youtube.com/embed/${pick.key}` : null;
 }
 
 function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
@@ -670,6 +676,172 @@ export async function getSimilarTitles(tmdbId: number, mediaType: MediaType): Pr
     .map((item) => normalizeItem({ ...item, media_type: mediaType }));
 }
 
+export type WatchProvider = {
+  id: number;
+  name: string;
+  logoUrl: string | null;
+  /** A donde mandamos al usuario cuando toca la plataforma. */
+  url: string;
+};
+
+/**
+ * TMDB no entrega enlaces profundos por plataforma: su campo `link` apunta a la
+ * ficha de watch del propio themoviedb.org. Para que el boton lleve al sitio de
+ * la plataforma, armamos su URL de busqueda con el titulo. No abre la ficha
+ * exacta —eso necesitaria el id interno de cada servicio, que TMDB no da— pero
+ * deja al usuario adentro del servicio con el titulo ya buscado.
+ *
+ * El match va por NOMBRE, no por provider_id: los ids cambian segun la region
+ * (Amazon Prime Video es 9 en Estados Unidos y 119 en Argentina), asi que
+ * mapear por id se rompe en cuanto aparece una region nueva.
+ */
+const PLATFORM_MATCHERS: Array<{
+  test: RegExp;
+  build: (title: string) => string;
+}> = [
+  {
+    test: /netflix/i,
+    build: (t) => `https://www.netflix.com/search?q=${encodeURIComponent(t)}`
+  },
+  {
+    // Cubre "Amazon Prime Video", "Amazon Video" y los "... Amazon Channel"
+    // (Universal+, MGM+, Paramount+ Amazon Channel), que se miran dentro de Prime.
+    test: /amazon|prime video/i,
+    build: (t) => `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${encodeURIComponent(t)}`
+  },
+  {
+    test: /disney/i,
+    build: (t) => `https://www.disneyplus.com/search?q=${encodeURIComponent(t)}`
+  },
+  {
+    test: /star\+|star plus/i,
+    build: (t) => `https://www.disneyplus.com/search?q=${encodeURIComponent(t)}`
+  },
+  {
+    test: /apple/i,
+    build: (t) => `https://tv.apple.com/search?term=${encodeURIComponent(t)}`
+  },
+  {
+    test: /\bmax\b|hbo/i,
+    build: (t) => `https://play.max.com/search?q=${encodeURIComponent(t)}`
+  },
+  {
+    test: /paramount/i,
+    build: (t) => `https://www.paramountplus.com/search/?q=${encodeURIComponent(t)}`
+  },
+  {
+    test: /crunchyroll/i,
+    build: (t) => `https://www.crunchyroll.com/search?q=${encodeURIComponent(t)}`
+  },
+  {
+    test: /mubi/i,
+    build: (t) => `https://mubi.com/search/${encodeURIComponent(t)}`
+  },
+  {
+    test: /skyshowtime/i,
+    build: (t) => `https://www.skyshowtime.com/search?q=${encodeURIComponent(t)}`
+  },
+  {
+    test: /movistar/i,
+    build: (t) => `https://ver.movistarplus.es/buscador?q=${encodeURIComponent(t)}`
+  },
+  {
+    test: /claro/i,
+    build: (t) => `https://www.clarovideo.com/argentina/search?q=${encodeURIComponent(t)}`
+  },
+  {
+    test: /flow/i,
+    build: (t) => `https://web.flow.com.ar/buscar?q=${encodeURIComponent(t)}`
+  }
+];
+
+function buildProviderUrl(providerName: string, title: string, fallback: string | null): string {
+  const match = PLATFORM_MATCHERS.find((matcher) => matcher.test.test(providerName));
+  if (match) {
+    return match.build(title);
+  }
+
+  return fallback ?? `https://www.google.com/search?q=${encodeURIComponent(`${title} ver online`)}`;
+}
+
+export type WatchOptions = {
+  /** Plataformas donde ya lo tenes incluido con tu suscripcion. */
+  flatrate: WatchProvider[];
+  /** Si existe alquiler o compra, lo agrupamos en una sola opcion. */
+  hasRentOrBuy: boolean;
+  /** Ficha de watch en themoviedb.org: lista todas las opciones de la region. */
+  link: string | null;
+};
+
+const PROVIDER_LOGO_BASE = "https://image.tmdb.org/t/p/w92";
+
+function mapProviders(list: unknown, title: string, fallback: string | null): WatchProvider[] {
+  if (!Array.isArray(list)) {
+    return [];
+  }
+
+  return list
+    .map((entry) => {
+      const provider = entry as { provider_id?: number; provider_name?: string; logo_path?: string };
+      if (typeof provider.provider_name !== "string") {
+        return null;
+      }
+
+      return {
+        id: Number(provider.provider_id ?? 0),
+        name: provider.provider_name,
+        logoUrl: provider.logo_path ? `${PROVIDER_LOGO_BASE}${provider.logo_path}` : null,
+        url: buildProviderUrl(provider.provider_name, title, fallback)
+      };
+    })
+    .filter((entry): entry is WatchProvider => entry !== null);
+}
+
+function getWatchOptions(payload: Record<string, unknown>, title: string): WatchOptions {
+  const results = payload.results as Record<string, Record<string, unknown>> | undefined;
+  const regional = results?.AR ?? results?.US;
+
+  if (!regional) {
+    return { flatrate: [], hasRentOrBuy: false, link: null };
+  }
+
+  const link = typeof regional.link === "string" ? regional.link : null;
+
+  return {
+    flatrate: mapProviders(regional.flatrate, title, link).slice(0, 4),
+    hasRentOrBuy:
+      mapProviders(regional.rent, title, link).length > 0 ||
+      mapProviders(regional.buy, title, link).length > 0,
+    link
+  };
+}
+
+export async function getWatchOptionsFor(
+  tmdbId: number,
+  mediaType: MediaType,
+  title: string
+): Promise<WatchOptions> {
+  const empty: WatchOptions = { flatrate: [], hasRentOrBuy: false, link: null };
+
+  if (!apiKey) {
+    return empty;
+  }
+
+  try {
+    const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}/watch/providers`);
+    url.searchParams.set("api_key", apiKey);
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      return empty;
+    }
+
+    return getWatchOptions((await response.json()) as Record<string, unknown>, title);
+  } catch {
+    return empty;
+  }
+}
+
 export async function getWatchProviders(tmdbId: number, mediaType: MediaType): Promise<string[]> {
   if (!apiKey) {
     return [];
@@ -739,6 +911,10 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
     "append_to_response",
     mediaType === "movie" ? "credits,release_dates,videos" : "credits,content_ratings,videos"
   );
+  // TMDB filtra los videos por el `language` de arriba, y casi ningun trailer
+  // esta catalogado en español: pidiendo solo es-MX la lista vuelve vacia para
+  // la mayoria de los titulos. Con esto pedimos español y, si no hay, ingles.
+  detailUrl.searchParams.set("include_video_language", "es-MX,es,en,null");
 
   const providersUrl = new URL(`${baseUrl}/${mediaType}/${tmdbId}/watch/providers`);
   providersUrl.searchParams.set("api_key", apiKey);

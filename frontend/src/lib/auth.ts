@@ -568,3 +568,33 @@ export async function getProfileByUsername(username: string): Promise<Profile | 
 export async function listProfiles(): Promise<Profile[]> {
   return listProfileRows();
 }
+
+/** Datos minimos de varios perfiles a la vez, para mostrar quien vio un titulo. */
+export type ProfileSummary = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+};
+
+export async function fetchProfileSummaries(userIds: string[]): Promise<ProfileSummary[]> {
+  if (!supabase || userIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, username, display_name, avatar_url")
+    .in("id", userIds);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    username: row.username as string,
+    displayName: (row.display_name as string) ?? (row.username as string),
+    avatarUrl: (row.avatar_url as string | null) ?? null
+  }));
+}

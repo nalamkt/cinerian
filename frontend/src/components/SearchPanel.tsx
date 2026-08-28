@@ -133,7 +133,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
 
   function replaceStoredReaction(item: DiscoveryItem, reaction: StoredReaction["reaction"]) {
     setStoredReactions((current) => [
-      { tmdbId: item.id, mediaType: item.mediaType, reaction },
+      { tmdbId: item.id, mediaType: item.mediaType, reaction, createdAt: new Date().toISOString() },
       ...current.filter(
         (entry) => !(entry.tmdbId === item.id && entry.mediaType === item.mediaType)
       )
