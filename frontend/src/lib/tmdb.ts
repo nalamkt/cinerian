@@ -224,18 +224,43 @@ function getProvidersLabel(payload: Record<string, unknown>) {
   );
 }
 
+/**
+ * Elige que trailer mostrar.
+ *
+ * Buscamos audio original con subtitulos en español. TMDB no tiene un campo
+ * para eso, pero lo deja escrito en el nombre: para una misma pelicula conviven
+ * "Trailer Oficial [Doblado]" y "Trailer Oficial [Subtitulado]", los dos
+ * marcados como iso_639_1 = "es". Por eso el orden de preferencia mira el
+ * nombre y no solo el idioma; quedarse con el primer video en español elegia
+ * casi siempre el doblado, que es el que aparece antes en la lista.
+ */
+const SUBTITLED_RE = /subtitul|\bsub\b|\bvose\b/i;
+const DUBBED_RE = /doblad|latino|castellano|\bdub\b/i;
+
 function getTrailerUrl(payload: Record<string, unknown>) {
   const videos =
     (payload.videos as { results?: Array<Record<string, unknown>> } | undefined)?.results ?? [];
+  const originalLanguage =
+    typeof payload.original_language === "string" ? payload.original_language : null;
 
   const playable = videos.filter(
     (video) => video.site === "YouTube" && typeof video.key === "string"
   );
+  const trailers = playable.filter((video) => video.type === "Trailer");
 
-  // Preferencia: trailer en español > trailer en cualquier idioma > teaser.
+  const nameOf = (video: Record<string, unknown>) =>
+    typeof video.name === "string" ? video.name : "";
+  const isDubbed = (video: Record<string, unknown>) => DUBBED_RE.test(nameOf(video));
+
   const pick =
-    playable.find((video) => video.type === "Trailer" && video.iso_639_1 === "es") ??
-    playable.find((video) => video.type === "Trailer") ??
+    // 1) Subtitulado al español: audio original, texto en español.
+    trailers.find((video) => video.iso_639_1 === "es" && SUBTITLED_RE.test(nameOf(video))) ??
+    // 2) En el idioma original de la pelicula, sin subtitulos.
+    trailers.find((video) => originalLanguage && video.iso_639_1 === originalLanguage) ??
+    // 3) Cualquiera que no sea doblado.
+    trailers.find((video) => !isDubbed(video)) ??
+    // 4) Ya sin opciones, lo que haya.
+    trailers[0] ??
     playable.find((video) => video.type === "Teaser") ??
     null;
 
@@ -933,7 +958,7 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
   const item = normalizeItem({ ...payload, media_type: mediaType });
   const cast =
     ((payload.credits as { cast?: Array<Record<string, unknown>> } | undefined)?.cast ?? [])
-      .slice(0, 6)
+      .slice(0, 40)
       .map((person) => ({
         id: Number(person.id),
         name: typeof person.name === "string" ? person.name : "Sin nombre",

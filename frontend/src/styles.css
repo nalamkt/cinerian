@@ -2142,23 +2142,52 @@ textarea {
    Descubri: una sola tarjeta, poster al lado del texto, sin barra lateral.
    ========================================================================== */
 
+.media-modal__cast-toggle {
+  margin-top: 14px;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 8px 16px;
+  color: var(--accent);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.media-modal__cast-toggle:hover {
+  border-color: rgba(252, 195, 95, 0.4);
+  background: rgba(252, 195, 95, 0.08);
+}
+
+.media-modal__cast-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .discover {
   display: flex;
   flex-direction: column;
   gap: 14px;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - 32px);
-  padding: 24px 0;
+  height: calc(100vh - 32px);
+  padding: 16px 0;
+  overflow: hidden;
 }
 
 .discover-card {
   width: min(100%, 1220px);
+  max-height: 100%;
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  /* El poster se mide contra el alto de la ventana: con relacion 2/3 su altura
+     es 1.5x el ancho, asi que topearlo en 38vh lo deja en ~57vh y la tarjeta
+     entra entera sin scroll. */
+  grid-template-columns: min(340px, 38vh) minmax(0, 1fr);
   gap: 46px;
   align-items: start;
   padding: 44px;
+  overflow: hidden;
 }
 
 .discover-card__poster {
@@ -2192,10 +2221,23 @@ textarea {
   transition: opacity 140ms ease, transform 140ms ease;
 }
 
+/* Mismo efecto que las portadas de Inicio: la imagen se acerca y se oscurece
+   para que la etiqueta se lea sobre ella. */
+.discover-card__poster img {
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .discover-card__poster:hover img {
+    transform: scale(1.04);
+    filter: brightness(0.72);
+  }
+}
+
 .discover-card__poster:hover .discover-card__poster-hint,
 .discover-card__poster:focus-visible .discover-card__poster-hint {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateX(-50%) translateY(-2px);
 }
 
 .discover-card__poster:focus-visible {
@@ -2399,8 +2441,11 @@ textarea {
   width: 68px;
   height: 68px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
+  /* Borde en el ambar de Cinerian para que las tres acciones resalten sobre
+     la tarjeta. Va a media opacidad: a full, tres aros iguales compiten entre
+     si y con el poster. */
+  border: 1px solid rgba(252, 195, 95, 0.45);
+  background: rgba(252, 195, 95, 0.05);
   color: var(--text);
   display: grid;
   place-items: center;
@@ -2410,7 +2455,8 @@ textarea {
 
 .discover-action__button:hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: rgba(252, 195, 95, 0.32);
+  border-color: var(--accent);
+  background: rgba(252, 195, 95, 0.12);
 }
 
 .discover-action__button:disabled {
@@ -2469,8 +2515,10 @@ textarea {
 
 @media (max-width: 620px) {
   .discover {
+    height: auto;
     min-height: 0;
     padding: 8px 0 16px;
+    overflow: visible;
   }
 
   .discover-card {

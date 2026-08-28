@@ -125,6 +125,8 @@ function useMediaDetailsData(item: MediaReference | null) {
   return { details, feedPosts, isLoading, hasFailed };
 }
 
+const CAST_PREVIEW_COUNT = 8;
+
 type MediaDetailsSheetProps = {
   item: MediaReference | null;
   details: MediaDetails | null;
@@ -164,6 +166,9 @@ export function MediaDetailsSheet({
   publicMode = false,
   onOpenTalent
 }: MediaDetailsSheetProps) {
+  // El elenco llega completo desde TMDB; mostramos una tanda y el resto queda
+  // detras de "Ver todo" para que la ficha no arranque desbordada.
+  const [showAllCast, setShowAllCast] = useState(false);
   const technicalData = useMemo(() => {
     if (!details) {
       return [];
@@ -361,7 +366,7 @@ export function MediaDetailsSheet({
             <section className="media-modal__section">
               <p className="section-eyebrow">Elenco</p>
               <div className="media-modal__cast">
-                {details.cast.map((person) => (
+                {(showAllCast ? details.cast : details.cast.slice(0, CAST_PREVIEW_COUNT)).map((person) => (
                   <button
                     type="button"
                     className="media-modal__cast-card media-modal__cast-card--interactive"
@@ -384,6 +389,18 @@ export function MediaDetailsSheet({
                   </button>
                 ))}
               </div>
+              {details.cast.length > CAST_PREVIEW_COUNT ? (
+                <button
+                  type="button"
+                  className="media-modal__cast-toggle"
+                  onClick={() => setShowAllCast((value) => !value)}
+                  aria-expanded={showAllCast}
+                >
+                  {showAllCast
+                    ? "Ver menos"
+                    : `Ver todo el elenco (${details.cast.length})`}
+                </button>
+              ) : null}
             </section>
           ) : null}
 
