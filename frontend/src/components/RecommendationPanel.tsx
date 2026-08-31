@@ -329,7 +329,6 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       if (spotlight && spotlight.id === reviewItem.id) {
         goNext();
       }
-      setSyncMessage("Tu reseña ya salió en el feed.");
     } catch {
       setSyncMessage("No pude guardar tu reseña.");
     } finally {

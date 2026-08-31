@@ -236,7 +236,6 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
 
       replaceStoredReaction(reviewItem, input.reaction);
       setReviewItem(null);
-      setSyncMessage("Tu reseña ya salió en el feed.");
     } catch {
       setSyncMessage("No pude guardar tu reseña.");
     } finally {
