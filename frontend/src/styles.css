@@ -2170,30 +2170,34 @@ textarea {
   flex-direction: column;
   gap: 14px;
   align-items: center;
-  /* "safe" es la clave: centra mientras entra, pero cuando el contenido
-     desborda —una sinopsis larga expandida— alinea arriba en vez de recortar
-     por los dos lados, que es lo que dejaba los botones inalcanzables. */
   justify-content: safe center;
   height: calc(100vh - 32px);
   padding: 16px 0;
-  /* auto y no hidden: sin scroll mientras la tarjeta entra, con scroll el dia
-     que no entra. */
-  overflow-y: auto;
+  /* La pantalla no scrollea: el scroll vive dentro de la tarjeta, en la
+     columna de texto, para que las acciones nunca se muevan. */
+  overflow: hidden;
 }
 
 .discover-card {
   width: min(100%, 1220px);
-  /* Sin tope de alto ni recorte: si el contenido crece, crece la tarjeta y
-     scrollea el contenedor. */
-  flex: none;
+  max-height: 100%;
   display: grid;
   /* El poster se mide contra el alto de la ventana: con relacion 2/3 su altura
      es 1.5x el ancho, asi que topearlo en 38vh lo deja en ~57vh y la tarjeta
-     entra entera sin scroll. */
+     entra entera. */
   grid-template-columns: min(340px, 38vh) minmax(0, 1fr);
+  /* Dos filas: contenido (se encoge y scrollea) y acciones (alto propio, fijas
+     abajo). El minmax(0, ...) es lo que permite que la primera fila se achique
+     en vez de empujar a las acciones fuera de la tarjeta. */
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 46px;
   align-items: start;
   padding: 44px;
+  overflow: hidden;
+}
+
+.discover-card__poster {
+  grid-row: 1;
 }
 
 .discover-card__poster {
@@ -2252,7 +2256,14 @@ textarea {
 }
 
 .discover-card__body {
+  grid-row: 1;
   min-width: 0;
+  /* min-height: 0 es imprescindible: sin eso el item de grid toma el alto de su
+     contenido y nunca scrollea, por mas overflow que le pongas. */
+  min-height: 0;
+  overflow-y: auto;
+  /* Aire para que la ultima linea no quede pegada al borde al scrollear. */
+  padding-right: 6px;
 }
 
 .discover-rank {
@@ -2427,6 +2438,7 @@ textarea {
 }
 
 .discover-actions {
+  grid-row: 2;
   grid-column: 1 / -1;
   margin-top: 34px;
   padding-top: 28px;
@@ -2529,8 +2541,22 @@ textarea {
 
   .discover-card {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    max-height: none;
     gap: 18px;
     padding: 20px;
+    overflow: visible;
+  }
+
+  .discover-card__poster,
+  .discover-card__body,
+  .discover-actions {
+    grid-row: auto;
+  }
+
+  .discover-card__body {
+    overflow: visible;
+    padding-right: 0;
   }
 
   .discover-card__poster {
