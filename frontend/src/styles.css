@@ -3784,10 +3784,11 @@ textarea {
 }
 
 .review-modal {
-  width: min(100%, 680px);
+  width: min(100%, 520px);
   display: grid;
-  gap: 20px;
-  padding: 28px 28px calc(28px + env(safe-area-inset-bottom));
+  gap: 0;
+  position: relative;
+  padding: 26px 26px calc(26px + env(safe-area-inset-bottom));
   max-height: min(calc(100dvh - 48px), 840px);
   overflow: auto;
   overscroll-behavior: contain;
@@ -4829,78 +4830,201 @@ textarea {
   }
 }
 
-.review-modal__header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: start;
-}
-
 .review-modal__close {
-  width: 42px;
-  height: 42px;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  font-size: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font-size: 1.15rem;
   line-height: 1;
+  cursor: pointer;
 }
 
-.review-modal__question {
+.review-modal__close:hover {
+  color: var(--text);
+  border-color: rgba(252, 195, 95, 0.34);
+}
+
+.review-modal__kicker {
+  margin: 0 0 16px;
+  padding-right: 44px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.review-modal__head {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.review-modal__thumb {
+  width: 56px;
+  height: 84px;
+  flex: none;
+  border-radius: 7px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.review-modal__head-copy {
+  min-width: 0;
+}
+
+.review-modal__head-copy h3 {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 400;
+  line-height: 1.14;
   margin: 0;
-  font-size: 1.9rem;
-  font-weight: 800;
-  text-align: center;
 }
 
-.review-modal__sentiment {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.review-modal__sentiment-button {
-  display: grid;
-  gap: 10px;
-  justify-items: center;
-  padding: 28px 16px;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+.review-modal__head-copy p {
+  margin: 4px 0 0;
+  font-size: 0.84rem;
   color: var(--muted);
 }
 
-.review-modal__sentiment-button span {
-  font-size: 2.2rem;
+/* Escala de entusiasmo: de menor a mayor, de izquierda a derecha. */
+.review-modal__scale {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.review-modal__sentiment-button strong {
-  font-size: 1.15rem;
+.review-option {
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 15px 8px 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
 }
 
-.review-modal__sentiment-button.is-active {
-  border-color: rgba(255, 187, 54, 0.42);
-  background: rgba(255, 187, 54, 0.1);
+.review-option:hover:not(:disabled) {
+  border-color: rgba(252, 195, 95, 0.34);
   color: var(--text);
 }
 
+.review-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.review-option:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.review-option__icons {
+  display: flex;
+  align-items: center;
+  height: 25px;
+}
+
+.review-option__icons svg {
+  width: 25px;
+  height: 25px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.review-option__icons svg + svg {
+  margin-left: -8px;
+}
+
+.review-option strong {
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.review-option[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: rgba(252, 195, 95, 0.1);
+  color: var(--accent);
+}
+
+.review-option[aria-pressed="true"] strong {
+  color: var(--text);
+}
+
+.review-option--love[aria-pressed="true"] {
+  background: rgba(252, 195, 95, 0.16);
+}
+
+.review-modal__comment {
+  margin-top: 16px;
+}
+
+.review-modal__comment-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.review-modal__comment-toggle:hover {
+  color: var(--accent);
+}
+
+.review-modal__comment-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.review-modal__comment-toggle svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .review-modal__textarea {
-  min-height: 118px;
-  border-radius: 22px;
+  width: 100%;
+  min-height: 84px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 13px 14px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
 }
 
 .review-modal__actions {
+  margin-top: 20px;
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-  position: sticky;
-  bottom: calc(env(safe-area-inset-bottom) * -1);
-  padding-top: 10px;
-  padding-bottom: max(2px, env(safe-area-inset-bottom));
-  background:
-    linear-gradient(180deg, rgba(28, 22, 17, 0), rgba(28, 22, 17, 0.94) 24%, rgba(28, 22, 17, 0.98));
 }
 
 .media-modal__backdrop {
@@ -6909,16 +7033,22 @@ textarea {
     height: 48px;
   }
 
-  .review-modal__question {
-    font-size: 1.5rem;
+  /* En pantallas angostas la escala se mantiene en tres columnas —apilarla
+     rompe la lectura de "de menos a mas"— pero achica texto y relleno. */
+  .review-modal__scale {
+    gap: 7px;
   }
 
-  .review-modal__sentiment {
-    grid-template-columns: 1fr;
+  .review-option {
+    padding: 12px 5px 11px;
   }
 
-  .review-modal__star {
-    font-size: 2.6rem;
+  .review-option strong {
+    font-size: 0.76rem;
+  }
+
+  .review-modal__head-copy h3 {
+    font-size: 1.28rem;
   }
 
   .review-modal__actions {

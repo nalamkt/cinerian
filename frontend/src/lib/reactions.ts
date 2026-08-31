@@ -5,13 +5,30 @@ import type { DiscoveryItem, MediaType } from "../types";
 export const REACTIONS_UPDATED_EVENT = "cinerian:reactions-updated";
 
 // Un titulo esta siempre en exactamente UNO de estos estados por usuario:
-// vista con pulgar arriba, vista con pulgar abajo, guardada, o pasada de largo.
-export type RecommendationReaction = "liked" | "disliked" | "watchlist" | "ignored";
+// vista (con tres niveles de entusiasmo), guardada, o pasada de largo.
+export type RecommendationReaction =
+  | "superliked"
+  | "liked"
+  | "disliked"
+  | "watchlist"
+  | "ignored";
 
-// Las dos que implican haberla visto (las unicas que puntuan en el recomendador).
-export const RATED_REACTIONS = ["liked", "disliked"] as const;
+/** Los tres niveles de "ya la vi": son los unicos que puntuan en el recomendador. */
+export const RATED_REACTIONS = ["superliked", "liked", "disliked"] as const;
 
-const ALL_REACTIONS: RecommendationReaction[] = ["liked", "disliked", "watchlist", "ignored"];
+export type RatedReaction = (typeof RATED_REACTIONS)[number];
+
+export function isRatedReaction(reaction: RecommendationReaction): reaction is RatedReaction {
+  return (RATED_REACTIONS as readonly string[]).includes(reaction);
+}
+
+const ALL_REACTIONS: RecommendationReaction[] = [
+  "superliked",
+  "liked",
+  "disliked",
+  "watchlist",
+  "ignored"
+];
 
 export type StoredReaction = {
   tmdbId: number;
@@ -108,7 +125,7 @@ export type FollowedRatedReaction = {
   userId: string;
   tmdbId: number;
   mediaType: MediaType;
-  reaction: "liked" | "disliked";
+  reaction: RatedReaction;
   createdAt: string | null;
 };
 
@@ -134,7 +151,7 @@ export async function fetchRatedReactionsForUserIds(
     userId: entry.user_id as string,
     tmdbId: Number(entry.tmdb_id),
     mediaType: entry.media_type as MediaType,
-    reaction: entry.reaction as "liked" | "disliked",
+    reaction: entry.reaction as RatedReaction,
     createdAt: (entry.created_at as string | null) ?? null
   }));
 }

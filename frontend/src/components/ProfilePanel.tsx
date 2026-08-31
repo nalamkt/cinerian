@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchUserMediaPosts, fetchUserTextPosts } from "../lib/feed";
 import { fetchFollowerCount, fetchFollowerUserIds, fetchFollowingUserIds } from "../lib/follows";
-import { fetchStoredReactions, REACTIONS_UPDATED_EVENT } from "../lib/reactions";
+import { fetchStoredReactions, isRatedReaction, REACTIONS_UPDATED_EVENT } from "../lib/reactions";
 import { getTitleById } from "../lib/tmdb";
 import type { DiscoveryItem } from "../types";
 import { EditProfileForm } from "./EditProfileForm";
@@ -116,7 +116,7 @@ export function ProfilePanel({
       setStats({
         likes: storedReactions.filter((entry) => entry.reaction === "watchlist").length,
         watched: storedReactions.filter(
-          (entry) => entry.reaction === "liked" || entry.reaction === "disliked"
+          (entry) => isRatedReaction(entry.reaction)
         ).length,
         followers: followerCountOverride ?? followers,
         following: followingIds.length

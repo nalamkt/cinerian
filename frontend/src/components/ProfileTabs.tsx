@@ -10,6 +10,7 @@ import {
 import { deleteFeedPost, fetchUserTextPosts, updateFeedPost } from "../lib/feed";
 import {
   fetchStoredReactions,
+  isRatedReaction,
   REACTIONS_UPDATED_EVENT,
   removeStoredRatedReaction,
   removeStoredReaction,
@@ -50,7 +51,7 @@ type WatchingItem = {
 // La pestana "Vistas" agrupa dos reacciones, asi que el id de pestana ya no
 // mapea 1:1 contra el valor guardado en la base.
 const TAB_REACTIONS: Partial<Record<TabId, RecommendationReaction[]>> = {
-  watched: ["liked", "disliked"],
+  watched: ["superliked", "liked", "disliked"],
   watchlist: ["watchlist"]
 };
 
@@ -287,7 +288,7 @@ export function ProfileTabs({
 
   const tabCounts: Partial<Record<TabId, number>> = {
     watched: reactions.filter(
-      (entry) => entry.reaction === "liked" || entry.reaction === "disliked"
+      (entry) => isRatedReaction(entry.reaction)
     ).length,
     watchlist: reactions.filter((entry) => entry.reaction === "watchlist").length,
     watching: watchingEntries.length,

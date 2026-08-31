@@ -1,16 +1,47 @@
 import { fetchProfileSummaries, getProfileById, type ProfileSummary } from "./auth";
 import { fetchFollowingUserIds } from "./follows";
-import { fetchRatedReactionsForUserIds, fetchStoredReactions } from "./reactions";
+import {
+  fetchRatedReactionsForUserIds,
+  fetchStoredReactions,
+  type RatedReaction
+} from "./reactions";
 import { getRecommendationTitlesByPage, getTitleById } from "./tmdb";
 import type { DiscoveryItem, MediaType } from "../types";
 
-const LIKED_WEIGHT = 3;
-const DISLIKED_WEIGHT = -2;
-const GENRE_BONUS_WEIGHT = 1.5;
+const REACTION_WEIGHT: Record<RatedReaction, number> = {
+  superliked: 6,
+  liked: 3,
+  disliked: -2
+};
+
+/**
+ * El puntaje social es un PROMEDIO, no una suma.
+ *
+ * Sumando, el ranking termina midiendo popularidad: cinco personas a las que
+ * algo "les gusto" (5 x 3 = 15) le ganan siempre a dos que lo amaron
+ * (2 x 6 = 12), aunque el segundo sea mucho mejor recomendacion.
+ *
+ * Dividir a secas tampoco sirve, porque el primero que puntua define el puesto.
+ * Por eso dividimos por (cantidad + este amortiguador): hacen falta al menos
+ * dos personas entusiastas para desplazar a un grupo tibio, y una sola no
+ * alcanza para mandar algo al primer puesto.
+ *
+ *   Tarzan, 5 "me gusto"     -> 15 / (5+2) = 2.14
+ *   Gladiador, 2 "me encanto" -> 12 / (2+2) = 3.00  <- gana
+ *   Un solo "me encanto"      ->  6 / (1+2) = 2.00  <- no alcanza
+ */
+const SCORE_SMOOTHING = 2;
+
+/**
+ * Con el promedio, el puntaje social vive entre -2 y 6. El bonus de genero
+ * tiene que ser un empujon dentro de esa escala y no el que decide: por eso
+ * baja de 1.5 a 0.4 por genero en comun.
+ */
+const GENRE_BONUS_WEIGHT = 0.4;
 const OWN_GENRE_SAMPLE_LIMIT = 15;
 
 /** Alguien de tu circulo que vio el titulo, con su veredicto. */
-export type Watcher = ProfileSummary & { liked: boolean };
+export type Watcher = ProfileSummary & { reaction: RatedReaction };
 
 export type RankedRecommendation = {
   item: DiscoveryItem;
@@ -39,7 +70,7 @@ async function buildOwnGenreAffinity(userId: string): Promise<Set<string>> {
   ]);
 
   const ownLiked = ownReactions
-    .filter((reaction) => reaction.reaction === "liked")
+    .filter((reaction) => reaction.reaction === "liked" || reaction.reaction === "superliked")
     .slice(0, OWN_GENRE_SAMPLE_LIMIT);
 
   if (ownLiked.length < 3) {
@@ -110,11 +141,16 @@ async function collectFillerTitles(
 type ScoredCandidate = {
   tmdbId: number;
   mediaType: MediaType;
-  socialScore: number;
-  watcherIds: Array<{ userId: string; liked: boolean }>;
-  /** Alguien del circulo le puso 👍 despues de que vos lo ignoraras. */
+  /** Suma cruda de pesos. El puntaje final la promedia (ver SCORE_SMOOTHING). */
+  weightSum: number;
+  watcherIds: Array<{ userId: string; reaction: RatedReaction }>;
+  /** Alguien del circulo lo marco como gustado despues de que vos lo ignoraras. */
   hasLikeAfterIgnore: boolean;
 };
+
+function socialScoreOf(candidate: ScoredCandidate) {
+  return candidate.weightSum / (candidate.watcherIds.length + SCORE_SMOOTHING);
+}
 
 /**
  * Arma el ranking personal del usuario y devuelve la pagina pedida.
@@ -173,19 +209,19 @@ export async function fetchSocialRecommendations(
     const entry = candidates.get(key) ?? {
       tmdbId: reaction.tmdbId,
       mediaType: reaction.mediaType,
-      socialScore: 0,
+      weightSum: 0,
       watcherIds: [],
       hasLikeAfterIgnore: false
     };
 
-    const liked = reaction.reaction === "liked";
-    entry.socialScore += liked ? LIKED_WEIGHT : DISLIKED_WEIGHT;
-    entry.watcherIds.push({ userId: reaction.userId, liked });
+    const positive = reaction.reaction !== "disliked";
+    entry.weightSum += REACTION_WEIGHT[reaction.reaction];
+    entry.watcherIds.push({ userId: reaction.userId, reaction: reaction.reaction });
 
     // La señal social pisa tu skip, pero solo si es NUEVA: un "me gusto"
     // anterior a tu skip ya estaba en la tarjeta cuando la pasaste de largo,
     // asi que insistir seria ignorar una decision que tomaste informado.
-    if (liked && ignoredAt.has(key)) {
+    if (positive && ignoredAt.has(key)) {
       const likedAt = reaction.createdAt ? new Date(reaction.createdAt).getTime() : 0;
       if (likedAt > (ignoredAt.get(key) ?? 0)) {
         entry.hasLikeAfterIgnore = true;
@@ -203,7 +239,7 @@ export async function fetchSocialRecommendations(
   //    ademas la tarjeta no tendria prueba social que mostrar debajo.
   const preliminary = [...candidates.values()]
     .filter((candidate) => {
-      if (candidate.socialScore <= 0) {
+      if (socialScoreOf(candidate) <= 0) {
         return false;
       }
 
@@ -211,8 +247,9 @@ export async function fetchSocialRecommendations(
       return ignoredAt.has(key) ? candidate.hasLikeAfterIgnore : true;
     })
     .sort((left, right) => {
-      if (right.socialScore !== left.socialScore) {
-        return right.socialScore - left.socialScore;
+      const diff = socialScoreOf(right) - socialScoreOf(left);
+      if (diff !== 0) {
+        return diff;
       }
       return right.watcherIds.length - left.watcherIds.length;
     });
@@ -236,7 +273,7 @@ export async function fetchSocialRecommendations(
         return {
           item,
           rank: offset + indexInSlice + 1,
-          totalScore: candidate.socialScore + genreBonus,
+          totalScore: socialScoreOf(candidate) + genreBonus,
           watcherIds: candidate.watcherIds
         };
       })
@@ -256,11 +293,11 @@ export async function fetchSocialRecommendations(
     watchers: entry.watcherIds
       .map((watcher) => {
         const profile = profileById.get(watcher.userId);
-        return profile ? { ...profile, liked: watcher.liked } : null;
+        return profile ? { ...profile, reaction: watcher.reaction } : null;
       })
       .filter((watcher): watcher is Watcher => watcher !== null)
-      // Los que les gusto primero: son los que se muestran en la tarjeta.
-      .sort((left, right) => Number(right.liked) - Number(left.liked))
+      // Los mas entusiastas primero: son los que se muestran en la tarjeta.
+      .sort((left, right) => REACTION_WEIGHT[right.reaction] - REACTION_WEIGHT[left.reaction])
   }));
 
   if (ranked.length >= limit) {

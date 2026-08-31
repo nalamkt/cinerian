@@ -6,9 +6,11 @@ import { createFeedPost, fetchFeedPosts } from "../lib/feed";
 import { getProviderSearchUrl } from "../lib/providerLinks";
 import {
   fetchStoredReactions,
+  isRatedReaction,
   removeStoredRatedReaction,
   removeStoredReaction,
-  saveStoredReaction
+  saveStoredReaction,
+  type RatedReaction
 } from "../lib/reactions";
 import { buildWatchedPostBody } from "../lib/reviews";
 import { buildSharedMediaUrl, shareMediaLink } from "../lib/share";
@@ -519,7 +521,7 @@ function MediaDetailsModal({
           (entry) =>
             entry.tmdbId === item.id &&
             entry.mediaType === item.mediaType &&
-            (entry.reaction === "liked" || entry.reaction === "disliked")
+            isRatedReaction(entry.reaction)
         );
 
         setSaveLabel(isSaved ? "Guardado" : "Guardar");
@@ -624,7 +626,7 @@ function MediaDetailsModal({
     }
   }
 
-  async function handleReviewSubmit(input: { liked: boolean; comment: string }) {
+  async function handleReviewSubmit(input: { reaction: RatedReaction; comment: string }) {
     if (!reviewItem || !userId) {
       return;
     }
@@ -634,14 +636,14 @@ function MediaDetailsModal({
       await saveStoredReaction({
         userId,
         item: reviewItem,
-        reaction: input.liked ? "liked" : "disliked"
+        reaction: input.reaction
       });
       await createFeedPost({
         userId,
         postType: "rating",
         body: buildWatchedPostBody({
           item: reviewItem,
-          liked: input.liked,
+          reaction: input.reaction,
           comment: input.comment
         }),
         tmdbId: reviewItem.id,

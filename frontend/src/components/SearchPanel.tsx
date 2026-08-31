@@ -11,6 +11,7 @@ import {
   REACTIONS_UPDATED_EVENT,
   removeStoredRatedReaction,
   saveStoredReaction,
+  type RatedReaction,
   type RecommendationReaction,
   type StoredReaction
 } from "../lib/reactions";
@@ -27,7 +28,7 @@ type SearchMode = "titles" | "people" | "talent";
 
 /** Vista = marcada con pulgar arriba o abajo (ya no existe un estado 'watched' aparte). */
 function isWatchedReaction(reaction: RecommendationReaction | undefined) {
-  return reaction === "liked" || reaction === "disliked";
+  return reaction === "superliked" || reaction === "liked" || reaction === "disliked";
 }
 
 export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
@@ -160,7 +161,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         });
       }
 
-      if (reaction === "liked" || reaction === "disliked") {
+      if (isWatchedReaction(reaction)) {
         await createFeedPost({
           userId,
           postType: "rating",
@@ -194,7 +195,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
               !(
                 entry.tmdbId === item.id &&
                 entry.mediaType === item.mediaType &&
-                (entry.reaction === "liked" || entry.reaction === "disliked")
+                isWatchedReaction(entry.reaction)
               )
           )
         );
@@ -208,7 +209,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
     }
   }
 
-  async function handleReviewSubmit(input: { liked: boolean; comment: string }) {
+  async function handleReviewSubmit(input: { reaction: RatedReaction; comment: string }) {
     if (!reviewItem) {
       return;
     }
@@ -219,21 +220,21 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
       await saveStoredReaction({
         userId,
         item: reviewItem,
-        reaction: input.liked ? "liked" : "disliked"
+        reaction: input.reaction
       });
       await createFeedPost({
         userId,
         postType: "rating",
         body: buildWatchedPostBody({
           item: reviewItem,
-          liked: input.liked,
+          reaction: input.reaction,
           comment: input.comment
         }),
         tmdbId: reviewItem.id,
         mediaType: reviewItem.mediaType
       });
 
-      replaceStoredReaction(reviewItem, input.liked ? "liked" : "disliked");
+      replaceStoredReaction(reviewItem, input.reaction);
       setReviewItem(null);
       setSyncMessage("Tu reseña ya salió en el feed.");
     } catch {

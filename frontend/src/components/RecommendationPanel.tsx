@@ -7,6 +7,7 @@ import {
   fetchStoredReactions,
   REACTIONS_UPDATED_EVENT,
   saveStoredReaction,
+  type RatedReaction,
   type StoredReaction
 } from "../lib/reactions";
 import { fetchSocialRecommendations, type RankedRecommendation, type Watcher } from "../lib/recommendations";
@@ -38,17 +39,29 @@ function truncateOverview(text: string, maxLength = OVERVIEW_PREVIEW_LENGTH) {
   return { text: `${safeSlice.trim()}…`, truncated: true };
 }
 
-/** "A Isidoro y 2 mas les gusto" — solo cuenta a quienes les gusto. */
+/**
+ * "A Isidoro y 2 mas les gusto" — solo cuenta a quienes les gusto o les encanto.
+ *
+ * Si al menos uno lo amo, el verbo sube a "le encanto": es la señal mas fuerte
+ * que tenemos para mostrar y seria una lastima aplanarla a "le gusto".
+ */
 function buildSocialLine(watchers: Watcher[]) {
-  const liked = watchers.filter((watcher) => watcher.liked);
-  if (!liked.length) {
+  const positive = watchers.filter((watcher) => watcher.reaction !== "disliked");
+  if (!positive.length) {
     return null;
   }
 
-  const [first, ...rest] = liked;
-  const verb = liked.length === 1 ? "le gustó" : "les gustó";
+  const loved = positive.some((watcher) => watcher.reaction === "superliked");
+  const [first, ...rest] = positive;
+  const verb = loved
+    ? positive.length === 1
+      ? "le encantó"
+      : "les encantó"
+    : positive.length === 1
+      ? "le gustó"
+      : "les gustó";
   const others = rest.length ? ` y ${rest.length} más` : "";
-  return { first, others, verb, faces: liked.slice(0, 3) };
+  return { first, others, verb, faces: positive.slice(0, 3) };
 }
 
 function initialFor(watcher: Watcher) {
@@ -289,12 +302,12 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     void registerReaction("ignored");
   }
 
-  async function handleReviewSubmit(input: { liked: boolean; comment: string }) {
+  async function handleReviewSubmit(input: { reaction: RatedReaction; comment: string }) {
     if (!reviewItem) {
       return;
     }
 
-    const watchedReaction = input.liked ? "liked" : "disliked";
+    const watchedReaction = input.reaction;
 
     try {
       setIsSyncing(true);
@@ -305,7 +318,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
         postType: "rating",
         body: buildWatchedPostBody({
           item: reviewItem,
-          liked: input.liked,
+          reaction: input.reaction,
           comment: input.comment
         }),
         tmdbId: reviewItem.id,
