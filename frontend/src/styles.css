@@ -2170,15 +2170,22 @@ textarea {
   flex-direction: column;
   gap: 14px;
   align-items: center;
-  justify-content: center;
+  /* "safe" es la clave: centra mientras entra, pero cuando el contenido
+     desborda —una sinopsis larga expandida— alinea arriba en vez de recortar
+     por los dos lados, que es lo que dejaba los botones inalcanzables. */
+  justify-content: safe center;
   height: calc(100vh - 32px);
   padding: 16px 0;
-  overflow: hidden;
+  /* auto y no hidden: sin scroll mientras la tarjeta entra, con scroll el dia
+     que no entra. */
+  overflow-y: auto;
 }
 
 .discover-card {
   width: min(100%, 1220px);
-  max-height: 100%;
+  /* Sin tope de alto ni recorte: si el contenido crece, crece la tarjeta y
+     scrollea el contenedor. */
+  flex: none;
   display: grid;
   /* El poster se mide contra el alto de la ventana: con relacion 2/3 su altura
      es 1.5x el ancho, asi que topearlo en 38vh lo deja en ~57vh y la tarjeta
@@ -2187,7 +2194,6 @@ textarea {
   gap: 46px;
   align-items: start;
   padding: 44px;
-  overflow: hidden;
 }
 
 .discover-card__poster {
