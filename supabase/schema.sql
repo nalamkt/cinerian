@@ -270,9 +270,9 @@ create policy "recommendation messages update by recipient"
   using (auth.uid() = recipient_id)
   with check (auth.uid() = recipient_id);
 
-create policy "recommendation messages delete by recipient"
+create policy "recommendation messages delete by participants"
   on public.recommendation_messages for delete
-  using (auth.uid() = recipient_id);
+  using (auth.uid() = sender_id or auth.uid() = recipient_id);
 
 create policy "recommendation replies read by participants"
   on public.recommendation_message_replies for select

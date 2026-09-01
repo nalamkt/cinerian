@@ -530,14 +530,19 @@ export async function deleteInboxMessage(input: { messageId: string; userId: str
     return;
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("recommendation_messages")
     .delete()
     .eq("id", input.messageId)
-    .eq("recipient_id", input.userId);
+    .or(`sender_id.eq.${input.userId},recipient_id.eq.${input.userId}`)
+    .select("id");
 
   if (error) {
     throw error;
+  }
+
+  if (!data?.length) {
+    throw new Error("No tenés permiso para eliminar este mensaje.");
   }
 
   dispatchInboxUpdate(input.userId);

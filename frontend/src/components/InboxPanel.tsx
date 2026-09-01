@@ -355,6 +355,8 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
         userId
       });
       setReceived((current) => current.filter((entry) => entry.id !== message.id));
+      setSent((current) => current.filter((entry) => entry.id !== message.id));
+      setActiveMessageId((current) => (current === message.id ? null : current));
     } catch {
       setErrorMessage("No pude eliminar este mensaje.");
     } finally {
@@ -658,15 +660,11 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
       message.replies?.some((reply) => reply.recipientId === userId && !reply.readAt)
     );
     const isUnread = (!isSent && !message.readAt) || hasUnreadReply;
-    const supportsThreadActions = !isSent;
+    const supportsThreadActions = true;
     const isSwiped = supportsThreadActions && swipedMessageId === message.id;
     const currentOffset = isSwiped ? swipeOffset : 0;
     const lastReply = message.replies?.[message.replies.length - 1];
     const activityLabel = lastReply?.createdAtLabel ?? message.createdAtLabel;
-    const preview =
-      lastReply?.body ||
-      message.note?.trim() ||
-      (isSent ? "La mandaste sin mensaje extra." : "Te la recomendaron directo por Cinerian.");
 
     return (
       <div
@@ -688,17 +686,19 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
               <span aria-hidden="true">✕</span>
               <span>Eliminar</span>
             </button>
-            <button
-              type="button"
-              className="inbox-thread-swipe__action inbox-thread-swipe__action--read"
-              onClick={() => {
-                closeSwipeActions();
-                void handleToggleRead(message);
-              }}
-            >
-              <span aria-hidden="true">{message.readAt ? "◐" : "◉"}</span>
-              <span>{message.readAt ? "No leído" : "Leído"}</span>
-            </button>
+            {!isSent ? (
+              <button
+                type="button"
+                className="inbox-thread-swipe__action inbox-thread-swipe__action--read"
+                onClick={() => {
+                  closeSwipeActions();
+                  void handleToggleRead(message);
+                }}
+              >
+                <span aria-hidden="true">{message.readAt ? "◐" : "◉"}</span>
+                <span>{message.readAt ? "No leído" : "Leído"}</span>
+              </button>
+            ) : null}
           </>
         ) : null}
         <button
@@ -741,14 +741,18 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
             </span>
           </div>
           <div className="inbox-thread-item__identity">
-            <span>
-              <span className={`inbox-thread-item__direction ${isSent ? "is-sent" : "is-received"}`}>
-                {isSent ? "Enviado" : "Recibido"}
-              </span>
-              @{counterpart?.username ?? "cineriano"}
+            <span className={`inbox-thread-item__direction ${isSent ? "is-sent" : "is-received"}`}>
+              {isSent ? "Enviado" : "Recibido"}
             </span>
+            <span className="inbox-thread-item__profile-avatar" aria-hidden="true">
+              {counterpart?.avatar_url ? (
+                <img src={counterpart.avatar_url} alt="" />
+              ) : (
+                (counterpart?.display_name ?? "C").slice(0, 1).toUpperCase()
+              )}
+            </span>
+            <span>@{counterpart?.username ?? "cineriano"}</span>
           </div>
-          <p>{preview}</p>
         </div>
       </button>
       </div>
@@ -763,7 +767,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
       {
         id: `${message.id}-root`,
         senderId: message.senderId,
-        author: message.senderProfile?.display_name ?? "Cineriano",
         createdAtLabel: message.createdAtLabel,
         body:
           message.note?.trim() ||
@@ -772,7 +775,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
       ...(message.replies ?? []).map((reply) => ({
         id: reply.id,
         senderId: reply.senderId,
-        author: reply.senderProfile?.display_name ?? "Cineriano",
         createdAtLabel: reply.createdAtLabel,
         body: reply.body
       }))
@@ -861,7 +863,7 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
                   </span>
                     <span>Ver título</span>
                   </button>
-                {!isMobile && !isSent ? (
+                {!isMobile ? (
                   <button
                     type="button"
                     className="inbox-card__action-button inbox-card__action-button--danger"
@@ -888,11 +890,10 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
                 key={entry.id}
                 className={`inbox-thread-bubble ${isOwn ? "is-own" : "is-other"}`}
               >
-                <div className="inbox-thread-bubble__topline">
-                  <strong>{entry.author}</strong>
-                  <span>{entry.createdAtLabel}</span>
-                </div>
-                <p>{entry.body}</p>
+                <p className="inbox-thread-bubble__message">
+                  {entry.body}
+                  <span className="inbox-thread-bubble__time">{entry.createdAtLabel}</span>
+                </p>
               </article>
             );
           })}
@@ -1068,18 +1069,14 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
 
         <div className="inbox-thread-view__messages">
           <article className="inbox-thread-bubble is-own">
-            <div className="inbox-thread-bubble__topline">
-              <strong>Tu publicación</strong>
-            </div>
-            <p>{postPreview}</p>
+            <p className="inbox-thread-bubble__message">{postPreview}</p>
           </article>
 
           <article className="inbox-thread-bubble is-other">
-            <div className="inbox-thread-bubble__topline">
-              <strong>{notification.actorProfile?.display_name ?? "Cineriano"}</strong>
-              <span>{notification.createdAtLabel}</span>
-            </div>
-            <p>{notification.body}</p>
+            <p className="inbox-thread-bubble__message">
+              {notification.body}
+              <span className="inbox-thread-bubble__time">{notification.createdAtLabel}</span>
+            </p>
           </article>
         </div>
 

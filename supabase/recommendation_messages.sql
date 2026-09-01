@@ -53,9 +53,10 @@ create policy "recommendation_messages_update_recipient"
   with check (auth.uid() = recipient_id);
 
 drop policy if exists "recommendation_messages_delete_recipient" on public.recommendation_messages;
-create policy "recommendation_messages_delete_recipient"
+drop policy if exists "recommendation_messages_delete_participants" on public.recommendation_messages;
+create policy "recommendation_messages_delete_participants"
   on public.recommendation_messages for delete
-  using (auth.uid() = recipient_id);
+  using (auth.uid() = sender_id or auth.uid() = recipient_id);
 
 drop policy if exists "recommendation_message_replies_select_participants" on public.recommendation_message_replies;
 create policy "recommendation_message_replies_select_participants"

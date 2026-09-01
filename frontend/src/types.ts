@@ -142,11 +142,13 @@ export type RecommendationMessage = {
     id: string;
     username: string;
     display_name: string;
+    avatar_url: string | null;
   } | null;
   recipientProfile: {
     id: string;
     username: string;
     display_name: string;
+    avatar_url: string | null;
   } | null;
   note: string;
   createdAt: string;

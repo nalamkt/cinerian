@@ -2,6 +2,7 @@ import { AboutYouOnboardingModal } from "./components/AboutYouOnboardingModal";
 import { AuthPanel } from "./components/AuthPanel";
 import { CinerianLogo } from "./components/CinerianLogo";
 import { FeedPanel } from "./components/FeedPanel";
+import { FollowSuggestionsModal } from "./components/FollowSuggestionsModal";
 import { InboxPanel } from "./components/InboxPanel";
 import { MediaDetailsProvider } from "./components/MediaDetailsModal";
 import { ProfilePanel } from "./components/ProfilePanel";
@@ -25,6 +26,7 @@ import { hasSupabaseEnv, supabase } from "./lib/supabase";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "./lib/auth";
 const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
+const FOLLOW_SUGGESTIONS_SESSION_KEY = "cinerian-follow-suggestions-shown";
 export const FEED_SCROLL_TO_TOP_EVENT = "cinerian:feed-scroll-to-top";
 export const FEED_REFRESH_EDITORIAL_EVENT = "cinerian:feed-refresh-editorial";
 
@@ -124,6 +126,7 @@ export default function App() {
   const [shareLabel, setShareLabel] = useState("Compartir perfil");
   const [inviteLabel, setInviteLabel] = useState("Invitar");
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
+  const [showFollowSuggestions, setShowFollowSuggestions] = useState(false);
   const viewSessionRef = useRef<ViewSessionRef | null>(null);
   const accessControl = useMemo(
     () =>
@@ -142,6 +145,20 @@ export default function App() {
   useEffect(() => {
     setLocalProfile(profile);
   }, [profile]);
+
+  useEffect(() => {
+    if (!sessionUserId || !localProfile || localProfile.gender === null) {
+      return;
+    }
+
+    const storageKey = `${FOLLOW_SUGGESTIONS_SESSION_KEY}:${sessionUserId}`;
+    if (window.sessionStorage.getItem(storageKey)) {
+      return;
+    }
+
+    window.sessionStorage.setItem(storageKey, "true");
+    setShowFollowSuggestions(true);
+  }, [localProfile, sessionUserId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -553,6 +570,9 @@ export default function App() {
     <MediaDetailsProvider userId={session.user.id}>
       {localProfile && localProfile.gender === null ? (
         <AboutYouOnboardingModal profile={localProfile} onComplete={setLocalProfile} />
+      ) : null}
+      {showFollowSuggestions ? (
+        <FollowSuggestionsModal userId={session.user.id} onClose={() => setShowFollowSuggestions(false)} />
       ) : null}
 
       <div className="app-shell app-shell--immersive">
