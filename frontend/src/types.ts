@@ -158,6 +158,8 @@ export type RecommendationReply = {
   id: string;
   messageId: string;
   senderId: string;
+  recipientId?: string | null;
+  readAt?: string | null;
   senderProfile: {
     id: string;
     username: string;

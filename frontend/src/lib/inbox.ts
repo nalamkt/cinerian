@@ -30,8 +30,10 @@ type RecommendationReplyRow = {
   id: string;
   message_id: string;
   sender_id: string;
+  recipient_id?: string | null;
   body: string;
   created_at: string;
+  read_at?: string | null;
 };
 
 type CommentNotificationRow = {
@@ -70,6 +72,14 @@ type CommentNotificationRow = {
 function isMissingReadAtColumn(error: { message?: string; details?: string; hint?: string } | null) {
   const haystack = `${error?.message ?? ""} ${error?.details ?? ""} ${error?.hint ?? ""}`.toLowerCase();
   return haystack.includes("read_at") && (haystack.includes("column") || haystack.includes("schema cache"));
+}
+
+function isMissingReplyActivityColumns(error: { message?: string; details?: string; hint?: string } | null) {
+  const haystack = `${error?.message ?? ""} ${error?.details ?? ""} ${error?.hint ?? ""}`.toLowerCase();
+  return (
+    (haystack.includes("recipient_id") || haystack.includes("read_at")) &&
+    (haystack.includes("column") || haystack.includes("schema cache"))
+  );
 }
 
 function dispatchInboxUpdate(userId: string) {
@@ -227,17 +237,31 @@ async function fetchRepliesForMessages(messageIds: string[]) {
     return [] as RecommendationReplyRow[];
   }
 
-  const { data, error } = await supabase
+  const primaryResult = await supabase
+    .from("recommendation_message_replies")
+    .select("id, message_id, sender_id, recipient_id, body, created_at, read_at")
+    .in("message_id", messageIds)
+    .order("created_at", { ascending: true });
+
+  if (!primaryResult.error) {
+    return (primaryResult.data ?? []) as RecommendationReplyRow[];
+  }
+
+  if (!isMissingReplyActivityColumns(primaryResult.error)) {
+    throw primaryResult.error;
+  }
+
+  const legacyResult = await supabase
     .from("recommendation_message_replies")
     .select("id, message_id, sender_id, body, created_at")
     .in("message_id", messageIds)
     .order("created_at", { ascending: true });
 
-  if (error) {
-    throw error;
+  if (legacyResult.error) {
+    throw legacyResult.error;
   }
 
-  return (data ?? []) as RecommendationReplyRow[];
+  return (legacyResult.data ?? []) as RecommendationReplyRow[];
 }
 
 function groupRepliesByMessage(
@@ -251,6 +275,8 @@ function groupRepliesByMessage(
       id: row.id,
       messageId: row.message_id,
       senderId: row.sender_id,
+      recipientId: row.recipient_id ?? null,
+      readAt: row.read_at ?? null,
       senderProfile: profileMap.get(row.sender_id) ?? null,
       body: row.body,
       createdAt: row.created_at,
@@ -310,9 +336,14 @@ export async function fetchUnreadInboxCount(userId: string): Promise<number> {
     return 0;
   }
 
-  const [recommendationResult, commentResult] = await Promise.all([
+  const [recommendationResult, replyResult, commentResult] = await Promise.all([
     supabase
       .from("recommendation_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", userId)
+      .is("read_at", null),
+    supabase
+      .from("recommendation_message_replies")
       .select("id", { count: "exact", head: true })
       .eq("recipient_id", userId)
       .is("read_at", null),
@@ -332,11 +363,15 @@ export async function fetchUnreadInboxCount(userId: string): Promise<number> {
     throw recommendationResult.error;
   }
 
+  if (replyResult.error && !isMissingReplyActivityColumns(replyResult.error)) {
+    throw replyResult.error;
+  }
+
   if (commentResult.error && !isMissingCommentNotificationTable(commentResult.error)) {
     throw commentResult.error;
   }
 
-  return (recommendationResult.count ?? 0) + (commentResult.count ?? 0);
+  return (recommendationResult.count ?? 0) + (replyResult.count ?? 0) + (commentResult.count ?? 0);
 }
 
 export async function fetchCommentNotifications(userId: string): Promise<CommentInboxNotification[]> {
@@ -540,18 +575,50 @@ export async function sendRecommendationReply(input: {
     return;
   }
 
-  const { error } = await supabase.from("recommendation_message_replies").insert({
+  const primaryResult = await supabase.from("recommendation_message_replies").insert({
     message_id: input.messageId,
     sender_id: input.senderId,
+    recipient_id: input.recipientId,
     body: input.body.trim()
   });
 
-  if (error) {
-    throw error;
+  if (primaryResult.error) {
+    if (!isMissingReplyActivityColumns(primaryResult.error)) {
+      throw primaryResult.error;
+    }
+
+    const { error: legacyError } = await supabase.from("recommendation_message_replies").insert({
+      message_id: input.messageId,
+      sender_id: input.senderId,
+      body: input.body.trim()
+    });
+
+    if (legacyError) {
+      throw legacyError;
+    }
   }
 
   dispatchInboxUpdate(input.senderId);
   dispatchInboxUpdate(input.recipientId);
+}
+
+export async function markRecommendationRepliesAsRead(input: { messageId: string; userId: string }) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("recommendation_message_replies")
+    .update({ read_at: new Date().toISOString() })
+    .eq("message_id", input.messageId)
+    .eq("recipient_id", input.userId)
+    .is("read_at", null);
+
+  if (error && !isMissingReplyActivityColumns(error)) {
+    throw error;
+  }
+
+  dispatchInboxUpdate(input.userId);
 }
 
 export async function fetchReceivedMessages(userId: string): Promise<RecommendationMessage[]> {

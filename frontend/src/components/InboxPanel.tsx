@@ -7,11 +7,13 @@ import {
   fetchReceivedMessages,
   fetchSentMessages,
   INBOX_UPDATED_EVENT,
+  markRecommendationRepliesAsRead,
   sendRecommendationReply,
   setCommentNotificationReadState,
   setInboxMessageReadState
 } from "../lib/inbox";
 import { useMediaDetails } from "./MediaDetailsModal";
+import { LoadingState } from "./LoadingState";
 import type { CommentInboxNotification, RecommendationMessage } from "../types";
 
 type InboxPanelProps = {
@@ -20,7 +22,6 @@ type InboxPanelProps = {
   onOpenFeedPost?: (target: { postId: string; focusCommentInput?: boolean }) => void;
 };
 
-type InboxMode = "received" | "sent";
 type InboxCategory = "recommendations" | "comments";
 
 export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxPanelProps) {
@@ -29,7 +30,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     typeof window !== "undefined" ? window.matchMedia("(max-width: 900px)").matches : false
   );
   const [category, setCategory] = useState<InboxCategory>("recommendations");
-  const [mode, setMode] = useState<InboxMode>("received");
   const [received, setReceived] = useState<RecommendationMessage[]>([]);
   const [sent, setSent] = useState<RecommendationMessage[]>([]);
   const [commentNotifications, setCommentNotifications] = useState<CommentInboxNotification[]>([]);
@@ -155,10 +155,16 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     };
   }, [userId]);
 
-  const visibleMessages = useMemo(
-    () => (mode === "received" ? received : sent),
-    [mode, received, sent]
-  );
+  const visibleMessages = useMemo(() => {
+    const byId = new Map<string, RecommendationMessage>();
+    [...received, ...sent].forEach((message) => byId.set(message.id, message));
+
+    return [...byId.values()].sort((left, right) => {
+      const leftActivity = left.replies?.[left.replies.length - 1]?.createdAt ?? left.createdAt;
+      const rightActivity = right.replies?.[right.replies.length - 1]?.createdAt ?? right.createdAt;
+      return rightActivity.localeCompare(leftActivity);
+    });
+  }, [received, sent]);
 
   const hasUnreadComments = useMemo(
     () => commentNotifications.some((notification) => !notification.readAt),
@@ -184,7 +190,7 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
 
     return visibleMessages.filter((message) => {
       const counterpart =
-        mode === "received" ? message.senderProfile?.display_name : message.recipientProfile?.display_name;
+        message.senderId === userId ? message.recipientProfile?.display_name : message.senderProfile?.display_name;
       const preview =
         message.note?.trim() ||
         message.replies?.[message.replies.length - 1]?.body ||
@@ -202,7 +208,7 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
 
       return haystack.includes(normalizedSearchQuery);
     });
-  }, [mode, normalizedSearchQuery, visibleMessages]);
+  }, [normalizedSearchQuery, userId, visibleMessages]);
 
   const filteredCommentNotifications = useMemo(() => {
     if (!normalizedSearchQuery) {
@@ -260,12 +266,18 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   }, [activeMessage?.id]);
 
   useEffect(() => {
-    if (!activeMessage || mode !== "received" || activeMessage.readAt) {
+    if (!activeMessage) {
       return;
     }
 
-    void handleSetReadState(activeMessage, true);
-  }, [activeMessage, mode]);
+    if (activeMessage.recipientId === userId && !activeMessage.readAt) {
+      void handleSetReadState(activeMessage, true);
+    }
+
+    if (activeMessage.replies?.some((reply) => reply.recipientId === userId && !reply.readAt)) {
+      void markRecommendationRepliesAsRead({ messageId: activeMessage.id, userId });
+    }
+  }, [activeMessage, userId]);
 
   useEffect(() => {
     if (!activeComment) {
@@ -276,16 +288,16 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   useEffect(() => {
     setActiveMessageId(null);
     setActiveCommentId(null);
-  }, [category, mode, isMobile]);
+  }, [category, isMobile]);
 
   useEffect(() => {
     setSearchQuery("");
-  }, [category, mode]);
+  }, [category]);
 
   useEffect(() => {
     setSwipedMessageId(null);
     setSwipeOffset(0);
-  }, [activeMessageId, category, mode, isMobile]);
+  }, [activeMessageId, category, isMobile]);
 
   useEffect(() => {
     if (!isShowingMobileThread) {
@@ -640,18 +652,21 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   }
 
   function renderMessageListItem(message: RecommendationMessage) {
-    const counterpart = mode === "received" ? message.senderProfile : message.recipientProfile;
-    const isUnread = mode === "received" && !message.readAt;
-    const supportsThreadActions = mode === "received";
+    const isSent = message.senderId === userId;
+    const counterpart = isSent ? message.recipientProfile : message.senderProfile;
+    const hasUnreadReply = Boolean(
+      message.replies?.some((reply) => reply.recipientId === userId && !reply.readAt)
+    );
+    const isUnread = (!isSent && !message.readAt) || hasUnreadReply;
+    const supportsThreadActions = !isSent;
     const isSwiped = supportsThreadActions && swipedMessageId === message.id;
     const currentOffset = isSwiped ? swipeOffset : 0;
+    const lastReply = message.replies?.[message.replies.length - 1];
+    const activityLabel = lastReply?.createdAtLabel ?? message.createdAtLabel;
     const preview =
+      lastReply?.body ||
       message.note?.trim() ||
-      (message.replies?.length
-        ? message.replies[message.replies.length - 1]?.body
-        : mode === "received"
-          ? "Te la recomendaron directo por Cinerian."
-          : "La mandaste sin mensaje extra.");
+      (isSent ? "La mandaste sin mensaje extra." : "Te la recomendaron directo por Cinerian.");
 
     return (
       <div
@@ -721,13 +736,16 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
           <div className="inbox-thread-item__topline">
             <strong>{message.item.title}</strong>
             <span>
-              {message.createdAtLabel}
-              {mode === "received" && isUnread ? <span className="inbox-thread-item__dot" aria-hidden="true" /> : null}
+              {activityLabel}
+              {isUnread ? <span className="inbox-thread-item__dot" aria-hidden="true" /> : null}
             </span>
           </div>
           <div className="inbox-thread-item__identity">
             <span>
-              {mode === "received" ? "De" : "Para"} @{counterpart?.username ?? "cineriano"}
+              <span className={`inbox-thread-item__direction ${isSent ? "is-sent" : "is-received"}`}>
+                {isSent ? "Enviado" : "Recibido"}
+              </span>
+              @{counterpart?.username ?? "cineriano"}
             </span>
           </div>
           <p>{preview}</p>
@@ -738,7 +756,8 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   }
 
   function renderActiveMessage(message: RecommendationMessage) {
-    const counterpart = mode === "received" ? message.senderProfile : message.recipientProfile;
+    const isSent = message.senderId === userId;
+    const counterpart = isSent ? message.recipientProfile : message.senderProfile;
     const isPending = pendingMessageId === message.id;
     const conversation = [
       {
@@ -748,9 +767,7 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
         createdAtLabel: message.createdAtLabel,
         body:
           message.note?.trim() ||
-          (mode === "received"
-            ? "Te recomendó este título por Cinerian."
-            : "Le mandaste esta recomendación por Cinerian.")
+          (isSent ? "Le mandaste esta recomendación por Cinerian." : "Te recomendó este título por Cinerian.")
       },
       ...(message.replies ?? []).map((reply) => ({
         id: reply.id,
@@ -814,16 +831,14 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
                   >
                     {counterpart?.display_name ?? "Cineriano"}
                   </button>
-                  <span>
-                    {mode === "received" ? "Te la mandó" : "Se la mandaste"} • @{counterpart?.username ?? "cineriano"}
-                  </span>
+                  <span>{isSent ? "Se la mandaste" : "Te la mandó"} • @{counterpart?.username ?? "cineriano"}</span>
                 </div>
               </div>
               </div>
             ) : null}
             <div className="inbox-thread-view__header-side">
               <div className="inbox-thread-view__actions inbox-thread-view__actions--header">
-                {!isMobile && mode === "received" ? (
+                {!isMobile && !isSent ? (
                   <button
                     type="button"
                     className="inbox-card__action-button"
@@ -846,7 +861,7 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
                   </span>
                     <span>Ver título</span>
                   </button>
-                {!isMobile && mode === "received" ? (
+                {!isMobile && !isSent ? (
                   <button
                     type="button"
                     className="inbox-card__action-button inbox-card__action-button--danger"
@@ -1113,24 +1128,7 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
               </button>
             </header>
 
-            {category === "recommendations" ? (
-              <div className="inbox-subtabs">
-                <button
-                  type="button"
-                  className={`inbox-subtabs__button ${mode === "received" ? "is-active" : ""}`}
-                  onClick={() => setMode("received")}
-                >
-                  Recibidas
-                </button>
-                <button
-                  type="button"
-                  className={`inbox-subtabs__button ${mode === "sent" ? "is-active" : ""}`}
-                  onClick={() => setMode("sent")}
-                >
-                  Enviadas
-                </button>
-              </div>
-            ) : (
+            {category === "comments" ? (
               <div className="inbox-subtabs inbox-subtabs--summary">
                 <span className="inbox-subtabs__summary">
                   {hasUnreadComments
@@ -1138,35 +1136,37 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
                     : "Tus comentarios recibidos aparecen acá"}
                 </span>
               </div>
-            )}
+            ) : null}
 
-          <div className="inbox-mobile-toolbar">
-            <label className="inbox-search">
-              <span aria-hidden="true">⌕</span>
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder={category === "recommendations" ? "Buscar conversaciones" : "Buscar comentarios"}
-              />
-            </label>
-            </div>
           </>
         ) : null}
 
         <div className={`inbox-body ${isShowingMobileThread ? "is-mobile-thread-open" : ""}`}>
           {errorMessage ? <div className="timeline-empty">{errorMessage}</div> : null}
           {isLoading ? (
-            <div className="timeline-empty">
-              {category === "recommendations" ? "Cargando recomendaciones..." : "Cargando comentarios..."}
-            </div>
+            <LoadingState
+              label={category === "recommendations" ? "Cargando recomendaciones..." : "Cargando comentarios..."}
+            />
           ) : null}
           {!isLoading && !errorMessage ? (
             category === "recommendations" ? (
               filteredMessages.length ? (
                 <div className={`inbox-layout ${isMobile ? "is-mobile" : ""}`}>
-                  <div className={`inbox-thread-list ${isShowingMobileThread ? "is-hidden-mobile" : ""}`}>
-                    {filteredMessages.map(renderMessageListItem)}
+                  <div className={`inbox-thread-column ${isShowingMobileThread ? "is-hidden-mobile" : ""}`}>
+                    <div className="inbox-thread-list__header">
+                      <label className="inbox-search">
+                        <span aria-hidden="true">⌕</span>
+                        <input
+                          type="search"
+                          value={searchQuery}
+                          onChange={(event) => setSearchQuery(event.target.value)}
+                          placeholder="Buscar conversaciones"
+                        />
+                      </label>
+                    </div>
+                    <div className="inbox-thread-list">
+                      {filteredMessages.map(renderMessageListItem)}
+                    </div>
                   </div>
                   <div className={`inbox-thread-panel ${isShowingMobileThread ? "is-visible-mobile" : ""}`}>
                     {activeMessage ? (
@@ -1180,15 +1180,26 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
                 <div className="timeline-empty">
                   {normalizedSearchQuery
                     ? "No encontré conversaciones con esa búsqueda."
-                    : mode === "received"
-                    ? "Todavia no recibiste recomendaciones internas."
-                    : "Todavia no mandaste recomendaciones a otros cinerianos."}
+                    : "Todavía no tenés conversaciones de recomendaciones."}
                 </div>
               )
             ) : filteredCommentNotifications.length ? (
               <div className={`inbox-layout ${isMobile ? "is-mobile" : ""}`}>
-                <div className={`inbox-thread-list ${isShowingMobileThread ? "is-hidden-mobile" : ""}`}>
-                  {filteredCommentNotifications.map(renderCommentNotificationListItem)}
+                <div className={`inbox-thread-column ${isShowingMobileThread ? "is-hidden-mobile" : ""}`}>
+                  <div className="inbox-thread-list__header">
+                    <label className="inbox-search">
+                      <span aria-hidden="true">⌕</span>
+                      <input
+                        type="search"
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        placeholder="Buscar comentarios"
+                      />
+                    </label>
+                  </div>
+                  <div className="inbox-thread-list">
+                    {filteredCommentNotifications.map(renderCommentNotificationListItem)}
+                  </div>
                 </div>
                 <div className={`inbox-thread-panel ${isShowingMobileThread ? "is-visible-mobile" : ""}`}>
                   {activeComment ? (

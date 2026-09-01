@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
+import { LoadingState } from "./LoadingState";
 import { TitleCard } from "./TitleCard";
 import {
   type CurrentWatchingEntry,
@@ -464,9 +465,7 @@ export function ProfileTabs({
       {!readOnly && syncMessage ? <div className="inline-status">{syncMessage}</div> : null}
 
       {isLoading ? (
-        <div className="profile-grid__empty">
-          {isOwnProfile ? "Cargando tu videoteca..." : "Cargando este perfil..."}
-        </div>
+        <LoadingState label={isOwnProfile ? "Cargando tu videoteca..." : "Cargando este perfil..."} />
       ) : activeTab === "watching" ? (
         <div className="profile-watching">
           <div className="profile-watching__toolbar">

@@ -21,7 +21,7 @@ import {
   parseSharedProfilePath,
   shareProfileLink
 } from "./lib/profileShare";
-import { hasSupabaseEnv } from "./lib/supabase";
+import { hasSupabaseEnv, supabase } from "./lib/supabase";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "./lib/auth";
 const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
@@ -371,9 +371,31 @@ export default function App() {
     void loadUnreadCount();
     window.addEventListener(INBOX_UPDATED_EVENT, handleInboxUpdated as EventListener);
 
+    const inboxChannel = supabase
+      ?.channel(`inbox-updates-${currentUserId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "recommendation_messages", filter: `recipient_id=eq.${currentUserId}` },
+        () => window.dispatchEvent(new CustomEvent(INBOX_UPDATED_EVENT, { detail: { userId: currentUserId } }))
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "recommendation_message_replies", filter: `recipient_id=eq.${currentUserId}` },
+        () => window.dispatchEvent(new CustomEvent(INBOX_UPDATED_EVENT, { detail: { userId: currentUserId } }))
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "feed_post_comment_notifications", filter: `recipient_user_id=eq.${currentUserId}` },
+        () => window.dispatchEvent(new CustomEvent(INBOX_UPDATED_EVENT, { detail: { userId: currentUserId } }))
+      )
+      .subscribe();
+
     return () => {
       isMounted = false;
       window.removeEventListener(INBOX_UPDATED_EVENT, handleInboxUpdated as EventListener);
+      if (inboxChannel && supabase) {
+        void supabase.removeChannel(inboxChannel);
+      }
     };
   }, [sessionUserId]);
 

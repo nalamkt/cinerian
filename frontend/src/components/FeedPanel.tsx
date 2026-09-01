@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FEED_REFRESH_EDITORIAL_EVENT, FEED_SCROLL_TO_TOP_EVENT } from "../App";
-import { demoDiscovery, demoFeed } from "../data/demoData";
+import { demoDiscovery } from "../data/demoData";
 import {
   defaultEditorialPreferences,
   EDITORIAL_PREFERENCES_UPDATED_EVENT,
@@ -17,7 +17,7 @@ import {
   fetchUserMediaPosts
 } from "../lib/feed";
 import { listProfiles, type Profile } from "../lib/auth";
-import { fetchFollowingUserIds } from "../lib/follows";
+import { fetchFollowingUserIds, followUser } from "../lib/follows";
 import {
   getNowPlayingTitles,
   getSimilarTitles,
@@ -34,6 +34,7 @@ import type {
   FeedEntry
 } from "../types";
 import { EditorialOnboardingModal } from "./EditorialOnboardingModal";
+import { LoadingState } from "./LoadingState";
 
 function findMediaFromPost(body: string) {
   const lowered = body.toLowerCase();
@@ -133,20 +134,6 @@ function truncateOverview(text: string, maxLength = 220) {
   return `${safeSlice.trim()}...`;
 }
 
-function formatSidebarRelease(dateString?: string | null) {
-  if (!dateString) {
-    return "Muy pronto";
-  }
-
-  const [year, month, day] = dateString.split("-");
-  if (!year || !month || !day) {
-    return dateString;
-  }
-
-  const months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-  return `${Number(day)} ${months[Number(month) - 1] ?? month}`;
-}
-
 function extractMediaSearchTitle(entry: FeedEntry) {
   const parsedRating = entry.type === "rating" ? parseRatingPost(entry.body) : null;
   if (parsedRating?.title) {
@@ -176,8 +163,10 @@ export function FeedPanel({
   onHighlightHandled
 }: FeedPanelProps) {
   const { openMediaDetails } = useMediaDetails();
-  const [entries, setEntries] = useState<FeedEntry[]>(demoFeed);
+  const [entries, setEntries] = useState<FeedEntry[]>([]);
   const [followingEntries, setFollowingEntries] = useState<FeedEntry[]>([]);
+  const [followingUserIds, setFollowingUserIds] = useState<string[]>([]);
+  const [followingInFlight, setFollowingInFlight] = useState<string | null>(null);
   const [mediaMap, setMediaMap] = useState<Record<string, DiscoveryItem>>({});
   const [commentsMap, setCommentsMap] = useState<Record<string, FeedComment[]>>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
@@ -198,6 +187,7 @@ export function FeedPanel({
   const [editorialVisibleCount, setEditorialVisibleCount] = useState(4);
   const [shouldShowEditorialOnboarding, setShouldShowEditorialOnboarding] = useState(false);
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
+  const [isFeedLoading, setIsFeedLoading] = useState(true);
   const feedShellRef = useRef<HTMLElement | null>(null);
   const feedScrollContainerRef = useRef<HTMLElement | null>(null);
   const postRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -347,19 +337,22 @@ export function FeedPanel({
 
   useEffect(() => {
     async function loadFeed() {
-      const [feedResult, followingResult, profilesResult] = await Promise.allSettled([
-        fetchFeedPosts(),
-        fetchFollowingUserIds(userId),
-        listProfiles()
-      ]);
+      setIsFeedLoading(true);
+      try {
+        const [feedResult, followingResult, profilesResult] = await Promise.allSettled([
+          fetchFeedPosts(),
+          fetchFollowingUserIds(userId),
+          listProfiles()
+        ]);
 
         if (feedResult.status === "fulfilled" && feedResult.value.length) {
           setEntries(feedResult.value);
-        } else if (feedResult.status === "rejected") {
-          setEntries(demoFeed);
+        } else {
+          setEntries([]);
         }
 
         if (followingResult.status === "fulfilled") {
+          setFollowingUserIds(followingResult.value);
           if (followingResult.value.length) {
             try {
               const followingFeed = await fetchFeedPostsByUsers(followingResult.value);
@@ -371,6 +364,7 @@ export function FeedPanel({
             setFollowingEntries([]);
           }
         } else {
+          setFollowingUserIds([]);
           setFollowingEntries([]);
         }
 
@@ -379,6 +373,9 @@ export function FeedPanel({
         } else {
           setProfiles([]);
         }
+      } finally {
+        setIsFeedLoading(false);
+      }
     }
 
     void loadFeed();
@@ -491,8 +488,31 @@ export function FeedPanel({
   }, []);
 
   const discoverProfiles = useMemo(() => {
-    return profiles.filter((entry) => entry.id !== userId).slice(0, 3);
-  }, [profiles, userId]);
+    const candidates = profiles.filter((entry) => entry.id !== userId);
+    const notFollowing = candidates.filter((entry) => !followingUserIds.includes(entry.id));
+    const alreadyFollowing = candidates.filter((entry) => followingUserIds.includes(entry.id));
+
+    return [...notFollowing, ...alreadyFollowing].slice(0, 5);
+  }, [followingUserIds, profiles, userId]);
+
+  async function handleFollowSuggestedUser(targetUserId: string) {
+    if (followingInFlight || followingUserIds.includes(targetUserId)) {
+      return;
+    }
+
+    const nextFollowingIds = [...followingUserIds, targetUserId];
+    setFollowingInFlight(targetUserId);
+    setFollowingUserIds(nextFollowingIds);
+
+    try {
+      await followUser(userId, targetUserId);
+      setFollowingEntries(await fetchFeedPostsByUsers(nextFollowingIds));
+    } catch {
+      setFollowingUserIds((current) => current.filter((id) => id !== targetUserId));
+    } finally {
+      setFollowingInFlight(null);
+    }
+  }
 
   const visibleEntries = useMemo(() => {
     if (activeFeedMode === "following") {
@@ -671,37 +691,6 @@ export function FeedPanel({
           })),
     [activeFeedMode, discoverTimeline, postsWithMedia]
   );
-
-  const conversationItems = useMemo(() => {
-    const counts = new Map<
-      string,
-      {
-        media: DiscoveryItem;
-        posts: number;
-      }
-    >();
-
-    postsWithMedia.forEach(({ media }) => {
-      if (!media) {
-        return;
-      }
-
-      const key = `${media.mediaType}-${media.id}`;
-      const current = counts.get(key);
-
-      if (current) {
-        current.posts += 1;
-        return;
-      }
-
-      counts.set(key, {
-        media,
-        posts: 1
-      });
-    });
-
-    return [...counts.values()].sort((a, b) => b.posts - a.posts).slice(0, 3);
-  }, [postsWithMedia]);
 
   useEffect(() => {
     if (!recentSignalPost?.tmdbId || !recentSignalPost.mediaType) {
@@ -1035,7 +1024,7 @@ export function FeedPanel({
             className={`feed-header__tab ${activeFeedMode === "discover" ? "is-active" : ""}`}
             onClick={() => setActiveFeedMode("discover")}
           >
-            Descubri
+            Explorar
           </button>
           <button
             type="button"
@@ -1048,7 +1037,11 @@ export function FeedPanel({
 
         <section className="composer-card">
           <div className="composer-card__avatar">
-            {(profile?.display_name ?? "Cinerian").slice(0, 1).toUpperCase()}
+            {profile?.avatar_url ? (
+              <img src={profile.avatar_url} alt="" className="composer-card__avatar-image" />
+            ) : (
+              (profile?.display_name ?? "Cinerian").slice(0, 1).toUpperCase()
+            )}
           </div>
           <div className="composer-card__body">
             <div className="composer-card__row">
@@ -1087,7 +1080,9 @@ export function FeedPanel({
         ) : null}
 
         <div className="timeline-list">
-          {visibleTimeline.length ? (
+          {isFeedLoading ? (
+            <LoadingState label="Cargando publicaciones..." />
+          ) : visibleTimeline.length ? (
             visibleTimeline.map((item) => {
               if (item.type === "editorial") {
                 return (
@@ -1224,6 +1219,10 @@ export function FeedPanel({
               const parsedRating = entry.type === "rating" ? parseRatingPost(entry.body) : null;
               const comments = commentsMap[entry.id] ?? [];
               const isCommentsOpen = Boolean(expandedComments[entry.id]);
+              const authorAvatarUrl =
+                (entry.userId === userId
+                  ? profile?.avatar_url
+                  : profiles.find((candidate) => candidate.id === entry.userId)?.avatar_url) ?? null;
 
               return (
                 <article
@@ -1239,7 +1238,11 @@ export function FeedPanel({
                     onClick={() => openAuthorProfile(entry.userId, entry.username)}
                     aria-label={`Ver perfil de ${entry.author}`}
                   >
-                    {entry.author.slice(0, 1)}
+                    {authorAvatarUrl ? (
+                      <img src={authorAvatarUrl} alt="" className="timeline-card__avatar-image" />
+                    ) : (
+                      entry.author.slice(0, 1)
+                    )}
                   </button>
 
                   <div className="timeline-card__content">
@@ -1390,94 +1393,44 @@ export function FeedPanel({
         </div>
 
         <aside className="feed-sidebar">
-        {canAccessPremieres ? (
-        <section className="sidebar-card">
-          <p className="section-eyebrow">Estrena esta semana</p>
-          {editorialRails.find((rail) => rail.id === "upcoming")?.items?.length ? (
-            <div className="sidebar-premieres">
-              {(editorialRails.find((rail) => rail.id === "upcoming")?.items ?? []).map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className="sidebar-premiere"
-                  onClick={() => openMediaDetails(item)}
-                >
-                  <div className="detail-poster detail-poster--compact">
-                    <img
-                      src={item.posterUrl}
-                      alt={item.title}
-                      className="sidebar-media__poster sidebar-media__poster--interactive"
-                    />
-                    <span className="detail-poster__hint" aria-hidden="true">
-                      Ver detalles
-                    </span>
-                  </div>
-                  <div className="sidebar-premiere__copy">
-                    <strong>{item.title}</strong>
-                    <span>
-                      {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {formatSidebarRelease(item.releaseDate)}
-                    </span>
-                    {item.providers.length ? <span>{item.providers.slice(0, 2).join(" · ")}</span> : null}
-                  </div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="sidebar-empty">No encontre estrenos fuertes para esta semana en cines o plataformas.</p>
-          )}
-        </section>
-        ) : null}
-
-        <section className="sidebar-card">
-          <p className="section-eyebrow">En conversacion</p>
-          <div className="sidebar-list">
-            {conversationItems.length ? (
-              conversationItems.map(({ media, posts }) => (
-                <article className="sidebar-media" key={media.id}>
-                  <div className="detail-poster detail-poster--compact" onClick={() => openMediaDetails(media)}>
-                    <img
-                      src={media.posterUrl}
-                      alt={media.title}
-                      className="sidebar-media__poster sidebar-media__poster--interactive"
-                    />
-                    <span className="detail-poster__hint" aria-hidden="true">
-                      Ver detalles
-                    </span>
-                  </div>
-                  <div>
-                    <strong className="media-linklike" onClick={() => openMediaDetails(media)}>{media.title}</strong>
-                    <p>
-                      {posts} {posts === 1 ? "posteo" : "posteos"} en el feed
-                    </p>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <p className="sidebar-empty">Todavia no hay suficiente conversacion para armar tendencias.</p>
-            )}
-          </div>
-        </section>
-
         <section className="sidebar-card">
           <strong>Explorar Cinerianos</strong>
 
           <div className="sidebar-users">
             {discoverProfiles.length ? (
               discoverProfiles.map((entry) => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  className="sidebar-user"
-                  onClick={() => onOpenUserProfile({ userId: entry.id, username: entry.username })}
-                >
-                  <span className="sidebar-user__avatar" aria-hidden="true">
-                    {entry.display_name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="sidebar-user__copy">
-                    <strong>{entry.display_name}</strong>
-                    <span>@{entry.username}</span>
-                  </span>
-                </button>
+                <article className="sidebar-user" key={entry.id}>
+                  <button
+                    type="button"
+                    className="sidebar-user__profile"
+                    onClick={() => onOpenUserProfile({ userId: entry.id, username: entry.username })}
+                  >
+                    <span className="sidebar-user__avatar" aria-hidden="true">
+                      {entry.avatar_url ? (
+                        <img src={entry.avatar_url} alt="" className="sidebar-user__avatar-image" />
+                      ) : (
+                        entry.display_name.slice(0, 1).toUpperCase()
+                      )}
+                    </span>
+                    <span className="sidebar-user__copy">
+                      <strong>{entry.display_name}</strong>
+                      <span>@{entry.username}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`sidebar-user__follow ${followingUserIds.includes(entry.id) ? "is-following" : ""}`}
+                    onClick={() => void handleFollowSuggestedUser(entry.id)}
+                    disabled={followingInFlight === entry.id || followingUserIds.includes(entry.id)}
+                    aria-label={
+                      followingUserIds.includes(entry.id)
+                        ? `Ya seguís a ${entry.display_name}`
+                        : `Seguir a ${entry.display_name}`
+                    }
+                  >
+                    {followingInFlight === entry.id ? "…" : followingUserIds.includes(entry.id) ? "✓" : "+"}
+                  </button>
+                </article>
               ))
             ) : (
               <p className="sidebar-empty">Todavia no hay suficientes cinerianos para mostrar aca.</p>
