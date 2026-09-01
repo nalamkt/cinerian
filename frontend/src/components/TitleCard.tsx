@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { getWatchProviders } from "../lib/tmdb";
+import type { RecommendationReaction } from "../lib/reactions";
 import type { DiscoveryItem } from "../types";
 
 type TitleCardProps = {
   item: DiscoveryItem;
+  reaction?: RecommendationReaction;
   onOpenDetails: () => void;
   onRemove?: () => void;
   isRemoving?: boolean;
@@ -24,7 +26,7 @@ function getProviderStyle(name: string) {
   return PROVIDER_STYLES[name] ?? { label: name.slice(0, 2).toUpperCase(), color: "#3a3f4a" };
 }
 
-export function TitleCard({ item, onOpenDetails, onRemove, isRemoving = false }: TitleCardProps) {
+export function TitleCard({ item, reaction, onOpenDetails, onRemove, isRemoving = false }: TitleCardProps) {
   const [providers, setProviders] = useState<string[] | null>(null);
 
   useEffect(() => {
@@ -43,10 +45,11 @@ export function TitleCard({ item, onOpenDetails, onRemove, isRemoving = false }:
 
   const primaryProvider = providers?.[0] ?? null;
   const providerStyle = primaryProvider ? getProviderStyle(primaryProvider) : null;
+  const thumbCount = reaction === "superliked" ? 2 : reaction === "liked" ? 1 : 0;
 
   return (
     <article className="title-card">
-      <div className="title-card__poster-wrap">
+      <div className={`title-card__poster-wrap ${thumbCount ? "title-card__poster-wrap--rated" : ""}`}>
         <img
           src={item.posterUrl}
           alt={item.title}
@@ -63,6 +66,12 @@ export function TitleCard({ item, onOpenDetails, onRemove, isRemoving = false }:
           </span>
         ) : null}
 
+      </div>
+
+      <div className="title-card__heading">
+        <strong className="title-card__title media-linklike" onClick={onOpenDetails}>
+          {item.title}
+        </strong>
         {onRemove ? (
           <button
             type="button"
@@ -78,13 +87,23 @@ export function TitleCard({ item, onOpenDetails, onRemove, isRemoving = false }:
           </button>
         ) : null}
       </div>
-
-      <strong className="title-card__title media-linklike" onClick={onOpenDetails}>
-        {item.title}
-      </strong>
       <span className="title-card__meta">
         {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {item.year}
       </span>
+
+      {thumbCount ? (
+        <span
+          className="title-card__reaction"
+          aria-label={reaction === "superliked" ? "Me encantó" : "Me gustó"}
+          title={reaction === "superliked" ? "Me encantó" : "Me gustó"}
+        >
+          {Array.from({ length: thumbCount }, (_, index) => (
+            <svg key={index} viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 10v10M7 10l3.5-6a2.5 2.5 0 0 1 2.4 3.2L12 10h6a2 2 0 0 1 2 2.4l-1.2 6a2 2 0 0 1-2 1.6H7" />
+            </svg>
+          ))}
+        </span>
+      ) : null}
 
       {providerStyle ? (
         <button type="button" className="title-card__watch" onClick={onOpenDetails}>

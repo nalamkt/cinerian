@@ -300,7 +300,7 @@ export function ProfilePanel({
               <p className="profile-handle">@{username}</p>
             </div>
 
-            <div className="profile-hero__action">
+            <div className={`profile-hero__action ${isOwnProfile ? "profile-hero__action--own" : ""}`}>
               {headerAction}
               {isOwnProfile && onProfileUpdated ? (
                 <button

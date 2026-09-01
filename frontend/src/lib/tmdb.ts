@@ -472,7 +472,7 @@ function normalizeCredit(item: Record<string, unknown>): TalentCredit | null {
     (typeof item.name === "string" && item.name) ||
     null;
 
-  if (!title || !posterPath) {
+  if (!title || !Number.isFinite(Number(item.id))) {
     return null;
   }
 
@@ -488,12 +488,27 @@ function normalizeCredit(item: Record<string, unknown>): TalentCredit | null {
     title,
     year: releaseDate ? releaseDate.slice(0, 4) : "Sin fecha",
     mediaType: normalizeMediaType(String(item.media_type ?? "movie")),
-    posterUrl: `${imageBase}${posterPath}`,
+    // Keep the complete filmography visible even when TMDB has no poster for a credit.
+    posterUrl: posterPath ? `${imageBase}${posterPath}` : "/images/base.png",
     roleLabel:
       (typeof item.character === "string" && item.character) ||
       (typeof item.job === "string" && item.job) ||
       "Participacion"
   };
+}
+
+function uniqueTalentCredits(credits: TalentCredit[]): TalentCredit[] {
+  const seen = new Set<string>();
+
+  return credits.filter((credit) => {
+    const key = `${credit.mediaType}-${credit.id}`;
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function searchTitles(query: string): Promise<DiscoveryItem[]> {
@@ -1139,16 +1154,18 @@ export async function getTalentDetails(personId: number): Promise<TalentDetails 
     crew?: Record<string, unknown>[];
   } | undefined) ?? { cast: [], crew: [] };
 
-  const actingCredits = (combinedCredits.cast ?? [])
-    .map((item) => normalizeCredit(item))
-    .filter((item): item is TalentCredit => Boolean(item))
-    .slice(0, 12);
+  const actingCredits = uniqueTalentCredits(
+    (combinedCredits.cast ?? [])
+      .map((item) => normalizeCredit(item))
+      .filter((item): item is TalentCredit => Boolean(item))
+  );
 
-  const directingCredits = (combinedCredits.crew ?? [])
-    .filter((item) => item.job === "Director" || item.department === "Directing")
-    .map((item) => normalizeCredit(item))
-    .filter((item): item is TalentCredit => Boolean(item))
-    .slice(0, 12);
+  const directingCredits = uniqueTalentCredits(
+    (combinedCredits.crew ?? [])
+      .filter((item) => item.job === "Director" || item.department === "Directing")
+      .map((item) => normalizeCredit(item))
+      .filter((item): item is TalentCredit => Boolean(item))
+  );
 
   return {
     id: Number(payload.id),

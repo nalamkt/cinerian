@@ -698,7 +698,19 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
                 <span aria-hidden="true">{message.readAt ? "◐" : "◉"}</span>
                 <span>{message.readAt ? "No leído" : "Leído"}</span>
               </button>
-            ) : null}
+            ) : (
+              <button
+                type="button"
+                className="inbox-thread-swipe__action inbox-thread-swipe__action--delete-right"
+                onClick={() => {
+                  closeSwipeActions();
+                  void handleDelete(message);
+                }}
+              >
+                <span aria-hidden="true">✕</span>
+                <span>Eliminar</span>
+              </button>
+            )}
           </>
         ) : null}
         <button

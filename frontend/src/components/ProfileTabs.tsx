@@ -316,6 +316,11 @@ export function ProfileTabs({
       .filter((item) => typeFilter === "all" || item.mediaType === typeFilter);
   }, [activeTab, mutualLikedItems, reactions, titles, typeFilter]);
 
+  const reactionByTitle = useMemo(
+    () => new Map(reactions.map((entry) => [`${entry.mediaType}-${entry.tmdbId}`, entry.reaction])),
+    [reactions]
+  );
+
   const tabCounts: Partial<Record<TabId, number>> = {
     watched: reactions.filter(
       (entry) => isRatedReaction(entry.reaction)
@@ -791,11 +796,16 @@ export function ProfileTabs({
           </div>
 
           {tabItems.length ? (
-            <div className="profile-grid">
+            <div
+              className={`profile-grid ${activeTab === "watched" || activeTab === "watchlist" ? "profile-grid--library" : ""}`}
+            >
               {tabItems.map((item) => (
                 <TitleCard
                   key={`${item.mediaType}-${item.id}`}
                   item={item}
+                  reaction={
+                    activeTab === "watched" ? reactionByTitle.get(`${item.mediaType}-${item.id}`) : undefined
+                  }
                   onOpenDetails={() => openMediaDetails(item)}
                   onRemove={readOnly || activeTab === "mutual-likes" ? undefined : () => void handleRemove(item)}
                   isRemoving={isSyncing}

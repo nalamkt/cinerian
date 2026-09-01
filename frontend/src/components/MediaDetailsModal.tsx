@@ -736,7 +736,12 @@ function MediaDetailsModal({
             }}
           />
         ) : null}
-        <TalentDetailsModal item={activeTalent} onClose={() => setActiveTalent(null)} />
+        <TalentDetailsModal
+          item={activeTalent}
+          onClose={() => setActiveTalent(null)}
+          closeOnMediaOpen
+          aboveMedia
+        />
       </div>
     </div>
   );
@@ -808,7 +813,12 @@ export function SharedMediaLanding({ item }: { item: MediaReference }) {
           />
         </div>
       </div>
-      <TalentDetailsModal item={activeTalent} onClose={() => setActiveTalent(null)} />
+      <TalentDetailsModal
+        item={activeTalent}
+        onClose={() => setActiveTalent(null)}
+        closeOnMediaOpen
+        aboveMedia
+      />
     </>
   );
 }
