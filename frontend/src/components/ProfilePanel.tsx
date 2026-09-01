@@ -10,6 +10,7 @@ import { ProfileTabs } from "./ProfileTabs";
 
 type ProfilePanelProps = {
   userId: string;
+  viewerUserId?: string;
   profile: Profile | null;
   isOwnProfile?: boolean;
   followerCountOverride?: number | null;
@@ -23,6 +24,7 @@ type ProfilePanelProps = {
 
 export function ProfilePanel({
   userId,
+  viewerUserId,
   profile,
   isOwnProfile = true,
   followerCountOverride = null,
@@ -476,6 +478,7 @@ export function ProfilePanel({
 
       <ProfileTabs
         userId={userId}
+        viewerUserId={viewerUserId}
         readOnly={readOnly}
         isOwnProfile={isOwnProfile}
         profile={profile}

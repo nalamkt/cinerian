@@ -182,6 +182,7 @@ export function UserProfilePage({
       ) : (
         <ProfilePanel
           userId={profile.id}
+          viewerUserId={currentUserId || undefined}
           profile={profile}
           isOwnProfile={isOwnProfile}
           followerCountOverride={followers}

@@ -492,6 +492,7 @@ export default function App() {
         return (
           <ProfilePanel
             userId={session!.user.id}
+            viewerUserId={session!.user.id}
             profile={localProfile}
             isOwnProfile
             headerAction={ownProfileAction}

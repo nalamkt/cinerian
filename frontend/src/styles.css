@@ -3249,6 +3249,21 @@ textarea {
   gap: 20px;
 }
 
+.profile-mutual-likes__intro {
+  display: grid;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.profile-mutual-likes__intro h3,
+.profile-mutual-likes__intro p {
+  margin: 0;
+}
+
+.profile-mutual-likes__intro > p:last-child {
+  color: var(--muted);
+}
+
 .profile-badge {
   display: inline-flex;
   align-items: center;

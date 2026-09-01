@@ -23,6 +23,7 @@ import type { DiscoveryItem, FeedEntry, SeriesAiringInfo } from "../types";
 
 type ProfileTabsProps = {
   userId: string;
+  viewerUserId?: string;
   readOnly?: boolean;
   isOwnProfile?: boolean;
   profile?: Profile | null;
@@ -41,7 +42,7 @@ type ProfileTabsProps = {
   };
 };
 
-type TabId = "watched" | "watchlist" | "watching" | "posts" | "insights";
+type TabId = "watched" | "watchlist" | "mutual-likes" | "watching" | "posts" | "insights";
 
 type WatchingItem = {
   entry: CurrentWatchingEntry;
@@ -59,6 +60,7 @@ const TAB_REACTIONS: Partial<Record<TabId, RecommendationReaction[]>> = {
 const tabLabels: Record<TabId, string> = {
   watched: "Vistas",
   watchlist: "Watchlist",
+  "mutual-likes": "En común",
   watching: "Viendo",
   posts: "Posts",
   insights: "Insights"
@@ -66,6 +68,7 @@ const tabLabels: Record<TabId, string> = {
 
 export function ProfileTabs({
   userId,
+  viewerUserId,
   readOnly = false,
   isOwnProfile = true,
   profile = null,
@@ -82,6 +85,7 @@ export function ProfileTabs({
   const { openMediaDetails } = useMediaDetails();
   const [activeTab, setActiveTab] = useState<TabId>("watched");
   const [reactions, setReactions] = useState<StoredReaction[]>([]);
+  const [viewerReactions, setViewerReactions] = useState<StoredReaction[]>([]);
   const [titles, setTitles] = useState<Record<string, DiscoveryItem>>({});
   const [posts, setPosts] = useState<FeedEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -185,15 +189,17 @@ export function ProfileTabs({
       setIsLoading(true);
 
       try {
-        const [results, ownPosts] = await Promise.all([
+        const [results, ownPosts, viewerResults] = await Promise.all([
           fetchStoredReactions(userId),
-          fetchUserTextPosts(userId)
+          fetchUserTextPosts(userId),
+          viewerUserId && viewerUserId !== userId ? fetchStoredReactions(viewerUserId) : Promise.resolve([])
         ]);
         if (!isMounted) {
           return;
         }
 
         setReactions(results);
+        setViewerReactions(viewerResults);
         setPosts(ownPosts);
 
         const detailed = await Promise.all(
@@ -234,7 +240,7 @@ export function ProfileTabs({
 
     function handleReactionsUpdated(event: Event) {
       const detail = (event as CustomEvent<{ userId?: string }>).detail;
-      if (detail?.userId && detail.userId !== userId) {
+      if (detail?.userId && detail.userId !== userId && detail.userId !== viewerUserId) {
         return;
       }
 
@@ -248,13 +254,17 @@ export function ProfileTabs({
       isMounted = false;
       window.removeEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
     };
-  }, [userId]);
+  }, [userId, viewerUserId]);
 
   const visibleTabs = useMemo(() => {
     const tabs: TabId[] = [];
 
     if (visibilitySettings?.showWatchlist !== false) {
       tabs.push("watched", "watchlist");
+
+      if (!isOwnProfile && viewerUserId) {
+        tabs.push("mutual-likes");
+      }
     }
 
     if (isOwnProfile) {
@@ -268,7 +278,7 @@ export function ProfileTabs({
     }
 
     return tabs;
-  }, [isOwnProfile, visibilitySettings?.showActivity, visibilitySettings?.showWatchlist]);
+  }, [isOwnProfile, viewerUserId, visibilitySettings?.showActivity, visibilitySettings?.showWatchlist]);
 
   useEffect(() => {
     if (!visibleTabs.includes(activeTab)) {
@@ -278,20 +288,40 @@ export function ProfileTabs({
 
   const [typeFilter, setTypeFilter] = useState<"all" | "movie" | "tv">("all");
 
+  const mutualLikedItems = useMemo(() => {
+    const viewerLikedKeys = new Set(
+      viewerReactions
+        .filter((entry) => entry.reaction === "liked" || entry.reaction === "superliked")
+        .map((entry) => `${entry.mediaType}-${entry.tmdbId}`)
+    );
+
+    return reactions
+      .filter((entry) => entry.reaction === "liked" || entry.reaction === "superliked")
+      .filter((entry) => viewerLikedKeys.has(`${entry.mediaType}-${entry.tmdbId}`))
+      .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
+      .filter((item): item is DiscoveryItem => Boolean(item))
+      .filter((item) => typeFilter === "all" || item.mediaType === typeFilter);
+  }, [reactions, titles, typeFilter, viewerReactions]);
+
   const tabItems = useMemo(() => {
+    if (activeTab === "mutual-likes") {
+      return mutualLikedItems;
+    }
+
     const tabReactions = TAB_REACTIONS[activeTab] ?? [];
     return reactions
       .filter((entry) => tabReactions.includes(entry.reaction))
       .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
       .filter((item): item is DiscoveryItem => Boolean(item))
       .filter((item) => typeFilter === "all" || item.mediaType === typeFilter);
-  }, [activeTab, reactions, titles, typeFilter]);
+  }, [activeTab, mutualLikedItems, reactions, titles, typeFilter]);
 
   const tabCounts: Partial<Record<TabId, number>> = {
     watched: reactions.filter(
       (entry) => isRatedReaction(entry.reaction)
     ).length,
     watchlist: reactions.filter((entry) => entry.reaction === "watchlist").length,
+    "mutual-likes": mutualLikedItems.length,
     watching: watchingEntries.length,
     posts: posts.length
   };
@@ -728,13 +758,21 @@ export function ProfileTabs({
         )
       ) : (
         <>
+          {activeTab === "mutual-likes" ? (
+            <div className="profile-mutual-likes__intro">
+              <p className="section-eyebrow">Punto en común</p>
+              <h3>En común</h3>
+              <p>Películas y series que ambos vieron y marcaron como favoritas.</p>
+            </div>
+          ) : null}
+
           <div className="profile-type-filter">
             <button
               type="button"
               className={typeFilter === "all" ? "is-active" : ""}
               onClick={() => setTypeFilter("all")}
             >
-              Todas
+              Todo
             </button>
             <button
               type="button"
@@ -759,14 +797,16 @@ export function ProfileTabs({
                   key={`${item.mediaType}-${item.id}`}
                   item={item}
                   onOpenDetails={() => openMediaDetails(item)}
-                  onRemove={readOnly ? undefined : () => void handleRemove(item)}
+                  onRemove={readOnly || activeTab === "mutual-likes" ? undefined : () => void handleRemove(item)}
                   isRemoving={isSyncing}
                 />
               ))}
             </div>
           ) : (
             <div className="profile-grid__empty">
-              {activeTab === "watched"
+              {activeTab === "mutual-likes"
+                ? "Todavía no tienen títulos que les hayan gustado a los dos."
+                : activeTab === "watched"
                 ? isOwnProfile
                   ? "Todavia no marcaste titulos como vistos."
                   : "Esta persona todavia no marco titulos como vistos."
