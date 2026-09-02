@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { demoDiscovery } from "../data/demoData";
@@ -10,9 +10,24 @@ import {
   type RatedReaction,
   type StoredReaction
 } from "../lib/reactions";
+import { DiscoverFiltersModal } from "./DiscoverFiltersModal";
+import {
+  countActiveFilters,
+  CONTENT_TYPE_LABEL,
+  fetchDiscoverFilters,
+  saveDiscoverFilters
+} from "../lib/discoverFilters";
 import { fetchSocialRecommendations, type RankedRecommendation, type Watcher } from "../lib/recommendations";
 import { buildWatchedPostBody } from "../lib/reviews";
-import { getTitleDetails, getWatchOptionsFor, type WatchOptions } from "../lib/tmdb";
+import {
+  getProviderCatalog,
+  getTitleDetails,
+  getWatchOptionsFor,
+  NO_FILTERS,
+  type DiscoverFilters,
+  type ProviderOption,
+  type WatchOptions
+} from "../lib/tmdb";
 import type { DiscoveryItem, MediaDetails } from "../types";
 
 type RecommendationPanelProps = {
@@ -73,6 +88,11 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   // Arranca vacio a proposito: demoDiscovery es el respaldo para cuando faltan
   // las claves de TMDB, no un estado inicial. Usarlo como tal hacia que se
   // pintara Interstellar por un instante antes de llegar las recomendaciones.
+  const [filters, setFilters] = useState<DiscoverFilters>(NO_FILTERS);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isSavingFilters, setIsSavingFilters] = useState(false);
+  const [areFiltersReady, setAreFiltersReady] = useState(false);
+  const [providerCatalog, setProviderCatalog] = useState<ProviderOption[]>([]);
   const [entries, setEntries] = useState<RankedRecommendation[]>([]);
   const [isLoadingDeck, setIsLoadingDeck] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -84,6 +104,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const [spotlightDetails, setSpotlightDetails] = useState<MediaDetails | null>(null);
   const [watchOptions, setWatchOptions] = useState<WatchOptions>(EMPTY_WATCH);
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
 
   const reactedKeys = useMemo(
     () => new Set(storedReactions.map((entry) => `${entry.mediaType}-${entry.tmdbId}`)),
@@ -109,11 +130,61 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     [current]
   );
 
+  // Los filtros se cargan primero: armar el mazo sin ellos mostraria una tanda
+  // que no los respeta y habria que descartarla al instante.
   useEffect(() => {
     let isMounted = true;
-    setIsLoadingDeck(true);
+    setAreFiltersReady(false);
 
-    void fetchSocialRecommendations(userId, 1)
+    void fetchDiscoverFilters(userId)
+      .then((saved) => {
+        if (isMounted) {
+          setFilters(saved);
+        }
+      })
+      .catch(() => {
+        // Sin filtros guardados se muestra todo, que es el default.
+      })
+      .finally(() => {
+        if (isMounted) {
+          setAreFiltersReady(true);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userId]);
+
+  // El catalogo es solo para dibujar el logo de los chips de la barra.
+  useEffect(() => {
+    if (!filters.providerIds.length || providerCatalog.length) {
+      return;
+    }
+
+    let isMounted = true;
+    void getProviderCatalog().then((results) => {
+      if (isMounted) {
+        setProviderCatalog(results);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [filters.providerIds.length, providerCatalog.length]);
+
+  useEffect(() => {
+    if (!areFiltersReady) {
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingDeck(true);
+    setEntries([]);
+    setCurrentIndex(0);
+
+    void fetchSocialRecommendations(userId, 1, 12, filters)
       .then((results) => {
         if (!isMounted) {
           return;
@@ -136,7 +207,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     return () => {
       isMounted = false;
     };
-  }, [userId]);
+  }, [userId, filters, areFiltersReady]);
 
   useEffect(() => {
     // El guard va por isLoadingDeck y no por entries.length: si la primera
@@ -146,7 +217,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     }
 
     const nextPage = page + 1;
-    void fetchSocialRecommendations(userId, nextPage)
+    void fetchSocialRecommendations(userId, nextPage, 12, filters)
       .then((results) => {
         // La pagina avanza siempre, incluso si esta vino vacia: si no, el mazo
         // queda trabado pidiendo eternamente la misma tanda ya reaccionada.
@@ -171,7 +242,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       .catch(() => {
         // Si falla una pagina, seguimos con el mazo que ya tenemos.
       });
-  }, [availableEntries.length, isLoadingDeck, page, userId]);
+  }, [availableEntries.length, isLoadingDeck, page, userId, filters]);
 
   useEffect(() => {
     async function loadStoredReactions() {
@@ -214,6 +285,8 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
 
   useEffect(() => {
     setIsOverviewOpen(false);
+    // Sin esto la tarjeta siguiente arranca a mitad del texto de la anterior.
+    bodyRef.current?.scrollTo({ top: 0 });
 
     if (!spotlight) {
       setSpotlightDetails(null);
@@ -290,6 +363,19 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     goNext();
   }
 
+  async function handleApplyFilters(next: DiscoverFilters) {
+    try {
+      setIsSavingFilters(true);
+      await saveDiscoverFilters(userId, next);
+      setFilters(next);
+      setIsFiltersOpen(false);
+    } catch {
+      setSyncMessage("No pude guardar los filtros.");
+    } finally {
+      setIsSavingFilters(false);
+    }
+  }
+
   function handleSave() {
     void registerReaction("watchlist");
   }
@@ -342,8 +428,51 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     spotlight?.score ? `TMDB ${spotlight.score}` : null
   ].filter((fact): fact is string => Boolean(fact));
 
+  const activeFilterCount = countActiveFilters(filters);
+  const selectedProviders = providerCatalog.filter((provider) =>
+    filters.providerIds.includes(provider.id)
+  );
+
   return (
     <section className="discover">
+      <div className="discover-filterbar">
+        <div className="discover-filterbar__chips">
+          {activeFilterCount === 0 ? (
+            <span className="discover-filterbar__empty">Sin filtros</span>
+          ) : (
+            <>
+              {filters.contentType === "all" ? null : (
+                <span className="discover-chip discover-chip--plain">
+                  {CONTENT_TYPE_LABEL[filters.contentType]}
+                </span>
+              )}
+              {selectedProviders.map((provider) => (
+                <span className="discover-chip" key={provider.id}>
+                  {provider.logoUrl ? (
+                    <img src={provider.logoUrl} alt="" className="discover-chip__logo" />
+                  ) : null}
+                  {provider.name}
+                </span>
+              ))}
+            </>
+          )}
+        </div>
+
+        <button
+          type="button"
+          className="discover-filterbar__button"
+          onClick={() => setIsFiltersOpen(true)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16M7 12h10M10 18h4" />
+          </svg>
+          Filtros
+          {activeFilterCount ? (
+            <span className="discover-filterbar__count">{activeFilterCount}</span>
+          ) : null}
+        </button>
+      </div>
+
       {spotlight && current ? (
         <article className="discover-card panel">
           <div
@@ -364,7 +493,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
             </span>
           </div>
 
-          <div className="discover-card__body">
+          <div className="discover-card__body" ref={bodyRef}>
             <p className={`discover-rank ${current.rank === null ? "is-filler" : ""}`}>
               {current.rank === null ? "Popular ahora" : `${current.rank}° en tu ranking`}
               <span>
@@ -438,8 +567,13 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
               </div>
             ) : null}
 
-            <p className="discover-overview">
-              {isOverviewOpen ? spotlight.overview : overviewPreview.text}{" "}
+            {/* Plegado, el texto se corta por CANTIDAD DE LINEAS y no por
+                caracteres: asi ocupa un alto conocido y el "Ver mas" siempre
+                entra sin scrollear. El scroll queda solo para el expandido. */}
+            <div className="discover-overview">
+              <p className={isOverviewOpen ? undefined : "discover-overview__text--clamped"}>
+                {spotlight.overview}
+              </p>
               {overviewPreview.truncated ? (
                 <button
                   type="button"
@@ -450,7 +584,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                   {isOverviewOpen ? "Ver menos" : "Ver más"}
                 </button>
               ) : null}
-            </p>
+            </div>
           </div>
 
           <div className="discover-actions">
@@ -510,6 +644,14 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       )}
 
       {syncMessage ? <div className="inline-status">{syncMessage}</div> : null}
+
+      <DiscoverFiltersModal
+        isOpen={isFiltersOpen}
+        filters={filters}
+        isSaving={isSavingFilters}
+        onClose={() => setIsFiltersOpen(false)}
+        onApply={(next) => void handleApplyFilters(next)}
+      />
 
       <WatchReviewModal
         item={reviewItem}

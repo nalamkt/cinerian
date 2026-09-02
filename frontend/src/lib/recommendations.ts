@@ -5,7 +5,13 @@ import {
   fetchStoredReactions,
   type RatedReaction
 } from "./reactions";
-import { getRecommendationTitlesByPage, getTitleById } from "./tmdb";
+import {
+  getRecommendationTitlesByPage,
+  getTitleAvailability,
+  getTitleById,
+  NO_FILTERS,
+  type DiscoverFilters
+} from "./tmdb";
 import type { DiscoveryItem, MediaType } from "../types";
 
 const REACTION_WEIGHT: Record<RatedReaction, number> = {
@@ -54,6 +60,38 @@ export type RankedRecommendation = {
   /** Quienes de tu circulo lo vieron. Vacio en los titulos de relleno. */
   watchers: Watcher[];
 };
+
+/**
+ * Decide si un candidato del ranking social pasa los filtros.
+ *
+ * El relleno de TMDB no necesita esto: su buscador ya filtra del lado del
+ * servidor. Pero un titulo que vio tu amigo llega sin saber donde esta
+ * disponible ni si es miniserie, asi que hay que mirarlo aca.
+ */
+function passesFilters(
+  availability: { item: DiscoveryItem; providerIds: number[]; seriesType: string | null },
+  filters: DiscoverFilters
+) {
+  const { item, providerIds, seriesType } = availability;
+
+  if (filters.contentType === "movie" && item.mediaType !== "movie") {
+    return false;
+  }
+
+  if (filters.contentType === "series" && item.mediaType !== "tv") {
+    return false;
+  }
+
+  if (filters.contentType === "mini" && (item.mediaType !== "tv" || seriesType !== "Miniseries")) {
+    return false;
+  }
+
+  if (filters.providerIds.length) {
+    return providerIds.some((id) => filters.providerIds.includes(id));
+  }
+
+  return true;
+}
 
 function candidateKey(mediaType: MediaType, tmdbId: number) {
   return `${mediaType}-${tmdbId}`;
@@ -109,13 +147,14 @@ async function collectFillerTitles(
   startPage: number,
   needed: number,
   excludedKeys: Set<string>,
+  filters: DiscoverFilters,
   alreadyPicked: Set<string> = new Set()
 ): Promise<DiscoveryItem[]> {
   const picked: DiscoveryItem[] = [];
   const seen = new Set(alreadyPicked);
 
   for (let offset = 0; offset < MAX_BACKFILL_PAGES && picked.length < needed; offset += 1) {
-    const batch = await getRecommendationTitlesByPage(startPage + offset);
+    const batch = await getRecommendationTitlesByPage(startPage + offset, filters);
     if (!batch.length) {
       break;
     }
@@ -161,7 +200,8 @@ function socialScoreOf(candidate: ScoredCandidate) {
 export async function fetchSocialRecommendations(
   userId: string,
   page: number,
-  limit = 12
+  limit = 12,
+  filters: DiscoverFilters = NO_FILTERS
 ): Promise<RankedRecommendation[]> {
   const [followingIds, ownReactions] = await Promise.all([
     fetchFollowingUserIds(userId),
@@ -188,7 +228,7 @@ export async function fetchSocialRecommendations(
   if (followingIds.length === 0) {
     // Sin circulo no hay señal que pueda pisar un skip: se excluyen todos.
     const allSeen = new Set([...excludedKeys, ...ignoredAt.keys()]);
-    const filler = await collectFillerTitles(page, limit, allSeen);
+    const filler = await collectFillerTitles(page, limit, allSeen, filters);
     return filler.map((item) => ({ item, rank: null, watchers: [] }));
   }
 
@@ -257,15 +297,22 @@ export async function fetchSocialRecommendations(
   const offset = Math.max(0, (page - 1) * limit);
   const slice = preliminary.slice(offset, offset + limit);
 
-  // 3) Detalle de TMDB solo para los que entran en esta pagina.
+  // 3) Detalle de TMDB solo para los que entran en esta pagina. La misma
+  //    llamada trae plataformas y tipo de serie, que es lo que necesitan los
+  //    filtros: pedirlos aparte duplicaria los pedidos por tarjeta.
+  //
+  //    El puesto se calcula ANTES de filtrar, contra el ranking completo: si un
+  //    titulo se cae por el filtro, los que quedan conservan su numero real en
+  //    vez de correrse, que mentiria sobre su lugar en tu ranking.
   const detailed = (
     await Promise.all(
       slice.map(async (candidate, indexInSlice) => {
-        const item = await getTitleById(candidate.tmdbId, candidate.mediaType);
-        if (!item) {
+        const availability = await getTitleAvailability(candidate.tmdbId, candidate.mediaType);
+        if (!availability || !passesFilters(availability, filters)) {
           return null;
         }
 
+        const { item } = availability;
         const genreBonus =
           item.genres.filter((genre) => genreAffinity.has(normalizeGenreLabel(genre))).length *
           GENRE_BONUS_WEIGHT;
@@ -310,7 +357,7 @@ export async function fetchSocialRecommendations(
   const seenKeys = new Set(ranked.map((entry) => candidateKey(entry.item.mediaType, entry.item.id)));
   const fillerExcluded = new Set([...excludedKeys, ...ignoredAt.keys()]);
   const filler = (
-    await collectFillerTitles(page, limit - ranked.length, fillerExcluded, seenKeys)
+    await collectFillerTitles(page, limit - ranked.length, fillerExcluded, filters, seenKeys)
   ).map((item) => ({ item, rank: null, watchers: [] as Watcher[] }));
 
   return [...ranked, ...filler];

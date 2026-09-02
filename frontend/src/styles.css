@@ -2429,10 +2429,368 @@ textarea {
   outline-offset: 2px;
 }
 
+/* ---------- Descubri: barra de filtros ---------- */
+
+.discover-filterbar {
+  width: min(100%, 1220px);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 4px 2px;
+}
+
+.discover-filterbar__chips {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.discover-filterbar__empty {
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.discover-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px 6px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(252, 195, 95, 0.4);
+  background: rgba(252, 195, 95, 0.09);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.discover-chip--plain {
+  padding: 6px 13px;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.discover-chip__logo {
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
+  flex: none;
+  object-fit: cover;
+  background: #fff;
+}
+
+.discover-filterbar__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 15px;
+  border-radius: 999px;
+  border: 1px solid rgba(252, 195, 95, 0.45);
+  background: rgba(252, 195, 95, 0.06);
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex: none;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.discover-filterbar__button:hover {
+  border-color: var(--accent);
+  background: rgba(252, 195, 95, 0.13);
+}
+
+.discover-filterbar__button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.discover-filterbar__button svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.discover-filterbar__count {
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #201507;
+  font-size: 0.68rem;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+/* ---------- Descubri: panel de filtros ---------- */
+
+.filters-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  background: rgba(7, 6, 5, 0.82);
+  backdrop-filter: blur(14px);
+  overflow-y: auto;
+}
+
+.filters-modal {
+  position: relative;
+  width: min(100%, 520px);
+  max-height: min(calc(100dvh - 48px), 720px);
+  overflow-y: auto;
+  border-radius: 24px;
+  border: 1px solid var(--panel-edge);
+  background: rgba(28, 22, 17, 0.98);
+  box-shadow: var(--shadow);
+  padding: 26px;
+}
+
+.filters-modal__close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.filters-modal__close:hover {
+  color: var(--text);
+  border-color: rgba(252, 195, 95, 0.34);
+}
+
+.filters-modal__title {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 400;
+  margin: 0 0 3px;
+  padding-right: 44px;
+}
+
+.filters-modal__sub {
+  margin: 0 0 20px;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.filters-group + .filters-group {
+  margin-top: 24px;
+}
+
+.filters-group__label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+
+.filters-group__help {
+  margin: 0 0 12px;
+  font-size: 0.8rem;
+  color: var(--muted-strong);
+}
+
+.filters-segmented {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.filters-seg {
+  padding: 10px 6px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.filters-seg:hover {
+  border-color: rgba(252, 195, 95, 0.34);
+  color: var(--text);
+}
+
+.filters-seg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.filters-seg[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: rgba(252, 195, 95, 0.11);
+  color: var(--text);
+}
+
+.filters-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  margin-bottom: 10px;
+}
+
+.filters-search:focus-within {
+  border-color: rgba(252, 195, 95, 0.45);
+}
+
+.filters-search svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  stroke: var(--muted);
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+}
+
+.filters-search input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+/* Con las 57 plataformas detras del buscador, la lista scrollea en vez de
+   estirar el panel hasta que no entre en pantalla. */
+.filters-platforms {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 232px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.filters-platforms__empty {
+  margin: 14px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.filters-platform {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px 9px 9px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.filters-platform:hover {
+  border-color: rgba(252, 195, 95, 0.34);
+  color: var(--text);
+}
+
+.filters-platform:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.filters-platform[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: rgba(252, 195, 95, 0.1);
+  color: var(--text);
+}
+
+.filters-platform__logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  flex: none;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.filters-platform__check {
+  margin-left: auto;
+  opacity: 0;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.filters-platform[aria-pressed="true"] .filters-platform__check {
+  opacity: 1;
+}
+
+.filters-modal__foot {
+  margin-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.filters-modal__clear {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.filters-modal__clear:hover {
+  color: var(--text);
+}
+
+@media (max-width: 560px) {
+  .filters-platforms,
+  .filters-segmented {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filters-platforms {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .discover {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   align-items: center;
   justify-content: safe center;
   height: calc(100vh - 32px);
@@ -2444,7 +2802,10 @@ textarea {
 
 .discover-card {
   width: min(100%, 1220px);
-  max-height: 100%;
+  /* min-height: 0 deja que flex la encoja hasta el espacio libre. Sin esto el
+     item toma el alto de su contenido y la tarjeta crece por debajo de la
+     pantalla, llevandose los botones con ella. */
+  min-height: 0;
   display: grid;
   /* El poster se mide contra el alto de la ventana: con relacion 2/3 su altura
      es 1.5x el ancho, asi que topearlo en 38vh lo deja en ~57vh y la tarjeta
@@ -2522,12 +2883,31 @@ textarea {
 .discover-card__body {
   grid-row: 1;
   min-width: 0;
-  /* min-height: 0 es imprescindible: sin eso el item de grid toma el alto de su
-     contenido y nunca scrollea, por mas overflow que le pongas. */
+  /* La grilla usa align-items: start para que el poster conserve su relacion de
+     aspecto, pero eso hace que cada celda tome el alto de su CONTENIDO en vez
+     del de su fila: sin este stretch el texto se desborda sobre los botones en
+     lugar de scrollear. */
+  align-self: stretch;
   min-height: 0;
+  /* Scrollea la columna entera, con el "Ver mas" adentro del texto. Dejar el
+     boton fijo afuera salio peor: la sinopsis quedaba aplastada entre las
+     plataformas y el boton, sin lugar para leer. */
   overflow-y: auto;
-  /* Aire para que la ultima linea no quede pegada al borde al scrollear. */
   padding-right: 6px;
+}
+
+/* Sticky al fondo del area visible: cuando queda contenido abajo aparece un
+   degradado que lo insinua. Sin nada que scrollear cae sobre el fondo de la
+   tarjeta y no se nota. */
+.discover-card__body::after {
+  content: "";
+  display: block;
+  position: sticky;
+  bottom: 0;
+  height: 34px;
+  margin-top: -34px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(16, 20, 27, 0), rgba(16, 20, 27, 0.92));
 }
 
 .discover-rank {
@@ -2683,6 +3063,26 @@ textarea {
   color: var(--muted);
   line-height: 1.65;
   max-width: 64ch;
+}
+
+.discover-overview p {
+  margin: 0;
+}
+
+/* Corte por lineas, no por caracteres: el alto plegado es siempre el mismo,
+   sin importar el largo del texto ni el ancho de la ventana, asi el "Ver mas"
+   entra siempre sin necesidad de scrollear. */
+.discover-overview__text--clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.discover-overview__more {
+  display: inline-block;
+  margin-top: 8px;
 }
 
 .discover-overview__more {
@@ -5932,24 +6332,46 @@ textarea {
   fill: var(--accent);
 }
 
+.title-card.is-menu-open {
+  z-index: 5;
+}
+
 .title-card__reaction {
   position: absolute;
   top: 18px;
   right: 18px;
-  z-index: 1;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
-  gap: 1px;
+  gap: 5px;
   min-height: 30px;
-  padding: 0 8px;
+  padding: 0 9px;
   border: 1px solid rgba(252, 195, 95, 0.42);
   border-radius: 999px;
   background: rgba(8, 9, 12, 0.76);
   backdrop-filter: blur(6px);
   color: var(--accent);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
 }
 
-.title-card__reaction svg {
+.title-card__reaction:hover {
+  border-color: var(--accent);
+  background: rgba(8, 9, 12, 0.92);
+}
+
+.title-card__reaction.is-muted {
+  color: var(--muted);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.title-card__thumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.title-card__thumbs svg {
   width: 15px;
   height: 15px;
   fill: none;
@@ -5959,53 +6381,161 @@ textarea {
   stroke-linejoin: round;
 }
 
-.title-card__remove {
+.title-card__thumbs--down svg {
+  transform: rotate(180deg);
+}
+
+.title-card__reaction-dots {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+.title-card__reaction-caret {
+  width: 9px;
+  height: 9px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+.title-card__menu {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 1;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: rgba(8, 9, 12, 0.72);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--panel-edge);
-  color: var(--text);
-  opacity: 0;
-  transform: scale(0.85);
-  transition: opacity 140ms ease, transform 140ms ease;
+  top: 56px;
+  right: 18px;
+  z-index: 10;
+  width: 218px;
+  padding: 8px;
+  border-radius: 16px;
+  background: rgba(18, 20, 26, 0.98);
+  border: 1px solid rgba(252, 195, 95, 0.34);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7);
+}
+
+.title-card__menu-label {
+  margin: 0;
+  padding: 6px 8px 8px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}
+
+.title-card__menu-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: left;
   cursor: pointer;
 }
 
-.title-card__poster-wrap--rated .title-card__remove {
-  top: 44px;
+.title-card__menu-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
 }
 
-.title-card:hover .title-card__remove,
-.title-card__remove:focus-visible {
-  opacity: 1;
-  transform: scale(1);
+.title-card__menu-option.is-current {
+  color: var(--accent);
+  background: rgba(252, 195, 95, 0.1);
+  border-color: rgba(252, 195, 95, 0.34);
 }
 
-.title-card__remove svg {
+.title-card__menu-check {
+  margin-left: auto;
   width: 13px;
   height: 13px;
-  stroke: currentColor;
-  stroke-width: 2.4;
   fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
   stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+
+.title-card__menu-option.is-current .title-card__menu-check {
+  opacity: 1;
+}
+
+.title-card__menu-separator {
+  height: 1px;
+  margin: 7px 4px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.title-card__menu-option--danger {
+  color: #e0736d;
+}
+
+.title-card__menu-option--danger:hover {
+  color: #e0736d;
+  background: rgba(224, 115, 109, 0.12);
+}
+
+.title-card__menu-option--danger svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.title-card__confirm-title {
+  margin: 0 0 5px;
+  padding: 6px 8px 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.title-card__confirm-body {
+  margin: 0 0 12px;
+  padding: 0 8px;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.title-card__confirm-actions {
+  display: flex;
+  gap: 7px;
+  padding: 0 4px 4px;
+}
+
+.title-card__confirm-button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text);
+}
+
+.title-card__confirm-button--danger {
+  background: rgba(224, 115, 109, 0.16);
+  border-color: rgba(224, 115, 109, 0.5);
+  color: #e0736d;
 }
 
 .title-card__title {
   font-size: 0.9rem;
   line-height: 1.3;
   cursor: pointer;
-}
-
-.title-card__heading {
-  display: contents;
 }
 
 .title-card__meta {
@@ -6979,21 +7509,14 @@ textarea {
     aspect-ratio: auto;
   }
 
-  .profile-grid--library .title-card__heading,
+  .profile-grid--library .title-card__title,
   .profile-grid--library .title-card__meta,
   .profile-grid--library .title-card__reaction,
   .profile-grid--library .title-card__watch {
     grid-column: 2;
   }
 
-  .profile-grid--library .title-card__heading {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
   .profile-grid--library .title-card__title {
-    flex: 1 1 auto;
     min-width: 0;
     align-self: auto;
     font-size: 1rem;
@@ -7011,7 +7534,7 @@ textarea {
     padding: 0 7px;
   }
 
-  .profile-grid--library .title-card__reaction svg {
+  .profile-grid--library .title-card__reaction .title-card__thumbs svg {
     width: 13px;
     height: 13px;
   }
@@ -7023,13 +7546,11 @@ textarea {
     padding: 7px 10px;
   }
 
-  .profile-grid--library .title-card__remove {
-    position: static;
-    flex: none;
-    width: 28px;
-    height: 28px;
-    opacity: 1;
-    transform: none;
+  /* On the compact row layout the menu hangs off the card, not the poster. */
+  .profile-grid--library .title-card__menu {
+    top: auto;
+    bottom: 10px;
+    right: 10px;
   }
 
   .recommendation-shell {

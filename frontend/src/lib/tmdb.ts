@@ -544,48 +544,88 @@ export async function getRecommendationTitles(): Promise<DiscoveryItem[]> {
   return getRecommendationTitlesByPage(1);
 }
 
-export async function getRecommendationTitlesByPage(page: number): Promise<DiscoveryItem[]> {
+/** Filtros que el usuario elige en Descubri. */
+export type DiscoverFilters = {
+  /** provider_id de TMDB. Vacio = sin filtrar por plataforma. */
+  providerIds: number[];
+  contentType: "all" | "movie" | "series" | "mini";
+};
+
+export const NO_FILTERS: DiscoverFilters = { providerIds: [], contentType: "all" };
+
+/** TMDB marca las miniseries con with_type=2 en discover/tv. */
+const TMDB_TYPE_MINISERIES = "2";
+
+export async function getRecommendationTitlesByPage(
+  page: number,
+  filters: DiscoverFilters = NO_FILTERS
+): Promise<DiscoveryItem[]> {
   if (!apiKey) {
     return demoDiscovery;
   }
 
-  const movieUrl = new URL(`${baseUrl}/discover/movie`);
-  movieUrl.searchParams.set("api_key", apiKey);
-  movieUrl.searchParams.set("include_adult", "false");
-  movieUrl.searchParams.set("language", "es-MX");
-  movieUrl.searchParams.set("sort_by", "popularity.desc");
-  movieUrl.searchParams.set("page", String(page));
+  const wantsMovies = filters.contentType === "all" || filters.contentType === "movie";
+  const wantsSeries =
+    filters.contentType === "all" ||
+    filters.contentType === "series" ||
+    filters.contentType === "mini";
 
-  const tvUrl = new URL(`${baseUrl}/discover/tv`);
-  tvUrl.searchParams.set("api_key", apiKey);
-  tvUrl.searchParams.set("include_adult", "false");
-  tvUrl.searchParams.set("language", "es-MX");
-  tvUrl.searchParams.set("sort_by", "popularity.desc");
-  tvUrl.searchParams.set("page", String(page));
+  function applyCommon(url: URL) {
+    url.searchParams.set("api_key", apiKey as string);
+    url.searchParams.set("include_adult", "false");
+    url.searchParams.set("language", "es-MX");
+    url.searchParams.set("sort_by", "popularity.desc");
+    url.searchParams.set("page", String(page));
 
-  const [movieResponse, tvResponse] = await Promise.all([fetch(movieUrl.toString()), fetch(tvUrl.toString())]);
-
-  if (!movieResponse.ok || !tvResponse.ok) {
-    throw new Error("No pude traer recomendaciones de TMDB.");
+    // El filtro de plataforma va del lado de TMDB: no cuesta pedidos extra.
+    if (filters.providerIds.length) {
+      url.searchParams.set("with_watch_providers", filters.providerIds.join("|"));
+      url.searchParams.set("watch_region", WATCH_REGION);
+    }
   }
 
-  const moviePayload = (await movieResponse.json()) as { results?: Record<string, unknown>[] };
-  const tvPayload = (await tvResponse.json()) as { results?: Record<string, unknown>[] };
+  const requests: Array<Promise<{ mediaType: MediaType; results: Record<string, unknown>[] }>> = [];
 
-  const movieItems = (moviePayload.results ?? [])
-    .filter(isSupportedCatalogResult)
-    .slice(0, 8)
-    .map((item) =>
-    normalizeItem({ ...item, media_type: "movie" })
-  );
-  const tvItems = (tvPayload.results ?? [])
-    .filter(isSupportedCatalogResult)
-    .slice(0, 8)
-    .map((item) =>
-    normalizeItem({ ...item, media_type: "tv" })
-  );
+  if (wantsMovies) {
+    const movieUrl = new URL(`${baseUrl}/discover/movie`);
+    applyCommon(movieUrl);
+    requests.push(
+      fetch(movieUrl.toString())
+        .then((response) => (response.ok ? response.json() : { results: [] }))
+        .then((payload) => ({
+          mediaType: "movie" as MediaType,
+          results: (payload as { results?: Record<string, unknown>[] }).results ?? []
+        }))
+    );
+  }
 
-  return [...movieItems, ...tvItems];
+  if (wantsSeries) {
+    const tvUrl = new URL(`${baseUrl}/discover/tv`);
+    applyCommon(tvUrl);
+    if (filters.contentType === "mini") {
+      tvUrl.searchParams.set("with_type", TMDB_TYPE_MINISERIES);
+    }
+    requests.push(
+      fetch(tvUrl.toString())
+        .then((response) => (response.ok ? response.json() : { results: [] }))
+        .then((payload) => ({
+          mediaType: "tv" as MediaType,
+          results: (payload as { results?: Record<string, unknown>[] }).results ?? []
+        }))
+    );
+  }
+
+  const responses = await Promise.all(requests);
+
+  // Con un solo tipo pedido, esa lista se lleva todos los lugares del mazo.
+  const perList = responses.length > 1 ? 8 : 16;
+
+  return responses.flatMap((response) =>
+    response.results
+      .filter(isSupportedCatalogResult)
+      .slice(0, perList)
+      .map((item) => normalizeItem({ ...item, media_type: response.mediaType }))
+  );
 }
 
 async function fetchCatalogCollection(
@@ -814,6 +854,7 @@ export type WatchOptions = {
 };
 
 const PROVIDER_LOGO_BASE = "https://image.tmdb.org/t/p/w92";
+const WATCH_REGION = "AR";
 
 function mapProviders(list: unknown, title: string, fallback: string | null): WatchProvider[] {
   if (!Array.isArray(list)) {
@@ -919,6 +960,110 @@ export async function getTitleById(tmdbId: number, mediaType: MediaType): Promis
 
   const payload = (await response.json()) as Record<string, unknown>;
   return normalizeItem({ ...payload, media_type: mediaType });
+}
+
+/** Lo que necesita el recomendador para filtrar sin pedir cada dato por separado. */
+export type TitleAvailability = {
+  item: DiscoveryItem;
+  /** provider_id de TMDB donde se puede ver por suscripcion en Argentina. */
+  providerIds: number[];
+  /** Solo en series: "Miniseries", "Scripted", etc. Null en peliculas. */
+  seriesType: string | null;
+};
+
+/**
+ * Detalles, plataformas y tipo de serie en UNA sola llamada.
+ *
+ * Importa para el costo: filtrar el ranking por plataforma exige saber donde
+ * esta cada candidato, y pedirlo aparte duplicaria los pedidos a TMDB por
+ * tarjeta. Con append_to_response viene todo junto.
+ */
+export async function getTitleAvailability(
+  tmdbId: number,
+  mediaType: MediaType
+): Promise<TitleAvailability | null> {
+  if (!apiKey) {
+    const fallback = demoDiscovery.find(
+      (entry) => entry.id === tmdbId && entry.mediaType === mediaType
+    );
+    return fallback ? { item: fallback, providerIds: [], seriesType: null } : null;
+  }
+
+  const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("language", "es-MX");
+  url.searchParams.set("append_to_response", "watch/providers");
+
+  try {
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    const regional = (
+      (payload["watch/providers"] as { results?: Record<string, Record<string, unknown>> } | undefined)
+        ?.results ?? {}
+    )[WATCH_REGION];
+
+    const providerIds = Array.isArray(regional?.flatrate)
+      ? (regional.flatrate as Array<{ provider_id?: number }>)
+          .map((provider) => Number(provider.provider_id))
+          .filter((id) => Number.isFinite(id))
+      : [];
+
+    return {
+      item: normalizeItem({ ...payload, media_type: mediaType }),
+      providerIds,
+      seriesType: typeof payload.type === "string" ? payload.type : null
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type ProviderOption = {
+  id: number;
+  name: string;
+  logoUrl: string | null;
+};
+
+/** Catalogo de plataformas de la region, ordenado por relevancia segun TMDB. */
+export async function getProviderCatalog(): Promise<ProviderOption[]> {
+  if (!apiKey) {
+    return [];
+  }
+
+  try {
+    const url = new URL(`${baseUrl}/watch/providers/movie`);
+    url.searchParams.set("api_key", apiKey);
+    url.searchParams.set("watch_region", WATCH_REGION);
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = (await response.json()) as {
+      results?: Array<{
+        provider_id?: number;
+        provider_name?: string;
+        logo_path?: string;
+        display_priority?: number;
+      }>;
+    };
+
+    return (payload.results ?? [])
+      .filter((provider) => typeof provider.provider_name === "string")
+      .sort((left, right) => (left.display_priority ?? 999) - (right.display_priority ?? 999))
+      .map((provider) => ({
+        id: Number(provider.provider_id),
+        name: provider.provider_name as string,
+        logoUrl: provider.logo_path ? `${PROVIDER_LOGO_BASE}${provider.logo_path}` : null
+      }));
+  } catch {
+    return [];
+  }
 }
 
 export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Promise<MediaDetails | null> {
