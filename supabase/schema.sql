@@ -50,11 +50,14 @@ create table if not exists public.media_reactions (
   tmdb_id bigint not null,
   media_type text not null check (media_type in ('movie', 'tv')),
   -- Un titulo esta siempre en exactamente uno de estos estados por usuario:
-  --   liked     -> la vio y le gusto
-  --   disliked  -> la vio y no le gusto
-  --   watchlist -> guardada, todavia no la vio
-  --   ignored   -> la paso de largo en Descubri
-  reaction text not null check (reaction in ('liked', 'disliked', 'watchlist', 'ignored')),
+  --   superliked -> la vio y le encanto
+  --   liked      -> la vio y le gusto
+  --   disliked   -> la vio y no le gusto
+  --   watchlist  -> guardada, todavia no la vio
+  --   ignored    -> la paso de largo en Descubri
+  reaction text not null check (
+    reaction in ('superliked', 'liked', 'disliked', 'watchlist', 'ignored')
+  ),
   created_at timestamptz not null default timezone('utc', now())
 );
 
