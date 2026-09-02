@@ -15,6 +15,8 @@ import {
   REACTIONS_UPDATED_EVENT,
   removeStoredRatedReaction,
   removeStoredReaction,
+  saveStoredReaction,
+  type RatedReaction,
   type RecommendationReaction,
   type StoredReaction
 } from "../lib/reactions";
@@ -357,6 +359,29 @@ export function ProfileTabs({
       );
     } catch {
       setSyncMessage("No pude eliminar este titulo del perfil.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function handleChangeRating(item: DiscoveryItem, reaction: RatedReaction) {
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      await saveStoredReaction({ userId, item, reaction });
+      setReactions((current) => [
+        ...current.filter(
+          (entry) => !(entry.tmdbId === item.id && entry.mediaType === item.mediaType)
+        ),
+        {
+          tmdbId: item.id,
+          mediaType: item.mediaType,
+          reaction,
+          createdAt: new Date().toISOString()
+        }
+      ]);
+    } catch {
+      setSyncMessage("No pude actualizar tu puntuacion.");
     } finally {
       setIsSyncing(false);
     }
@@ -807,7 +832,13 @@ export function ProfileTabs({
                     activeTab === "watched" ? reactionByTitle.get(`${item.mediaType}-${item.id}`) : undefined
                   }
                   onOpenDetails={() => openMediaDetails(item)}
+                  onChangeRating={
+                    readOnly || activeTab !== "watched"
+                      ? undefined
+                      : (next) => void handleChangeRating(item, next)
+                  }
                   onRemove={readOnly || activeTab === "mutual-likes" ? undefined : () => void handleRemove(item)}
+                  removeLabel={activeTab === "watched" ? "Quitar de Vistas" : "Quitar de Watchlist"}
                   isRemoving={isSyncing}
                 />
               ))}
