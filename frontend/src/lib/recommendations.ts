@@ -62,11 +62,13 @@ export type RankedRecommendation = {
 };
 
 /**
- * Decide si un candidato del ranking social pasa los filtros.
+ * Decide si un titulo pasa los filtros, contra sus proveedores REALES.
  *
- * El relleno de TMDB no necesita esto: su buscador ya filtra del lado del
- * servidor. Pero un titulo que vio tu amigo llega sin saber donde esta
- * disponible ni si es miniserie, asi que hay que mirarlo aca.
+ * Lo usan los dos caminos. El ranking social lo necesita porque un titulo que
+ * vio tu amigo llega sin saber donde esta disponible. Y el relleno tambien,
+ * aunque TMDB ya haya filtrado: su buscador aplica proveedor y monetizacion
+ * como condiciones separadas, asi que cuela titulos que en esa plataforma solo
+ * se compran y tienen suscripcion en otra.
  */
 function passesFilters(
   availability: { item: DiscoveryItem; providerIds: number[]; seriesType: string | null },
@@ -153,24 +155,48 @@ async function collectFillerTitles(
   const picked: DiscoveryItem[] = [];
   const seen = new Set(alreadyPicked);
 
+  // El buscador de TMDB acota pero no garantiza: aplica proveedor y tipo de
+  // monetizacion por separado, asi que cuela titulos que en esa plataforma solo
+  // se compran. Con filtros activos verificamos cada uno antes de mostrarlo.
+  const needsVerification = filters.providerIds.length > 0 || filters.contentType !== "all";
+
   for (let offset = 0; offset < MAX_BACKFILL_PAGES && picked.length < needed; offset += 1) {
     const batch = await getRecommendationTitlesByPage(startPage + offset, filters);
     if (!batch.length) {
       break;
     }
 
-    for (const item of batch) {
-      if (picked.length >= needed) {
-        break;
-      }
-
+    const fresh = batch.filter((item) => {
       const key = candidateKey(item.mediaType, item.id);
       if (excludedKeys.has(key) || seen.has(key)) {
-        continue;
+        return false;
       }
 
       seen.add(key);
-      picked.push(item);
+      return true;
+    });
+
+    if (!needsVerification) {
+      picked.push(...fresh.slice(0, needed - picked.length));
+      continue;
+    }
+
+    const checked = await Promise.all(
+      fresh.slice(0, (needed - picked.length) * 2).map(async (item) => {
+        const availability = await getTitleAvailability(item.id, item.mediaType);
+        // Si no se pudo verificar, se descarta: mostrar algo que quiza no este
+        // en tus plataformas es peor que buscar en la pagina siguiente.
+        return availability && passesFilters(availability, filters) ? availability.item : null;
+      })
+    );
+
+    for (const item of checked) {
+      if (picked.length >= needed) {
+        break;
+      }
+      if (item) {
+        picked.push(item);
+      }
     }
   }
 

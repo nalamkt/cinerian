@@ -577,10 +577,15 @@ export async function getRecommendationTitlesByPage(
     url.searchParams.set("sort_by", "popularity.desc");
     url.searchParams.set("page", String(page));
 
-    // El filtro de plataforma va del lado de TMDB: no cuesta pedidos extra.
+    // Acota del lado de TMDB, pero NO alcanza para garantizar: TMDB aplica
+    // proveedor y tipo de monetizacion como condiciones separadas, asi que
+    // devuelve titulos que estan en esa plataforma para comprar y tienen
+    // suscripcion en otra. Por eso quien consuma esto tiene que verificar
+    // cada titulo contra los proveedores reales antes de mostrarlo.
     if (filters.providerIds.length) {
       url.searchParams.set("with_watch_providers", filters.providerIds.join("|"));
       url.searchParams.set("watch_region", WATCH_REGION);
+      url.searchParams.set("with_watch_monetization_types", "flatrate");
     }
   }
 
