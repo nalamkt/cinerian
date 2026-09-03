@@ -146,7 +146,11 @@ export function SendRecommendationModal({
             profiles.map((profile) => (
               <article className="send-modal__user" key={profile.id}>
                 <div className="send-modal__avatar" aria-hidden="true">
-                  {profile.display_name.slice(0, 1).toUpperCase()}
+                  {profile.avatar_url ? (
+                    <img src={profile.avatar_url} alt="" />
+                  ) : (
+                    profile.display_name.slice(0, 1).toUpperCase()
+                  )}
                 </div>
                 <div className="send-modal__copy">
                   <strong>{profile.display_name}</strong>

@@ -247,27 +247,38 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
     setSendItem(item);
   }
 
+  function handleSearchModeChange(nextMode: SearchMode) {
+    if (nextMode === searchMode) {
+      return;
+    }
+
+    setSearchMode(nextMode);
+    setQuery("");
+    setTalentResults([]);
+    setTalentError(null);
+  }
+
   return (
     <section className="panel">
       <header className="feed-header feed-header--search">
         <button
           type="button"
           className={`feed-header__tab ${searchMode === "titles" ? "is-active" : ""}`}
-          onClick={() => setSearchMode("titles")}
+          onClick={() => handleSearchModeChange("titles")}
         >
           Titulos
         </button>
         <button
           type="button"
           className={`feed-header__tab ${searchMode === "people" ? "is-active" : ""}`}
-          onClick={() => setSearchMode("people")}
+          onClick={() => handleSearchModeChange("people")}
         >
           Personas
         </button>
         <button
           type="button"
           className={`feed-header__tab ${searchMode === "talent" ? "is-active" : ""}`}
-          onClick={() => setSearchMode("talent")}
+          onClick={() => handleSearchModeChange("talent")}
         >
           Talento
         </button>
@@ -420,7 +431,11 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
               onClick={() => onOpenUserProfile({ userId: profile.id, username: profile.username })}
             >
               <span className="profile-search-card__avatar" aria-hidden="true">
-                {profile.display_name.slice(0, 1).toUpperCase()}
+                {profile.avatar_url ? (
+                  <img src={profile.avatar_url} alt="" />
+                ) : (
+                  profile.display_name.slice(0, 1).toUpperCase()
+                )}
               </span>
               <span className="profile-search-card__copy">
                 <strong>{profile.display_name}</strong>

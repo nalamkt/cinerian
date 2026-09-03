@@ -182,6 +182,7 @@ export type CommentInboxNotification = {
     id: string;
     username: string;
     display_name: string;
+    avatar_url: string | null;
   } | null;
   body: string;
   createdAt: string;

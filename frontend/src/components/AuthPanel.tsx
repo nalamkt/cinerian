@@ -1,11 +1,8 @@
 import { useState } from "react";
 import { sendMagicLink, signInWithGoogle, verifyEmailOtp } from "../lib/auth";
-import type { InviteInfo } from "../lib/invites";
 
 type AuthPanelProps = {
   isSupabaseReady: boolean;
-  inviteInfo?: InviteInfo | null;
-  canCreateAccount: boolean;
 };
 
 function getAuthErrorMessage(error: unknown) {
@@ -23,14 +20,10 @@ function getAuthErrorMessage(error: unknown) {
     return "Ese email ya tiene una cuenta. Prueba iniciar sesion o recuperar la contrasena.";
   }
 
-  if (normalizedMessage.includes("signups not allowed") || normalizedMessage.includes("user not found")) {
-    return "No encontramos una cuenta con ese email. Para crear una, abrí un link de invitación de Cinerian.";
-  }
-
   return error.message;
 }
 
-export function AuthPanel({ isSupabaseReady, inviteInfo, canCreateAccount }: AuthPanelProps) {
+export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
   const [email, setEmail] = useState("");
   const [step, setStep] = useState<"request" | "verify">("request");
   const [otpCode, setOtpCode] = useState("");
@@ -51,7 +44,7 @@ export function AuthPanel({ isSupabaseReady, inviteInfo, canCreateAccount }: Aut
       setIsSubmitting(true);
       setMessage(null);
 
-      const { error } = await sendMagicLink(email, { shouldCreateUser: canCreateAccount });
+      const { error } = await sendMagicLink(email);
       if (error) {
         throw error;
       }
@@ -133,19 +126,6 @@ export function AuthPanel({ isSupabaseReady, inviteInfo, canCreateAccount }: Aut
     <section className="panel auth-panel">
       <p className="section-eyebrow">Acceso</p>
       <h2>Entra a Cinerian</h2>
-
-      {step === "request" &&
-        (inviteInfo ? (
-          <div className="inline-status">
-            Te invitó <strong>{inviteInfo.inviterDisplayName}</strong> (@{inviteInfo.inviterUsername}). Al
-            registrarte vas a empezar a seguirlo automáticamente.
-          </div>
-        ) : (
-          <div className="inline-status">
-            Cinerian es por invitación. Si sos nuevo, necesitás un link de invitación de alguien que ya
-            esté adentro. Si ya tenés cuenta, podés iniciar sesión normalmente.
-          </div>
-        ))}
 
       {step === "request" ? (
         <>

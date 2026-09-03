@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createFeedComment } from "../lib/feed";
+import { createPortal } from "react-dom";
+import { createFeedComment, deleteFeedComment, fetchFeedComments } from "../lib/feed";
 import {
   deleteCommentNotification,
   deleteInboxMessage,
@@ -10,21 +11,117 @@ import {
   markRecommendationRepliesAsRead,
   sendRecommendationReply,
   setCommentNotificationReadState,
-  setInboxMessageReadState
+  setInboxMessageReadState,
+  setRecommendationReplyReadState
 } from "../lib/inbox";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { LoadingState } from "./LoadingState";
-import type { CommentInboxNotification, RecommendationMessage } from "../types";
+import type { CommentInboxNotification, FeedComment, RecommendationMessage } from "../types";
 
 type InboxPanelProps = {
   userId: string;
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
-  onOpenFeedPost?: (target: { postId: string; focusCommentInput?: boolean }) => void;
 };
 
 type InboxCategory = "recommendations" | "comments";
 
-export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxPanelProps) {
+function CommentPostPreviewModal({
+  notification,
+  comments,
+  userId,
+  onClose,
+  onOpenTitle,
+  onDeleteComment
+}: {
+  notification: CommentInboxNotification | null;
+  comments: FeedComment[];
+  userId: string;
+  onClose: () => void;
+  onOpenTitle: (item: NonNullable<CommentInboxNotification["item"]>) => void;
+  onDeleteComment: (comment: FeedComment) => void;
+}) {
+  useEffect(() => {
+    if (!notification) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [notification, onClose]);
+
+  if (!notification) {
+    return null;
+  }
+
+  return createPortal(
+    <div className="review-modal__backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="review-modal inbox-post-preview"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Publicación comentada"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button type="button" className="review-modal__close" onClick={onClose} aria-label="Cerrar">
+          ×
+        </button>
+        <p className="review-modal__kicker">Publicación</p>
+        {notification.item ? (
+          <div className="review-modal__head">
+            <img src={notification.item.posterUrl} alt="" className="review-modal__thumb" />
+            <div className="review-modal__head-copy">
+              <h3>{notification.item.title}</h3>
+              <p>{notification.item.mediaType === "tv" ? "Serie" : "Película"}</p>
+            </div>
+          </div>
+        ) : null}
+        <article className="inbox-post-preview__post">
+          <p>{notification.postBody || "Esta publicación ya no está disponible."}</p>
+        </article>
+        <div className="inbox-post-preview__comments">
+          <p className="review-modal__kicker">Comentarios</p>
+          {comments.map((comment) => (
+            <article className="inbox-post-preview__comment" key={comment.id}>
+              <div className="inbox-post-preview__comment-meta">
+                <span>
+                  <strong>{comment.author}</strong>
+                  {comment.username ? ` · @${comment.username}` : ""} · {comment.createdAtLabel}
+                </span>
+                {comment.userId === userId ? (
+                  <button type="button" onClick={() => onDeleteComment(comment)} aria-label="Eliminar comentario">
+                    Eliminar
+                  </button>
+                ) : null}
+              </div>
+              <p>{comment.body}</p>
+            </article>
+          ))}
+        </div>
+        {notification.item ? (
+          <button
+            type="button"
+            className="primary-button inbox-post-preview__title-action"
+            onClick={() => {
+              onOpenTitle(notification.item!);
+              onClose();
+            }}
+          >
+            Ver título
+          </button>
+        ) : null}
+      </section>
+    </div>,
+    document.body
+  );
+}
+
+export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 900px)").matches : false
@@ -40,11 +137,16 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
   const [commentReplyDraft, setCommentReplyDraft] = useState("");
+  const [commentReplyStatus, setCommentReplyStatus] = useState<string | null>(null);
+  const [commentsByPostId, setCommentsByPostId] = useState<Record<string, FeedComment[]>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [swipedMessageId, setSwipedMessageId] = useState<string | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [threadSwipeOffset, setThreadSwipeOffset] = useState(0);
   const [isThreadSwipeAnimating, setIsThreadSwipeAnimating] = useState(false);
+  const [postPreviewNotification, setPostPreviewNotification] = useState<CommentInboxNotification | null>(null);
+  const manuallyUnreadReplyMessageIds = useRef(new Set<string>());
+  const manuallyUnreadCommentIds = useRef(new Set<string>());
   const swipeRef = useRef<{
     id: string | null;
     startX: number;
@@ -166,11 +268,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     });
   }, [received, sent]);
 
-  const hasUnreadComments = useMemo(
-    () => commentNotifications.some((notification) => !notification.readAt),
-    [commentNotifications]
-  );
-
   const activeMessage = useMemo(
     () => visibleMessages.find((message) => message.id === activeMessageId) ?? null,
     [activeMessageId, visibleMessages]
@@ -266,6 +363,14 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   }, [activeMessage?.id]);
 
   useEffect(() => {
+    manuallyUnreadReplyMessageIds.current.clear();
+  }, [activeMessageId]);
+
+  useEffect(() => {
+    manuallyUnreadCommentIds.current.clear();
+  }, [activeCommentId]);
+
+  useEffect(() => {
     if (!activeMessage) {
       return;
     }
@@ -274,7 +379,10 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
       void handleSetReadState(activeMessage, true);
     }
 
-    if (activeMessage.replies?.some((reply) => reply.recipientId === userId && !reply.readAt)) {
+    if (
+      !manuallyUnreadReplyMessageIds.current.has(activeMessage.id) &&
+      activeMessage.replies?.some((reply) => reply.recipientId === userId && !reply.readAt)
+    ) {
       void markRecommendationRepliesAsRead({ messageId: activeMessage.id, userId });
     }
   }, [activeMessage, userId]);
@@ -282,8 +390,40 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
   useEffect(() => {
     if (!activeComment) {
       setCommentReplyDraft("");
+      setCommentReplyStatus(null);
     }
   }, [activeComment?.id]);
+
+  useEffect(() => {
+    if (!activeComment) {
+      return;
+    }
+
+    let isMounted = true;
+    void fetchFeedComments([activeComment.postId])
+      .then((comments) => {
+        if (isMounted) {
+          setCommentsByPostId((current) => ({ ...current, ...comments }));
+        }
+      })
+      .catch(() => {
+        // The notification remains usable even if the historical thread cannot load.
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeComment?.id, activeComment?.postId]);
+
+  useEffect(() => {
+    if (
+      activeComment &&
+      !activeComment.readAt &&
+      !manuallyUnreadCommentIds.current.has(activeComment.id)
+    ) {
+      void handleSetCommentReadState(activeComment, true);
+    }
+  }, [activeComment]);
 
   useEffect(() => {
     setActiveMessageId(null);
@@ -345,6 +485,59 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
 
   async function handleToggleRead(message: RecommendationMessage) {
     await handleSetReadState(message, !message.readAt);
+  }
+
+  function getLastIncomingReply(message: RecommendationMessage) {
+    const lastReply = message.replies?.[message.replies.length - 1];
+    return lastReply && lastReply.senderId !== userId ? lastReply : null;
+  }
+
+  function isLastMessageIncoming(message: RecommendationMessage) {
+    const lastReply = message.replies?.[message.replies.length - 1];
+    return lastReply ? lastReply.senderId !== userId : message.senderId !== userId;
+  }
+
+  async function handleToggleLastMessageRead(message: RecommendationMessage) {
+    const lastIncomingReply = getLastIncomingReply(message);
+    if (!lastIncomingReply) {
+      await handleToggleRead(message);
+      return;
+    }
+
+    const nextRead = !lastIncomingReply.readAt;
+    try {
+      setPendingMessageId(message.id);
+      if (!nextRead) {
+        manuallyUnreadReplyMessageIds.current.add(message.id);
+      }
+      await setRecommendationReplyReadState({
+        replyId: lastIncomingReply.id,
+        userId,
+        read: nextRead
+      });
+
+      const updateReplies = (entries: RecommendationMessage[]) =>
+        entries.map((entry) =>
+          entry.id === message.id
+            ? {
+                ...entry,
+                replies: entry.replies?.map((reply) =>
+                  reply.id === lastIncomingReply.id
+                    ? { ...reply, readAt: nextRead ? new Date().toISOString() : null }
+                    : reply
+                )
+              }
+            : entry
+        );
+
+      setReceived(updateReplies);
+      setSent(updateReplies);
+    } catch {
+      manuallyUnreadReplyMessageIds.current.delete(message.id);
+      setErrorMessage("No pude cambiar el estado de lectura.");
+    } finally {
+      setPendingMessageId(null);
+    }
   }
 
   async function handleDelete(message: RecommendationMessage) {
@@ -534,31 +727,37 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     }, 180);
   }
 
-  async function handleToggleCommentRead(notification: CommentInboxNotification) {
-    const nextRead = !notification.readAt;
-
+  async function handleSetCommentReadState(notification: CommentInboxNotification, read: boolean) {
     try {
       setPendingMessageId(notification.id);
+      if (!read) {
+        manuallyUnreadCommentIds.current.add(notification.id);
+      }
       await setCommentNotificationReadState({
         notificationId: notification.id,
         userId,
-        read: nextRead
+        read
       });
       setCommentNotifications((current) =>
         current.map((entry) =>
           entry.id === notification.id
             ? {
                 ...entry,
-                readAt: nextRead ? new Date().toISOString() : null
+                readAt: read ? new Date().toISOString() : null
               }
             : entry
         )
       );
     } catch {
+      manuallyUnreadCommentIds.current.delete(notification.id);
       setErrorMessage("No pude cambiar el estado del comentario.");
     } finally {
       setPendingMessageId(null);
     }
+  }
+
+  async function handleToggleCommentRead(notification: CommentInboxNotification) {
+    await handleSetCommentReadState(notification, !notification.readAt);
   }
 
   async function handleDeleteComment(notification: CommentInboxNotification) {
@@ -576,36 +775,16 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     }
   }
 
-  async function openCommentNotification(
-    notification: CommentInboxNotification,
-    options?: { focusCommentInput?: boolean }
-  ) {
+  async function openCommentNotification(notification: CommentInboxNotification) {
     try {
       if (!notification.readAt) {
-        await setCommentNotificationReadState({
-          notificationId: notification.id,
-          userId,
-          read: true
-        });
-        setCommentNotifications((current) =>
-          current.map((entry) =>
-            entry.id === notification.id
-              ? {
-                  ...entry,
-                  readAt: new Date().toISOString()
-                }
-              : entry
-          )
-        );
+        await handleSetCommentReadState(notification, true);
       }
     } catch {
       setErrorMessage("No pude actualizar este comentario.");
     }
 
-    onOpenFeedPost?.({
-      postId: notification.postId,
-      focusCommentInput: options?.focusCommentInput
-    });
+    setPostPreviewNotification(notification);
   }
 
   async function handleReplySubmit(message: RecommendationMessage, body: string) {
@@ -639,15 +818,34 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
 
     try {
       setPendingMessageId(notification.id);
+      setCommentReplyStatus(null);
       await createFeedComment({
         postId: notification.postId,
         userId,
         body
       });
       setCommentReplyDraft("");
-      await openCommentNotification(notification, { focusCommentInput: true });
+      const comments = await fetchFeedComments([notification.postId]);
+      setCommentsByPostId((current) => ({ ...current, ...comments }));
+      setCommentReplyStatus("Respuesta publicada.");
     } catch {
+      setCommentReplyStatus("No pude publicar la respuesta. Revisá los permisos de Supabase.");
       setErrorMessage("No pude mandar tu respuesta.");
+    } finally {
+      setPendingMessageId(null);
+    }
+  }
+
+  async function handleDeletePostComment(comment: FeedComment) {
+    try {
+      setPendingMessageId(comment.id);
+      await deleteFeedComment({ commentId: comment.id, userId });
+      setCommentsByPostId((current) => ({
+        ...current,
+        [comment.postId]: (current[comment.postId] ?? []).filter((entry) => entry.id !== comment.id)
+      }));
+    } catch {
+      setErrorMessage("No pude eliminar el comentario.");
     } finally {
       setPendingMessageId(null);
     }
@@ -664,6 +862,8 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
     const isSwiped = supportsThreadActions && swipedMessageId === message.id;
     const currentOffset = isSwiped ? swipeOffset : 0;
     const lastReply = message.replies?.[message.replies.length - 1];
+    const lastMessageIsIncoming = isLastMessageIncoming(message);
+    const lastMessageReadAt = lastReply && lastMessageIsIncoming ? lastReply.readAt : message.readAt;
     const activityLabel = lastReply?.createdAtLabel ?? message.createdAtLabel;
 
     return (
@@ -686,17 +886,17 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
               <span aria-hidden="true">✕</span>
               <span>Eliminar</span>
             </button>
-            {!isSent ? (
+            {lastMessageIsIncoming ? (
               <button
                 type="button"
                 className="inbox-thread-swipe__action inbox-thread-swipe__action--read"
                 onClick={() => {
                   closeSwipeActions();
-                  void handleToggleRead(message);
+                  void handleToggleLastMessageRead(message);
                 }}
               >
-                <span aria-hidden="true">{message.readAt ? "◐" : "◉"}</span>
-                <span>{message.readAt ? "No leído" : "Leído"}</span>
+                <span aria-hidden="true">{lastMessageReadAt ? "◐" : "◉"}</span>
+                <span>{lastMessageReadAt ? "No leído" : "Leído"}</span>
               </button>
             ) : (
               <button
@@ -831,7 +1031,11 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
               <strong className="inbox-thread-view__title">{message.item.title}</strong>
               <div className="inbox-thread-view__identity">
                 <span className="sidebar-user__avatar inbox-thread-view__avatar" aria-hidden="true">
-                  {(counterpart?.display_name ?? "C").slice(0, 1).toUpperCase()}
+                  {counterpart?.avatar_url ? (
+                    <img src={counterpart.avatar_url} alt="" className="sidebar-user__avatar-image" />
+                  ) : (
+                    (counterpart?.display_name ?? "C").slice(0, 1).toUpperCase()
+                  )}
                 </span>
                 <div className="inbox-thread-view__identity-copy">
                   <button
@@ -852,17 +1056,21 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
             ) : null}
             <div className="inbox-thread-view__header-side">
               <div className="inbox-thread-view__actions inbox-thread-view__actions--header">
-                {!isMobile && !isSent ? (
+                {!isMobile && isLastMessageIncoming(message) ? (
                   <button
                     type="button"
                     className="inbox-card__action-button"
                     disabled={isPending}
-                    onClick={() => void handleToggleRead(message)}
+                    onClick={() => void handleToggleLastMessageRead(message)}
                   >
                     <span className="inbox-card__action-icon" aria-hidden="true">
-                      {message.readAt ? "◐" : "◉"}
+                      {(getLastIncomingReply(message)?.readAt ?? message.readAt) ? "◐" : "◉"}
                     </span>
-                    <span>{message.readAt ? "No leído" : "Marcar leído"}</span>
+                    <span>
+                      {(getLastIncomingReply(message)?.readAt ?? message.readAt)
+                        ? "No leído"
+                        : "Marcar leído"}
+                    </span>
                   </button>
                 ) : null}
                 <button
@@ -949,7 +1157,11 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
         onClick={() => setActiveCommentId(notification.id)}
       >
         <span className="sidebar-user__avatar inbox-thread-item__avatar" aria-hidden="true">
-          {(notification.actorProfile?.display_name ?? "C").slice(0, 1).toUpperCase()}
+          {notification.actorProfile?.avatar_url ? (
+            <img src={notification.actorProfile.avatar_url} alt="" className="sidebar-user__avatar-image" />
+          ) : (
+            (notification.actorProfile?.display_name ?? "C").slice(0, 1).toUpperCase()
+          )}
         </span>
         <div className="inbox-thread-item__copy">
           <div className="inbox-thread-item__topline">
@@ -1007,7 +1219,11 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
             <div className="inbox-thread-view__header-copy">
               <div className="inbox-thread-view__identity">
                 <span className="sidebar-user__avatar inbox-thread-view__avatar" aria-hidden="true">
-                  {(notification.actorProfile?.display_name ?? "C").slice(0, 1).toUpperCase()}
+                  {notification.actorProfile?.avatar_url ? (
+                    <img src={notification.actorProfile.avatar_url} alt="" className="sidebar-user__avatar-image" />
+                  ) : (
+                    (notification.actorProfile?.display_name ?? "C").slice(0, 1).toUpperCase()
+                  )}
                 </span>
                 <div className="inbox-thread-view__identity-copy">
                   <button
@@ -1110,13 +1326,15 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
               {isPending ? "Enviando..." : "Enviar"}
             </button>
           </div>
+          {commentReplyStatus ? <p className="inbox-thread-view__composer-status">{commentReplyStatus}</p> : null}
         </div>
       </article>
     );
   }
 
   return (
-    <section className={`feed-shell inbox-shell ${isShowingMobileThread ? "is-thread-open-mobile" : ""}`}>
+    <>
+      <section className={`feed-shell inbox-shell ${isShowingMobileThread ? "is-thread-open-mobile" : ""}`}>
       <div className="feed-main inbox-main">
         {!isShowingMobileThread ? (
           <>
@@ -1136,16 +1354,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
                 Comentarios
               </button>
             </header>
-
-            {category === "comments" ? (
-              <div className="inbox-subtabs inbox-subtabs--summary">
-                <span className="inbox-subtabs__summary">
-                  {hasUnreadComments
-                    ? "Tenés comentarios nuevos en tus publicaciones"
-                    : "Tus comentarios recibidos aparecen acá"}
-                </span>
-              </div>
-            ) : null}
 
           </>
         ) : null}
@@ -1228,6 +1436,29 @@ export function InboxPanel({ userId, onOpenUserProfile, onOpenFeedPost }: InboxP
           ) : null}
         </div>
       </div>
-    </section>
+      </section>
+      <CommentPostPreviewModal
+        notification={postPreviewNotification}
+        comments={
+          postPreviewNotification
+            ? commentsByPostId[postPreviewNotification.postId] ?? [
+                {
+                  id: postPreviewNotification.commentId,
+                  postId: postPreviewNotification.postId,
+                  userId: postPreviewNotification.actorId,
+                  author: postPreviewNotification.actorProfile?.display_name ?? "Cineriano",
+                  username: postPreviewNotification.actorProfile?.username,
+                  body: postPreviewNotification.body,
+                  createdAtLabel: postPreviewNotification.createdAtLabel
+                }
+              ]
+            : []
+        }
+        userId={userId}
+        onClose={() => setPostPreviewNotification(null)}
+        onOpenTitle={openMediaDetails}
+        onDeleteComment={(comment) => void handleDeletePostComment(comment)}
+      />
+    </>
   );
 }

@@ -12,6 +12,7 @@ import {
   createFeedComment,
   createFeedPost,
   fetchFeedComments,
+  fetchFeedPostById,
   fetchFeedPosts,
   fetchFeedPostsByUsers,
   fetchUserMediaPosts
@@ -192,6 +193,7 @@ export function FeedPanel({
   const feedScrollContainerRef = useRef<HTMLElement | null>(null);
   const postRefs = useRef<Record<string, HTMLElement | null>>({});
   const commentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const pendingHighlightedPostIdRef = useRef<string | null>(null);
   const editorialRailRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const editorialNewsRef = useRef<EditorialNewsItem[]>([]);
   const composerWordCount = useMemo(() => countWords(composerText), [composerText]);
@@ -762,6 +764,26 @@ export function FeedPanel({
 
     const targetExists = visibleEntries.some((entry) => entry.id === highlightedPost.postId);
     if (!targetExists) {
+      if (pendingHighlightedPostIdRef.current === highlightedPost.postId) {
+        return;
+      }
+
+      pendingHighlightedPostIdRef.current = highlightedPost.postId;
+      void fetchFeedPostById(highlightedPost.postId)
+        .then((post) => {
+          if (post) {
+            setEntries((current) =>
+              current.some((entry) => entry.id === post.id) ? current : [post, ...current]
+            );
+          } else {
+            onHighlightHandled?.();
+          }
+        })
+        .catch(() => onHighlightHandled?.())
+        .finally(() => {
+          pendingHighlightedPostIdRef.current = null;
+        });
+
       if (activeFeedMode !== "discover") {
         setActiveFeedMode("discover");
       }

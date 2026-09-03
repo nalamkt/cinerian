@@ -626,6 +626,32 @@ export async function markRecommendationRepliesAsRead(input: { messageId: string
   dispatchInboxUpdate(input.userId);
 }
 
+export async function setRecommendationReplyReadState(input: {
+  replyId: string;
+  userId: string;
+  read: boolean;
+}) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("recommendation_message_replies")
+    .update({ read_at: input.read ? new Date().toISOString() : null })
+    .eq("id", input.replyId)
+    .eq("recipient_id", input.userId);
+
+  if (error) {
+    if (isMissingReplyActivityColumns(error)) {
+      return;
+    }
+
+    throw error;
+  }
+
+  dispatchInboxUpdate(input.userId);
+}
+
 export async function fetchReceivedMessages(userId: string): Promise<RecommendationMessage[]> {
   const rows = await fetchMessagesByColumn("recipient_id", userId);
   return mapMessageRows(rows);

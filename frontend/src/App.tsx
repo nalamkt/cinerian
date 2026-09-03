@@ -16,7 +16,6 @@ import { getAccessControl, type AppView } from "./lib/access";
 import { trackProductEvent } from "./lib/analytics";
 import { signOut } from "./lib/auth";
 import { fetchUnreadInboxCount, INBOX_UPDATED_EVENT } from "./lib/inbox";
-import { createAndShareInvite, fetchInviteByCode, PENDING_INVITE_STORAGE_KEY, type InviteInfo } from "./lib/invites";
 import {
   buildSharedProfilePath,
   parseSharedProfilePath,
@@ -27,7 +26,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "./lib/auth";
 const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
 const FOLLOW_SUGGESTIONS_SESSION_KEY = "cinerian-follow-suggestions-shown";
-type InviteAccessState = "checking" | "granted" | "missing" | "invalid";
 export const FEED_SCROLL_TO_TOP_EVENT = "cinerian:feed-scroll-to-top";
 export const FEED_REFRESH_EDITORIAL_EVENT = "cinerian:feed-refresh-editorial";
 
@@ -125,9 +123,6 @@ export default function App() {
     username: string;
   } | null>(() => parseSharedProfilePath(window.location.pathname));
   const [shareLabel, setShareLabel] = useState("Compartir perfil");
-  const [inviteLabel, setInviteLabel] = useState("Invitar");
-  const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
-  const [inviteAccess, setInviteAccess] = useState<InviteAccessState>("checking");
   const [showFollowSuggestions, setShowFollowSuggestions] = useState(false);
   const viewSessionRef = useRef<ViewSessionRef | null>(null);
   const accessControl = useMemo(
@@ -163,49 +158,6 @@ export default function App() {
   }, [localProfile, sessionUserId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const codeFromUrl = new URLSearchParams(window.location.search).get("invite");
-    if (codeFromUrl) {
-      window.localStorage.setItem(PENDING_INVITE_STORAGE_KEY, codeFromUrl);
-    }
-
-    const pendingCode = codeFromUrl || window.localStorage.getItem(PENDING_INVITE_STORAGE_KEY);
-    if (!pendingCode) {
-      setInviteAccess("missing");
-      return;
-    }
-
-    let isMounted = true;
-    fetchInviteByCode(pendingCode)
-      .then((info) => {
-        if (isMounted) {
-          if (info && !info.redeemedBy) {
-            setInviteInfo(info);
-            setInviteAccess("granted");
-            return;
-          }
-
-          window.localStorage.removeItem(PENDING_INVITE_STORAGE_KEY);
-          setInviteInfo(null);
-          setInviteAccess("invalid");
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setInviteInfo(null);
-          setInviteAccess("invalid");
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
     if (selectedProfileRoute) {
       return;
     }
@@ -221,37 +173,6 @@ export default function App() {
   const ownProfileAction = useMemo(() => {
     return (
       <div className="profile-hero__actions profile-hero__actions--own">
-        <button
-          type="button"
-          className="recommendation-action-button recommendation-action-button--small"
-          disabled={!sessionUserId}
-          data-tooltip={inviteLabel}
-          aria-label={inviteLabel}
-          onClick={async () => {
-            if (!sessionUserId) {
-              return;
-            }
-
-            try {
-              const result = await createAndShareInvite(sessionUserId);
-              if (result === "cancelled") {
-                return;
-              }
-              setInviteLabel(result === "shared" ? "Invitación enviada" : "Link copiado");
-            } catch {
-              setInviteLabel("No se pudo invitar");
-            } finally {
-              window.setTimeout(() => setInviteLabel("Invitar"), 1800);
-            }
-          }}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-            <circle cx="9" cy="7" r="4" />
-            <path d="M19 8v6" />
-            <path d="M22 11h-6" />
-          </svg>
-        </button>
         <button
           type="button"
           className="recommendation-action-button recommendation-action-button--small"
@@ -282,7 +203,7 @@ export default function App() {
         </button>
       </div>
     );
-  }, [sessionUserId, inviteLabel, localProfile?.username, shareLabel]);
+  }, [localProfile?.username, shareLabel]);
 
   useEffect(() => {
     function syncRouteFromLocation() {
@@ -521,18 +442,6 @@ export default function App() {
           <InboxPanel
             userId={session!.user.id}
             onOpenUserProfile={handleOpenUserProfile}
-            onOpenFeedPost={({ postId, focusCommentInput }) => {
-              setSelectedProfileRoute(null);
-              setActiveView("feed");
-              setHighlightedFeedPost({
-                postId,
-                openComments: true,
-                focusCommentInput
-              });
-              if (window.location.pathname !== "/") {
-                window.history.pushState({}, "", "/");
-              }
-            }}
           />
         );
       case "feed":
@@ -572,11 +481,7 @@ export default function App() {
           <div className="auth-shell__form">
             {error ? <div className="app-alert">{error}</div> : null}
             {isLoading ? <div className="app-alert">Cargando sesion...</div> : null}
-            <AuthPanel
-              isSupabaseReady={hasSupabaseEnv}
-              inviteInfo={inviteAccess === "granted" ? inviteInfo : null}
-              canCreateAccount={inviteAccess === "granted"}
-            />
+            <AuthPanel isSupabaseReady={hasSupabaseEnv} />
           </div>
         </div>
       </div>

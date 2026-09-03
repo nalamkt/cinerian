@@ -57,6 +57,12 @@ export function FollowSuggestionsModal({ userId, onClose }: FollowSuggestionsMod
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
+  useEffect(() => {
+    if (!isLoading && suggestions.length === 0) {
+      onClose();
+    }
+  }, [isLoading, onClose, suggestions.length]);
+
   async function handleFollow(targetUserId: string) {
     if (followingInFlight || followingIds.includes(targetUserId)) {
       return;
@@ -72,6 +78,11 @@ export function FollowSuggestionsModal({ userId, onClose }: FollowSuggestionsMod
     } finally {
       setFollowingInFlight(null);
     }
+  }
+
+  // Only show the prompt when there is someone new the user can actually follow.
+  if (isLoading || suggestions.length === 0) {
+    return null;
   }
 
   return (
@@ -93,12 +104,6 @@ export function FollowSuggestionsModal({ userId, onClose }: FollowSuggestionsMod
         </p>
 
         <div className="follow-suggestions__list">
-          {isLoading ? <p className="sidebar-empty">Buscando cinerianos para vos...</p> : null}
-
-          {!isLoading && suggestions.length === 0 ? (
-            <p className="sidebar-empty">Por ahora no hay cinerianos nuevos para recomendarte.</p>
-          ) : null}
-
           {suggestions.map((profile) => {
             const isFollowing = followingIds.includes(profile.id);
             return (

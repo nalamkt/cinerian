@@ -206,32 +206,13 @@ create policy "profiles are public read"
   on public.profiles for select
   using (true);
 
--- depende de public.invites (supabase/invites.sql) -- aplicar ese archivo antes que este bloque
 drop policy if exists "users manage own profile" on public.profiles;
-
--- Crear el perfil exige una invitacion redimida. La unica excepcion es el primer
--- perfil de la app (el dueno, que nadie invito): apenas existe una fila en
--- profiles esa clausula queda muerta para siempre.
-create policy "users create own profile with invite"
-  on public.profiles for insert
-  with check (
-    auth.uid() = id
-    and (
-      not exists (select 1 from public.profiles)
-      or exists (select 1 from public.invites where redeemed_by = auth.uid())
-    )
-  );
-
--- Editar y borrar el propio perfil no exige invitacion: si no, quien nunca fue
--- invitado (el usuario raiz) no podria ni completar su onboarding.
-create policy "users update own profile"
-  on public.profiles for update
+drop policy if exists "users update own profile" on public.profiles;
+drop policy if exists "users delete own profile" on public.profiles;
+create policy "users manage own profile"
+  on public.profiles for all
   using (auth.uid() = id)
   with check (auth.uid() = id);
-
-create policy "users delete own profile"
-  on public.profiles for delete
-  using (auth.uid() = id);
 
 create policy "feed is public read"
   on public.feed_posts for select

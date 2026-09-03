@@ -340,7 +340,7 @@ function buildFallbackUsername(email: string | undefined, userId: string) {
   return (base && base.length >= 3 ? base : `cinerian_${userId.slice(0, 8)}`).slice(0, 24);
 }
 
-export async function sendMagicLink(email: string, options: { shouldCreateUser?: boolean } = {}) {
+export async function sendMagicLink(email: string) {
   if (!supabase) {
     throw new Error("Supabase no esta configurado.");
   }
@@ -355,7 +355,7 @@ export async function sendMagicLink(email: string, options: { shouldCreateUser?:
   return supabase.auth.signInWithOtp({
     email,
     options: {
-      shouldCreateUser: options.shouldCreateUser ?? true,
+      shouldCreateUser: true,
       emailRedirectTo: window.location.origin
     }
   });

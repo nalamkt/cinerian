@@ -181,6 +181,24 @@ export async function fetchFeedPosts(): Promise<FeedEntry[]> {
   return ((data ?? []) as FeedPostRow[]).map(mapFeedRow);
 }
 
+export async function fetchFeedPostById(postId: string): Promise<FeedEntry | null> {
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("feed_posts")
+    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username)")
+    .eq("id", postId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ? mapFeedRow(data as FeedPostRow) : null;
+}
+
 export async function fetchFeedPostsByUsers(userIds: string[]): Promise<FeedEntry[]> {
   if (!supabase || !userIds.length) {
     return [];
@@ -348,4 +366,25 @@ export async function createFeedComment(input: { postId: string; userId: string;
       notifiedOwner: post.user_id !== input.userId
     }
   });
+}
+
+export async function deleteFeedComment(input: { commentId: string; userId: string }) {
+  if (!supabase) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("feed_post_comments")
+    .delete()
+    .eq("id", input.commentId)
+    .eq("user_id", input.userId)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data?.length) {
+    throw new Error("No tenés permiso para eliminar este comentario.");
+  }
 }

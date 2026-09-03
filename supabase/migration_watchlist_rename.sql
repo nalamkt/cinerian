@@ -6,7 +6,7 @@
 -- que guarda el pulgar arriba/abajo y es otra cosa).
 -- El valor 'watchlist' ya estaba permitido en la base pero nunca se usaba.
 --
--- Correr DESPUES de migration_invites_y_scoring.sql
+-- Correr despues de migration_liked_scoring.sql
 -- ============================================================
 
 
