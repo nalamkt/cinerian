@@ -738,6 +738,7 @@ function MediaDetailsModal({
         ) : null}
         <TalentDetailsModal
           item={activeTalent}
+          userId={userId}
           onClose={() => setActiveTalent(null)}
           closeOnMediaOpen
           aboveMedia

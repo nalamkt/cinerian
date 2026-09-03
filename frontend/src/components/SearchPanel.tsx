@@ -465,7 +465,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         item={sendItem}
         onClose={() => setSendItem(null)}
       />
-      <TalentDetailsModal item={activeTalent} onClose={() => setActiveTalent(null)} />
+      <TalentDetailsModal item={activeTalent} userId={userId} onClose={() => setActiveTalent(null)} />
     </section>
   );
 }

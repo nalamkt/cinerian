@@ -27,6 +27,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "./lib/auth";
 const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
 const FOLLOW_SUGGESTIONS_SESSION_KEY = "cinerian-follow-suggestions-shown";
+type InviteAccessState = "checking" | "granted" | "missing" | "invalid";
 export const FEED_SCROLL_TO_TOP_EVENT = "cinerian:feed-scroll-to-top";
 export const FEED_REFRESH_EDITORIAL_EVENT = "cinerian:feed-refresh-editorial";
 
@@ -126,6 +127,7 @@ export default function App() {
   const [shareLabel, setShareLabel] = useState("Compartir perfil");
   const [inviteLabel, setInviteLabel] = useState("Invitar");
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
+  const [inviteAccess, setInviteAccess] = useState<InviteAccessState>("checking");
   const [showFollowSuggestions, setShowFollowSuggestions] = useState(false);
   const viewSessionRef = useRef<ViewSessionRef | null>(null);
   const accessControl = useMemo(
@@ -172,6 +174,7 @@ export default function App() {
 
     const pendingCode = codeFromUrl || window.localStorage.getItem(PENDING_INVITE_STORAGE_KEY);
     if (!pendingCode) {
+      setInviteAccess("missing");
       return;
     }
 
@@ -179,12 +182,21 @@ export default function App() {
     fetchInviteByCode(pendingCode)
       .then((info) => {
         if (isMounted) {
-          setInviteInfo(info);
+          if (info && !info.redeemedBy) {
+            setInviteInfo(info);
+            setInviteAccess("granted");
+            return;
+          }
+
+          window.localStorage.removeItem(PENDING_INVITE_STORAGE_KEY);
+          setInviteInfo(null);
+          setInviteAccess("invalid");
         }
       })
       .catch(() => {
         if (isMounted) {
           setInviteInfo(null);
+          setInviteAccess("invalid");
         }
       });
 
@@ -560,7 +572,11 @@ export default function App() {
           <div className="auth-shell__form">
             {error ? <div className="app-alert">{error}</div> : null}
             {isLoading ? <div className="app-alert">Cargando sesion...</div> : null}
-            <AuthPanel isSupabaseReady={hasSupabaseEnv} inviteInfo={inviteInfo} />
+            <AuthPanel
+              isSupabaseReady={hasSupabaseEnv}
+              inviteInfo={inviteAccess === "granted" ? inviteInfo : null}
+              canCreateAccount={inviteAccess === "granted"}
+            />
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ import type { InviteInfo } from "../lib/invites";
 type AuthPanelProps = {
   isSupabaseReady: boolean;
   inviteInfo?: InviteInfo | null;
+  canCreateAccount: boolean;
 };
 
 function getAuthErrorMessage(error: unknown) {
@@ -22,10 +23,14 @@ function getAuthErrorMessage(error: unknown) {
     return "Ese email ya tiene una cuenta. Prueba iniciar sesion o recuperar la contrasena.";
   }
 
+  if (normalizedMessage.includes("signups not allowed") || normalizedMessage.includes("user not found")) {
+    return "No encontramos una cuenta con ese email. Para crear una, abrí un link de invitación de Cinerian.";
+  }
+
   return error.message;
 }
 
-export function AuthPanel({ isSupabaseReady, inviteInfo }: AuthPanelProps) {
+export function AuthPanel({ isSupabaseReady, inviteInfo, canCreateAccount }: AuthPanelProps) {
   const [email, setEmail] = useState("");
   const [step, setStep] = useState<"request" | "verify">("request");
   const [otpCode, setOtpCode] = useState("");
@@ -46,7 +51,7 @@ export function AuthPanel({ isSupabaseReady, inviteInfo }: AuthPanelProps) {
       setIsSubmitting(true);
       setMessage(null);
 
-      const { error } = await sendMagicLink(email);
+      const { error } = await sendMagicLink(email, { shouldCreateUser: canCreateAccount });
       if (error) {
         throw error;
       }
@@ -138,7 +143,7 @@ export function AuthPanel({ isSupabaseReady, inviteInfo }: AuthPanelProps) {
         ) : (
           <div className="inline-status">
             Cinerian es por invitación. Si sos nuevo, necesitás un link de invitación de alguien que ya
-            esté adentro.
+            esté adentro. Si ya tenés cuenta, podés iniciar sesión normalmente.
           </div>
         ))}
 

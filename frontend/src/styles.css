@@ -6706,6 +6706,7 @@ textarea {
 }
 
 .talent-modal__credit {
+  position: relative;
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr);
   gap: 14px;
@@ -6751,6 +6752,50 @@ textarea {
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.talent-modal__reaction {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 42px;
+  padding: 8px;
+  border: 1px solid rgba(255, 187, 54, 0.35);
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(255, 187, 54, 0.1);
+}
+
+.talent-modal__reaction svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
+.talent-modal__reaction-thumbs {
+  display: inline-flex;
+}
+
+.talent-modal__reaction--superliked .talent-modal__reaction-thumbs svg + svg {
+  margin-left: -8px;
+}
+
+.talent-modal__reaction--disliked {
+  color: #d88585;
+  border-color: rgba(216, 133, 133, 0.42);
+  background: rgba(216, 133, 133, 0.1);
+}
+
+.talent-modal__reaction .is-down {
+  transform: rotate(180deg);
 }
 
 .media-copy__meta-row {

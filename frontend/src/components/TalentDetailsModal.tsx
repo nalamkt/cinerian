@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { getTalentDetails } from "../lib/tmdb";
+import {
+  fetchStoredReactions,
+  REACTIONS_UPDATED_EVENT,
+  type RecommendationReaction,
+  type StoredReaction
+} from "../lib/reactions";
 import type { TalentDetails, TalentSearchItem } from "../types";
 
 const CREDITS_PAGE_SIZE = 12;
@@ -9,13 +15,58 @@ const CREDITS_PAGE_SIZE = 12;
 type TalentDetailsModalProps = {
   item: TalentSearchItem | null;
   onClose: () => void;
+  userId?: string;
   closeOnMediaOpen?: boolean;
   aboveMedia?: boolean;
 };
 
+const THUMB_PATH =
+  "M7 10v10M7 10l3.5-6a2.5 2.5 0 0 1 2.4 3.2L12 10h6a2 2 0 0 1 2 2.4l-1.2 6a2 2 0 0 1-2 1.6H7";
+
+const REACTION_LABELS: Partial<Record<RecommendationReaction, string>> = {
+  superliked: "Me encanto",
+  liked: "Me gusto",
+  disliked: "No me gusto",
+  watchlist: "Guardada"
+};
+
+function TalentCreditReaction({ reaction }: { reaction: RecommendationReaction | undefined }) {
+  if (!reaction || reaction === "ignored") {
+    return null;
+  }
+
+  const label = REACTION_LABELS[reaction];
+  if (!label) {
+    return null;
+  }
+
+  return (
+    <span
+      className={`talent-modal__reaction talent-modal__reaction--${reaction}`}
+      aria-label={`Tu reaccion: ${label}`}
+      title={label}
+    >
+      {reaction === "watchlist" ? (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M7 4.5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16l-5-3.2-5 3.2z" />
+        </svg>
+      ) : (
+        <span className="talent-modal__reaction-thumbs" aria-hidden="true">
+          {Array.from({ length: reaction === "superliked" ? 2 : 1 }, (_, index) => (
+            <svg key={index} viewBox="0 0 24 24" className={reaction === "disliked" ? "is-down" : ""}>
+              <path d={THUMB_PATH} />
+            </svg>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function TalentDetailsModal({
   item,
   onClose,
+  userId,
   closeOnMediaOpen = false,
   aboveMedia = false
 }: TalentDetailsModalProps) {
@@ -24,6 +75,7 @@ export function TalentDetailsModal({
   const [isLoading, setIsLoading] = useState(false);
   const [visibleActingCredits, setVisibleActingCredits] = useState(CREDITS_PAGE_SIZE);
   const [visibleDirectingCredits, setVisibleDirectingCredits] = useState(CREDITS_PAGE_SIZE);
+  const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
 
   useEffect(() => {
     if (!item) {
@@ -57,6 +109,44 @@ export function TalentDetailsModal({
   }, [item?.id]);
 
   useEffect(() => {
+    if (!userId) {
+      setStoredReactions([]);
+      return;
+    }
+
+    const activeUserId = userId;
+    let isMounted = true;
+
+    async function loadStoredReactions() {
+      try {
+        const reactions = await fetchStoredReactions(activeUserId);
+        if (isMounted) {
+          setStoredReactions(reactions);
+        }
+      } catch {
+        if (isMounted) {
+          setStoredReactions([]);
+        }
+      }
+    }
+
+    function handleReactionsUpdated(event: Event) {
+      const eventUserId = (event as CustomEvent<{ userId?: string }>).detail?.userId;
+      if (!eventUserId || eventUserId === activeUserId) {
+        void loadStoredReactions();
+      }
+    }
+
+    void loadStoredReactions();
+    window.addEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
+    };
+  }, [userId]);
+
+  useEffect(() => {
     if (!item) {
       return;
     }
@@ -74,6 +164,10 @@ export function TalentDetailsModal({
   if (!item) {
     return null;
   }
+
+  const reactionsByCredit = new Map(
+    storedReactions.map((reaction) => [`${reaction.mediaType}-${reaction.tmdbId}`, reaction.reaction])
+  );
 
   const modal = (
     <div
@@ -156,6 +250,9 @@ export function TalentDetailsModal({
                             <p>{credit.roleLabel}</p>
                             <small>Ver detalle</small>
                           </div>
+                          <TalentCreditReaction
+                            reaction={reactionsByCredit.get(`${credit.mediaType}-${credit.id}`)}
+                          />
                         </article>
                       ))}
                     </div>
@@ -199,6 +296,9 @@ export function TalentDetailsModal({
                             <p>{credit.roleLabel}</p>
                             <small>Ver detalle</small>
                           </div>
+                          <TalentCreditReaction
+                            reaction={reactionsByCredit.get(`${credit.mediaType}-${credit.id}`)}
+                          />
                         </article>
                       ))}
                     </div>

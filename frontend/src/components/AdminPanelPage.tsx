@@ -65,7 +65,7 @@ export function AdminPanelPage() {
           <div className="auth-shell__form">
             {error ? <div className="app-alert">{error}</div> : null}
             {isLoading ? <div className="app-alert">Cargando sesion...</div> : null}
-            <AuthPanel isSupabaseReady={hasSupabaseEnv} />
+            <AuthPanel isSupabaseReady={hasSupabaseEnv} canCreateAccount={false} />
           </div>
         </div>
       </div>

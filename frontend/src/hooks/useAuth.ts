@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { ensureProfile, getCurrentSession, signOut, type Profile } from "../lib/auth";
+import { ensureProfile, getCurrentSession, getProfileById, signOut, type Profile } from "../lib/auth";
 import { followUser } from "../lib/follows";
 import { PENDING_INVITE_STORAGE_KEY, redeemInvite } from "../lib/invites";
 import { supabase } from "../lib/supabase";
@@ -12,23 +12,43 @@ type AuthState = {
   error: string | null;
 };
 
+const profileEstablishmentTasks = new Map<string, Promise<Profile>>();
+
 function isRlsRejection(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : "";
   return message.includes("row-level security") || message.includes("policy");
 }
 
-async function establishProfile(user: User): Promise<Profile> {
+async function establishProfileForUser(user: User): Promise<Profile> {
   const pendingCode =
     typeof window === "undefined" ? null : window.localStorage.getItem(PENDING_INVITE_STORAGE_KEY);
 
-  let redeemedInviterId: string | null = null;
-  if (pendingCode) {
-    try {
-      const redemption = await redeemInvite(pendingCode, user.id);
-      redeemedInviterId = redemption?.inviterId ?? null;
-    } catch {
-      redeemedInviterId = null;
+  // A logged-in member can open another person's invite link without consuming it.
+  const existingProfile = await getProfileById(user.id);
+  if (existingProfile) {
+    if (pendingCode && typeof window !== "undefined") {
+      window.localStorage.removeItem(PENDING_INVITE_STORAGE_KEY);
     }
+
+    return existingProfile;
+  }
+
+  let redeemedInviterId: string | null = null;
+  if (!pendingCode) {
+    await signOut();
+    throw new Error("Necesitas una invitacion valida para crear una cuenta.");
+  }
+
+  try {
+    const redemption = await redeemInvite(pendingCode, user.id);
+    redeemedInviterId = redemption?.inviterId ?? null;
+  } catch {
+    redeemedInviterId = null;
+  }
+
+  if (!redeemedInviterId) {
+    await signOut();
+    throw new Error("La invitacion no es valida o ya fue utilizada.");
   }
 
   try {
@@ -51,6 +71,30 @@ async function establishProfile(user: User): Promise<Profile> {
 
     throw error;
   }
+}
+
+function establishProfile(user: User): Promise<Profile> {
+  const activeTask = profileEstablishmentTasks.get(user.id);
+  if (activeTask) {
+    return activeTask;
+  }
+
+  const task = establishProfileForUser(user);
+  profileEstablishmentTasks.set(user.id, task);
+  void task.then(
+    () => {
+      if (profileEstablishmentTasks.get(user.id) === task) {
+        profileEstablishmentTasks.delete(user.id);
+      }
+    },
+    () => {
+      if (profileEstablishmentTasks.get(user.id) === task) {
+        profileEstablishmentTasks.delete(user.id);
+      }
+    }
+  );
+
+  return task;
 }
 
 export function useAuth() {
