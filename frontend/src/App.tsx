@@ -198,9 +198,6 @@ export default function App() {
             <path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
           </svg>
         </button>
-        <button type="button" className="profile-mobile-logout" onClick={() => void signOut()}>
-          Cerrar sesión
-        </button>
       </div>
     );
   }, [localProfile?.username, shareLabel]);

@@ -217,6 +217,49 @@ function socialScoreOf(candidate: ScoredCandidate) {
   return candidate.weightSum / (candidate.watcherIds.length + SCORE_SMOOTHING);
 }
 
+/** Cuanto puntuo el circulo del usuario a un titulo, y con cuantas opiniones. */
+export type CircleScore = {
+  score: number;
+  watchers: number;
+};
+
+/**
+ * Puntaje de Cinerian por titulo: el mismo promedio ponderado que ordena
+ * Descubri (ver REACTION_WEIGHT y SCORE_SMOOTHING), pero calculado para
+ * titulos que el usuario todavia no vio.
+ *
+ * Devuelve solo los titulos que alguien del circulo puntuo: si la clave no
+ * esta, no hay señal social, no es un cero.
+ */
+export async function fetchCircleScores(userId: string): Promise<Map<string, CircleScore>> {
+  const followingIds = await fetchFollowingUserIds(userId);
+  if (followingIds.length === 0) {
+    return new Map();
+  }
+
+  const followedRated = await fetchRatedReactionsForUserIds(followingIds);
+  const totals = new Map<string, { weightSum: number; watchers: number }>();
+
+  followedRated.forEach((reaction) => {
+    const key = candidateKey(reaction.mediaType, reaction.tmdbId);
+    const entry = totals.get(key) ?? { weightSum: 0, watchers: 0 };
+
+    entry.weightSum += REACTION_WEIGHT[reaction.reaction];
+    entry.watchers += 1;
+    totals.set(key, entry);
+  });
+
+  return new Map(
+    Array.from(totals, ([key, entry]) => [
+      key,
+      {
+        score: entry.weightSum / (entry.watchers + SCORE_SMOOTHING),
+        watchers: entry.watchers
+      }
+    ])
+  );
+}
+
 /**
  * Arma el ranking personal del usuario y devuelve la pagina pedida.
  *

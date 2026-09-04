@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import {
   GENDER_OPTIONS,
+  signOut,
   type Gender,
   type Profile,
   type ProfileVisibilitySettings,
@@ -351,6 +352,13 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
         </button>
         <button type="submit" className="profile-follow-button" disabled={isSaving}>
           {isSaving ? "Guardando..." : "Guardar cambios"}
+        </button>
+      </div>
+
+      {/* En mobile el dock no muestra "Salir", asi que esta es la unica salida. */}
+      <div className="profile-editor__signout">
+        <button type="button" onClick={() => void signOut()} disabled={isSaving}>
+          Cerrar sesión
         </button>
       </div>
     </form>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { LoadingState } from "./LoadingState";
 import { TitleCard } from "./TitleCard";
+import { WatchNowRow } from "./WatchNowRow";
 import {
   type CurrentWatchingEntry,
   type Profile,
@@ -20,6 +21,7 @@ import {
   type RecommendationReaction,
   type StoredReaction
 } from "../lib/reactions";
+import { fetchCircleScores, type CircleScore } from "../lib/recommendations";
 import { getSeriesAiringInfo, getTitleById, searchTitles } from "../lib/tmdb";
 import type { DiscoveryItem, FeedEntry, SeriesAiringInfo } from "../types";
 
@@ -58,6 +60,11 @@ const TAB_REACTIONS: Partial<Record<TabId, RecommendationReaction[]>> = {
   watched: ["superliked", "liked", "disliked"],
   watchlist: ["watchlist"]
 };
+
+/** Las reacciones viejas pueden no tener fecha: van al final. */
+function toTimestamp(value: string | null) {
+  return value ? new Date(value).getTime() : 0;
+}
 
 const tabLabels: Record<TabId, string> = {
   watched: "Vistas",
@@ -289,6 +296,33 @@ export function ProfileTabs({
   }, [activeTab, visibleTabs]);
 
   const [typeFilter, setTypeFilter] = useState<"all" | "movie" | "tv">("all");
+  const [circleScores, setCircleScores] = useState<Map<string, CircleScore>>(new Map());
+
+  // El puntaje del circulo solo se usa para ordenar la Watchlist: lo pedimos
+  // recien cuando se abre esa pestaña.
+  useEffect(() => {
+    if (activeTab !== "watchlist") {
+      return;
+    }
+
+    let isMounted = true;
+
+    void fetchCircleScores(userId)
+      .then((result) => {
+        if (isMounted) {
+          setCircleScores(result);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setCircleScores(new Map());
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTab, userId]);
 
   const mutualLikedItems = useMemo(() => {
     const viewerLikedKeys = new Set(
@@ -311,12 +345,44 @@ export function ProfileTabs({
     }
 
     const tabReactions = TAB_REACTIONS[activeTab] ?? [];
-    return reactions
-      .filter((entry) => tabReactions.includes(entry.reaction))
+    const entries = reactions.filter((entry) => tabReactions.includes(entry.reaction));
+
+    // Vistas arranca por lo ultimo que marcaste como visto.
+    if (activeTab === "watched") {
+      entries.sort((left, right) => toTimestamp(right.createdAt) - toTimestamp(left.createdAt));
+    }
+
+    const items = entries
       .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
       .filter((item): item is DiscoveryItem => Boolean(item))
       .filter((item) => typeFilter === "all" || item.mediaType === typeFilter);
-  }, [activeTab, mutualLikedItems, reactions, titles, typeFilter]);
+
+    // La Watchlist es una lista para elegir que ver: arranca por lo mejor
+    // puntuado por tu circulo. Lo que nadie de tu circulo vio queda al final
+    // (no tiene puntaje, que no es lo mismo que tener cero) y ahi desempata TMDB.
+    if (activeTab === "watchlist") {
+      items.sort((left, right) => {
+        const leftScore = circleScores.get(`${left.mediaType}-${left.id}`)?.score ?? null;
+        const rightScore = circleScores.get(`${right.mediaType}-${right.id}`)?.score ?? null;
+
+        if (leftScore !== rightScore) {
+          if (leftScore === null) {
+            return 1;
+          }
+
+          if (rightScore === null) {
+            return -1;
+          }
+
+          return rightScore - leftScore;
+        }
+
+        return right.score - left.score;
+      });
+    }
+
+    return items;
+  }, [activeTab, circleScores, mutualLikedItems, reactions, titles, typeFilter]);
 
   const reactionByTitle = useMemo(
     () => new Map(reactions.map((entry) => [`${entry.mediaType}-${entry.tmdbId}`, entry.reaction])),
@@ -641,6 +707,8 @@ export function ProfileTabs({
                           : "La info de salida puede variar según TMDB."}
                       </span>
                     </div>
+
+                    <WatchNowRow item={item} />
                   </div>
                 </article>
               ))}
@@ -796,28 +864,41 @@ export function ProfileTabs({
             </div>
           ) : null}
 
-          <div className="profile-type-filter">
-            <button
-              type="button"
-              className={typeFilter === "all" ? "is-active" : ""}
-              onClick={() => setTypeFilter("all")}
-            >
-              Todo
-            </button>
-            <button
-              type="button"
-              className={typeFilter === "movie" ? "is-active" : ""}
-              onClick={() => setTypeFilter("movie")}
-            >
-              Peliculas
-            </button>
-            <button
-              type="button"
-              className={typeFilter === "tv" ? "is-active" : ""}
-              onClick={() => setTypeFilter("tv")}
-            >
-              Series
-            </button>
+          <div className="profile-list-toolbar">
+            <div className="profile-type-filter">
+              <button
+                type="button"
+                className={typeFilter === "all" ? "is-active" : ""}
+                onClick={() => setTypeFilter("all")}
+              >
+                Todo
+              </button>
+              <button
+                type="button"
+                className={typeFilter === "movie" ? "is-active" : ""}
+                onClick={() => setTypeFilter("movie")}
+              >
+                Peliculas
+              </button>
+              <button
+                type="button"
+                className={typeFilter === "tv" ? "is-active" : ""}
+                onClick={() => setTypeFilter("tv")}
+              >
+                Series
+              </button>
+            </div>
+
+            {activeTab === "watchlist" ? (
+              <p className="profile-list-order">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7 10v10M7 10l3.5-6a2.5 2.5 0 0 1 2.4 3.2L12 10h6a2 2 0 0 1 2 2.4l-1.2 6a2 2 0 0 1-2 1.6H7" />
+                </svg>
+                {circleScores.size
+                  ? "Mejor puntuadas por tu círculo primero"
+                  : "Se ordenan por lo que puntúa tu círculo"}
+              </p>
+            ) : null}
           </div>
 
           {tabItems.length ? (

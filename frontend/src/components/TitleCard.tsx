@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { getWatchProviders } from "../lib/tmdb";
 import { isRatedReaction, type RatedReaction, type RecommendationReaction } from "../lib/reactions";
+import { WatchNowRow } from "./WatchNowRow";
 import type { DiscoveryItem } from "../types";
 
 type TitleCardProps = {
@@ -13,17 +13,6 @@ type TitleCardProps = {
   isRemoving?: boolean;
 };
 
-const PROVIDER_STYLES: Record<string, { label: string; color: string }> = {
-  Netflix: { label: "N", color: "#a3161c" },
-  "Disney Plus": { label: "D+", color: "#0f3a8c" },
-  "HBO Max": { label: "H", color: "#5b3fb0" },
-  Max: { label: "M", color: "#5b3fb0" },
-  "Amazon Prime Video": { label: "P", color: "#1c2f4a" },
-  "Star Plus": { label: "S+", color: "#0b1a3a" },
-  "Apple TV Plus": { label: "TV", color: "#1a1a1a" },
-  "Paramount Plus": { label: "P+", color: "#1a5fd0" }
-};
-
 const THUMB_PATH =
   "M7 10v10M7 10l3.5-6a2.5 2.5 0 0 1 2.4 3.2L12 10h6a2 2 0 0 1 2 2.4l-1.2 6a2 2 0 0 1-2 1.6H7";
 
@@ -32,10 +21,6 @@ const RATING_OPTIONS: Array<{ id: RatedReaction; label: string }> = [
   { id: "liked", label: "Me gustó" },
   { id: "disliked", label: "No me gustó" }
 ];
-
-function getProviderStyle(name: string) {
-  return PROVIDER_STYLES[name] ?? { label: name.slice(0, 2).toUpperCase(), color: "#3a3f4a" };
-}
 
 function Thumbs({ reaction }: { reaction: RatedReaction }) {
   const count = reaction === "superliked" ? 2 : 1;
@@ -62,23 +47,8 @@ export function TitleCard({
   removeLabel = "Quitar",
   isRemoving = false
 }: TitleCardProps) {
-  const [providers, setProviders] = useState<string[] | null>(null);
   const [menuState, setMenuState] = useState<"closed" | "menu" | "confirm">("closed");
   const cardRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    void getWatchProviders(item.id, item.mediaType).then((result) => {
-      if (isMounted) {
-        setProviders(result);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [item.id, item.mediaType]);
 
   useEffect(() => {
     if (menuState === "closed") {
@@ -106,8 +76,6 @@ export function TitleCard({
     };
   }, [menuState]);
 
-  const primaryProvider = providers?.[0] ?? null;
-  const providerStyle = primaryProvider ? getProviderStyle(primaryProvider) : null;
   const ratedReaction = reaction && isRatedReaction(reaction) ? reaction : null;
   const canRate = Boolean(onChangeRating && ratedReaction);
   const canRemove = Boolean(onRemove);
@@ -178,14 +146,7 @@ export function TitleCard({
         </button>
       ) : null}
 
-      {providerStyle ? (
-        <button type="button" className="title-card__watch" onClick={onOpenDetails}>
-          <span className="title-card__watch-icon" style={{ background: providerStyle.color }}>
-            {providerStyle.label}
-          </span>
-          <span>Ver ahora</span>
-        </button>
-      ) : null}
+      <WatchNowRow item={item} />
 
       {menuState === "menu" ? (
         <div className="title-card__menu" role="menu">

@@ -3536,8 +3536,26 @@ textarea {
   justify-content: flex-end;
 }
 
-.profile-mobile-logout {
-  display: none;
+.profile-editor__signout {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.profile-editor__signout button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.profile-editor__signout button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .profile-handle {
@@ -6328,6 +6346,36 @@ textarea {
   display: block;
 }
 
+.profile-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.profile-list-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.profile-list-order svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
 .profile-type-filter {
   display: inline-flex;
   gap: 6px;
@@ -6335,7 +6383,6 @@ textarea {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--panel-edge);
-  margin-bottom: 18px;
 }
 
 .profile-type-filter button {
@@ -6614,38 +6661,72 @@ textarea {
   color: var(--muted);
 }
 
-.title-card__watch {
+/**
+ * Los logos son hermanos directos de la etiqueta, no un bloque aparte: asi la
+ * primera linea siempre arranca con "Ver en" y solo bajan los que no entran.
+ */
+.watch-now {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 9px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--panel-edge);
-  color: var(--text);
-  cursor: pointer;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.title-card__watch:hover {
-  border-color: var(--panel-edge-strong);
-  background: rgba(255, 255, 255, 0.08);
+.watch-now__label {
+  margin: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
-.title-card__watch-icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
+.watch-now__platform {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   flex: none;
   display: grid;
   place-items: center;
-  font-size: 0.62rem;
-  font-weight: 800;
-  color: #fff;
-  letter-spacing: -0.02em;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 
-.title-card__watch span:last-child {
-  font-size: 0.82rem;
+.watch-now__platform:hover {
+  border-color: rgba(252, 195, 95, 0.55);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px -6px rgba(0, 0, 0, 0.7);
+}
+
+.watch-now__platform:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.watch-now__platform img {
+  width: 100%;
+  height: 100%;
+  border-radius: 7px;
+  object-fit: cover;
+  display: block;
+}
+
+.watch-now__fallback {
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.watch-now__platform--rent {
+  width: auto;
+  padding: 0 11px;
+  height: 32px;
+  font-size: 0.74rem;
   font-weight: 700;
 }
 
@@ -7581,13 +7662,143 @@ textarea {
     border-radius: 16px;
   }
 
-  .profile-hero__header {
-    flex-direction: column;
+  /**
+   * Encabezado compacto en mobile: foto con el usuario debajo a la izquierda,
+   * nombre con los numeros debajo a la derecha, y bio + acciones a lo ancho.
+   *
+   * Los envoltorios pasan a `display: contents` para que todas las piezas
+   * participen de la misma grilla; asi se reacomodan sin tocar el DOM, que en
+   * escritorio sigue anidado como estaba.
+   */
+  .profile-hero {
+    grid-template-columns: 88px minmax(0, 1fr);
+    column-gap: 14px;
+    row-gap: 11px;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .profile-hero__copy,
+  .profile-hero__header,
+  .profile-hero__header > div:not(.profile-hero__action) {
+    display: contents;
   }
 
   .profile-avatar {
-    width: 104px;
-    font-size: 2.4rem;
+    width: 88px;
+    font-size: 2.1rem;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  /* "PERFIL" no aporta informacion y costaba una linea entera. */
+  .profile-hero__header .section-eyebrow {
+    display: none;
+  }
+
+  .profile-hero__header h2 {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    margin: 0;
+    font-size: 1.22rem;
+    line-height: 1.2;
+  }
+
+  .profile-stats-inline {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+    width: 100%;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .profile-handle {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: center;
+    margin: 0;
+    font-size: 0.78rem;
+    text-align: center;
+  }
+
+  .profile-stats-inline__item {
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    font-size: 0.68rem;
+  }
+
+  .profile-stats-inline__item:not(:first-child)::before {
+    content: none;
+  }
+
+  .profile-stats-inline__item strong {
+    font-size: 1.05rem;
+  }
+
+  .profile-bio {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    margin: 0;
+    text-align: left;
+    font-size: 0.88rem;
+  }
+
+  .profile-hero__action {
+    grid-column: 1 / -1;
+    grid-row: 5;
+    width: 100%;
+  }
+
+  .profile-genres {
+    grid-column: 1 / -1;
+    grid-row: 6;
+  }
+
+  /* Los badges automaticos ocupaban dos lineas y no se muestran en mobile. */
+  .profile-badges {
+    display: none;
+  }
+
+  /* Una sola fila: Editar perfil ocupa el ancho, compartir y el menu al lado. */
+  .profile-hero__action--own {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .profile-hero__action--own .profile-share-button {
+    order: -1;
+    flex: 1;
+    min-height: 42px;
+    border-radius: 12px;
+    justify-content: center;
+    font-size: 0.84rem;
+    font-weight: 500;
+  }
+
+  .profile-hero__action--own .recommendation-action-button {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    border-radius: 12px;
+    flex: none;
+    /* Sin espacio reservado para la etiqueta: aca va solo el icono. */
+    margin-bottom: 0;
+  }
+
+  /* El resto de la app usa este tooltip como etiqueta fija en mobile;
+     en el encabezado del perfil sobra, porque el icono ya se entiende. */
+  .profile-hero__action--own .recommendation-action-button::after {
+    content: none;
+  }
+
+  /* Filtros centrados bajo las pestañas. */
+  .profile-list-toolbar {
+    justify-content: center;
   }
 
   .profile-tabs__switcher {
@@ -7608,52 +7819,59 @@ textarea {
   .profile-tabs__switch {
     flex: 0 0 auto;
     white-space: nowrap;
+    font-size: 0.86rem;
+    font-weight: 500;
+  }
+
+  .profile-tabs__switch.is-active {
+    font-weight: 600;
   }
 
   .profile-grid {
     grid-template-columns: 1fr;
   }
 
-  /* The watched library is easier to scan on touch screens as compact rows. */
+  /**
+   * La biblioteca en mobile es una grilla de dos posters, sin texto: el titulo,
+   * el tipo, el año y las plataformas viven en el detalle, que se abre tocando
+   * el poster. Quedan encima solo los dos controles: puntaje y puntuacion.
+   */
+  .profile-grid--library {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
   .profile-grid--library .title-card {
-    grid-template-columns: 92px minmax(0, 1fr);
-    grid-template-rows: auto auto auto 1fr;
-    column-gap: 12px;
-    row-gap: 5px;
-    min-height: 138px;
-    padding: 10px;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    border-radius: 14px;
   }
 
   .profile-grid--library .title-card__poster-wrap {
-    grid-column: 1;
-    grid-row: 1 / span 4;
-    width: 92px;
-    height: 138px;
-    aspect-ratio: auto;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 3;
   }
 
   .profile-grid--library .title-card__title,
   .profile-grid--library .title-card__meta,
-  .profile-grid--library .title-card__reaction,
-  .profile-grid--library .title-card__watch {
-    grid-column: 2;
+  .profile-grid--library .watch-now {
+    display: none;
   }
 
-  .profile-grid--library .title-card__title {
-    min-width: 0;
-    align-self: auto;
-    font-size: 1rem;
-    line-height: 1.2;
-  }
-
-  .profile-grid--library .title-card__meta {
-    line-height: 1.25;
+  .profile-grid--library .title-card__score {
+    top: 6px;
+    left: 6px;
+    font-size: 0.66rem;
+    padding: 3px 6px;
   }
 
   .profile-grid--library .title-card__reaction {
-    position: static;
-    justify-self: start;
-    min-height: 24px;
+    top: 6px;
+    right: 6px;
+    min-height: 26px;
     padding: 0 7px;
   }
 
@@ -7662,18 +7880,11 @@ textarea {
     height: 13px;
   }
 
-  .profile-grid--library .title-card__watch {
-    align-self: start;
-    justify-self: start;
-    margin-top: 5px;
-    padding: 7px 10px;
-  }
-
-  /* On the compact row layout the menu hangs off the card, not the poster. */
+  /* El menu cuelga del borde derecho de la tarjeta para no salirse de pantalla. */
   .profile-grid--library .title-card__menu {
-    top: auto;
-    bottom: 10px;
-    right: 10px;
+    top: 38px;
+    right: 0;
+    width: min(218px, 62vw);
   }
 
   .recommendation-shell {
@@ -8061,35 +8272,6 @@ textarea {
     border-radius: 12px;
   }
 
-  .profile-stats-inline {
-    justify-content: center;
-  }
-
-  .profile-hero {
-    justify-items: center;
-    text-align: center;
-  }
-
-  .profile-hero__copy,
-  .profile-hero__header,
-  .profile-hero__action {
-    width: 100%;
-  }
-
-  .profile-hero__copy {
-    justify-items: center;
-  }
-
-  .profile-hero__header {
-    align-items: center;
-    text-align: center;
-  }
-
-  .profile-handle,
-  .profile-bio {
-    text-align: center;
-  }
-
   .profile-post-card {
     padding: 14px;
   }
@@ -8106,40 +8288,6 @@ textarea {
     aspect-ratio: auto;
     height: 122px;
     border-radius: 14px;
-  }
-
-  .profile-hero__actions--own {
-    display: contents;
-  }
-
-  .profile-hero__action--own {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-    gap: 10px;
-  }
-
-  .profile-hero__action--own .recommendation-action-button {
-    justify-self: center;
-  }
-
-  .profile-hero__action--own .profile-mobile-logout,
-  .profile-hero__action--own .profile-share-button {
-    width: 100%;
-    justify-content: center;
-    min-height: 46px;
-    padding: 0 12px;
-    font-size: 0.94rem;
-  }
-
-  .profile-mobile-logout {
-    display: inline-flex;
-    align-items: center;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--text);
-    font-weight: 800;
   }
 
   .profile-post-card__topline,
@@ -8208,42 +8356,304 @@ textarea {
     width: 100%;
   }
 
-  .media-modal {
-    max-height: calc(100vh - 24px);
-    border-radius: 24px;
+  /*
+    En mobile la ficha deja de ser una tarjeta flotante y pasa a pantalla
+    completa. Recortada a los costados el hero quedaba partido y el doble
+    scroll (backdrop + ficha) se sentia roto; ademas 100vh en iOS mide de mas
+    y cortaba el final, por eso vamos con 100dvh.
+  */
+  .media-modal__backdrop {
+    padding: 0;
+  }
+
+  .media-modal:not(.media-modal--public) {
+    width: 100%;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
   }
 
   .media-modal__toolbar {
-    padding: 14px 14px 0;
+    /* Alineado con el padding lateral del hero para que no baile. */
+    inset: 12px 18px auto;
+    padding: 0;
   }
 
-  .media-modal__hero,
+  .media-modal__back {
+    width: 42px;
+    height: 42px;
+    font-size: 1.3rem;
+  }
+
+  .media-modal__share {
+    min-height: 42px;
+    padding: 0 14px;
+    font-size: 0.84rem;
+  }
+
+  .media-modal__hero {
+    padding: 66px 18px 20px;
+  }
+
   .media-modal__section {
-    padding-left: 20px;
-    padding-right: 20px;
+    padding: 22px 18px;
   }
 
-  .media-modal__hero-inner,
-  .media-modal__score-row,
-  .media-modal__technical-grid {
+  /*
+    Poster chico al costado del titulo: apilado se comia media pantalla antes
+    de que se leyera nada. El hero-copy pasa a display:contents para poder
+    ubicar titulo y meta contra el poster sin tocar el DOM.
+  */
+  .media-modal__hero:not(.talent-modal__hero) .media-modal__hero-inner {
+    grid-template-columns: 104px minmax(0, 1fr);
+    column-gap: 14px;
+    row-gap: 14px;
+    align-items: start;
+  }
+
+  .media-modal__hero:not(.talent-modal__hero) .media-modal__hero-copy {
+    display: contents;
+  }
+
+  .media-modal__hero:not(.talent-modal__hero) .media-modal__poster {
+    width: 104px;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    border-radius: 14px;
+  }
+
+  .media-modal__hero:not(.talent-modal__hero) .media-modal__hero-copy h2 {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+    font-size: 1.5rem;
+    line-height: 1.14;
+  }
+
+  .media-modal__hero:not(.talent-modal__hero) .media-modal__meta {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+
+  .media-modal__hero:not(.talent-modal__hero) .media-modal__score-row,
+  .media-modal__hero:not(.talent-modal__hero) .media-modal__providers,
+  .media-modal__hero:not(.talent-modal__hero) .media-modal__public-cta {
+    grid-column: 1 / -1;
+  }
+
+  /* La ficha de talento sigue apilada: ahi la foto es el contenido. */
+  .talent-modal__hero .media-modal__hero-inner {
     grid-template-columns: 1fr;
   }
 
-  .media-modal__poster {
-    width: min(240px, 100%);
+  .talent-modal__hero .media-modal__poster {
+    width: min(200px, 100%);
   }
 
+  .media-modal__score-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .media-modal__score-card {
+    gap: 2px;
+    padding: 12px 14px;
+    border-radius: 16px;
+  }
+
+  .media-modal__score-card strong {
+    font-size: 1.6rem;
+  }
+
+  .media-modal__score-card span {
+    font-size: 0.72rem;
+    line-height: 1.25;
+  }
+
+  .media-modal__providers a {
+    padding: 8px 12px;
+    font-size: 0.82rem;
+  }
+
+  /* El label lo pone el tooltip del boton, que en mobile ya se ve fijo. */
   .media-modal__action-label {
     display: none;
   }
 
+  .media-modal__action-item {
+    min-width: 76px;
+  }
+
+  .media-modal__overview {
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+
+  .media-modal__trailer {
+    margin-top: 14px;
+    border-radius: 16px;
+  }
+
+  .media-modal__review-card {
+    gap: 6px;
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .media-modal__review-card p {
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+
+  .media-modal__review-meta {
+    font-size: 0.76rem;
+  }
+
   .media-modal__cast {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px 10px;
+  }
+
+  .media-modal__cast--creators {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .media-modal__back,
-  .media-modal__share {
-    min-height: 42px;
+  .media-modal__cast-avatar {
+    width: 100%;
+    max-width: 76px;
+  }
+
+  .media-modal__cast-card strong {
+    font-size: 0.8rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .media-modal__cast-card span {
+    font-size: 0.72rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .media-modal__cast-toggle {
+    width: 100%;
+  }
+
+  .media-modal__technical-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .media-modal__technical-card {
+    gap: 4px;
+    padding: 12px 14px;
+    border-radius: 16px;
+  }
+
+  .media-modal__technical-card span {
+    font-size: 0.72rem;
+  }
+
+  .media-modal__technical-card strong {
+    font-size: 0.92rem;
+    overflow-wrap: anywhere;
+  }
+
+  /*
+    Editar perfil comparte el chasis de .media-modal, asi que ya hereda la
+    pantalla completa y el boton de cerrar; aca va solo el formulario.
+  */
+  .profile-editor-modal .profile-editor {
+    gap: 16px;
+    padding: 62px 18px 28px;
+  }
+
+  .profile-editor__header h3 {
+    font-size: 1.05rem;
+  }
+
+  /*
+    La fila de identidad ponia avatar + los dos campos en una sola linea: a
+    375px cada input quedaba de ~85px, imposible de completar. Avatar centrado
+    arriba y los campos apilados a todo el ancho.
+  */
+  .profile-editor__identity-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .profile-editor__avatar-preview {
+    width: 84px;
+    justify-self: center;
+  }
+
+  .profile-editor__section {
+    gap: 12px;
+    padding-top: 20px;
+  }
+
+  .profile-editor__section-copy strong {
+    font-size: 1.05rem;
+  }
+
+  .profile-editor__section-copy p {
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
+
+  .profile-editor__field span {
+    font-size: 0.86rem;
+  }
+
+  .profile-editor__field small {
+    font-size: 0.76rem;
+    line-height: 1.35;
+  }
+
+  .profile-editor__field input,
+  .profile-editor__field textarea {
+    padding: 12px 14px;
+    border-radius: 14px;
+  }
+
+  .profile-editor__field textarea {
+    min-height: 96px;
+  }
+
+  /* Chips mas chicos: 18 generos entraban en 6 filas y comian la pantalla. */
+  .profile-editor__segmented-option,
+  .profile-editor__chip {
+    min-height: 36px;
+    padding: 0 13px;
+    font-size: 0.82rem;
+  }
+
+  .profile-editor__chips {
+    gap: 8px;
+  }
+
+  .profile-editor__toggle {
+    min-height: 50px;
+    padding: 0 14px;
+    font-size: 0.88rem;
+  }
+
+  /* Botones a todo el ancho: pegados al borde derecho no se alcanzaban. */
+  .profile-editor__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .profile-editor__actions .profile-share-button,
+  .profile-editor__actions .profile-follow-button {
+    width: 100%;
+    padding: 0 12px;
+    font-size: 0.88rem;
   }
 
   .shared-media-page {

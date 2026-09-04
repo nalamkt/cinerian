@@ -320,15 +320,21 @@ export function ProfilePanel({
               className="profile-stats-inline__item profile-stats-inline__item--button"
               onClick={() => openPeoplePopup("followers")}
             >
-              <strong>{stats.followers}</strong> Seguidores
+              <strong>{stats.followers}</strong>
+              <span>Seguidores</span>
             </button>
             <button
               type="button"
               className="profile-stats-inline__item profile-stats-inline__item--button"
               onClick={() => openPeoplePopup("following")}
             >
-              <strong>{stats.following}</strong> Seguidos
+              <strong>{stats.following}</strong>
+              <span>Seguidos</span>
             </button>
+            <span className="profile-stats-inline__item">
+              <strong>{stats.watched}</strong>
+              <span>Vistas</span>
+            </span>
           </div>
 
           <p className="profile-bio">
