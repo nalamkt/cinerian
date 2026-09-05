@@ -3265,6 +3265,13 @@ textarea {
     display: block;
     position: relative;
     grid-row: 1;
+    /*
+      La tarjeta usa align-items: start, asi que sus celdas toman el alto de
+      su CONTENIDO. Adentro del stage todo esta posicionado en absoluto: sin
+      este stretch el contenido en flujo es cero, el stage colapsa a 0 de
+      alto y su overflow: hidden se come el poster y la ficha enteros.
+    */
+    align-self: stretch;
     min-height: 0;
     border-radius: 14px;
     overflow: hidden;
