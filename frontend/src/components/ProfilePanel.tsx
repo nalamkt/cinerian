@@ -15,7 +15,8 @@ type ProfilePanelProps = {
   isOwnProfile?: boolean;
   followerCountOverride?: number | null;
   profileMessage?: string;
-  headerLabel?: string;
+  /** `null` deja el encabezado sin volanta. */
+  headerLabel?: string | null;
   headerAction?: ReactNode;
   readOnly?: boolean;
   onProfileUpdated?: (profile: Profile) => void;
@@ -295,12 +296,12 @@ export function ProfilePanel({
         <div className="profile-hero__copy">
           <div className="profile-hero__header">
             <div>
-              <p className="section-eyebrow">{headerLabel}</p>
+              {headerLabel ? <p className="section-eyebrow">{headerLabel}</p> : null}
               <h2>{displayName}</h2>
               <p className="profile-handle">@{username}</p>
             </div>
 
-            <div className={`profile-hero__action ${isOwnProfile ? "profile-hero__action--own" : ""}`}>
+            <div className="profile-hero__action">
               {headerAction}
               {isOwnProfile && onProfileUpdated ? (
                 <button

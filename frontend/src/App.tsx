@@ -399,10 +399,6 @@ export default function App() {
           userId={selectedProfileRoute.userId}
           username={selectedProfileRoute.username}
           onOpenUserProfile={handleOpenUserProfile}
-          onBack={() => {
-            setSelectedProfileRoute(null);
-            window.history.pushState({}, "", "/");
-          }}
         />
       );
     }
@@ -512,6 +508,7 @@ export default function App() {
                     className={`dock__button ${selectedProfileRoute ? "" : activeView === item.id ? "is-active" : ""}`}
                     onClick={() => handleChangeView(item.id)}
                     aria-label={item.label}
+                    title={item.label}
                   >
                     <span className="dock__icon">
                       <DockIcon id={item.id} badgeCount={item.id === "inbox" ? unreadInboxCount : 0} />
@@ -526,6 +523,7 @@ export default function App() {
                 className="dock__button dock__button--logout"
                 onClick={() => void signOut()}
                 aria-label="Cerrar sesion"
+                title="Salir"
               >
                 <span className="dock__icon">
                   <LogoutIcon />

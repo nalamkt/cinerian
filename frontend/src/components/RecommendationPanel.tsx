@@ -466,7 +466,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 6h16M7 12h10M10 18h4" />
           </svg>
-          Filtros
+          <span className="discover-filterbar__label">Filtros</span>
           {activeFilterCount ? (
             <span className="discover-filterbar__count">{activeFilterCount}</span>
           ) : null}
@@ -475,115 +475,117 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
 
       {spotlight && current ? (
         <article className="discover-card panel">
-          <div
-            className="discover-card__poster"
-            onClick={() => openMediaDetails(spotlight)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                openMediaDetails(spotlight);
-              }
-            }}
-          >
-            <img src={spotlight.posterUrl} alt={spotlight.title} />
-            <span className="discover-card__poster-hint" aria-hidden="true">
-              Ver detalles
-            </span>
-          </div>
-
-          <div className="discover-card__body" ref={bodyRef}>
-            <p className={`discover-rank ${current.rank === null ? "is-filler" : ""}`}>
-              {current.rank === null ? "Popular ahora" : `${current.rank}° en tu ranking`}
-              <span>
-                {" · "}
-                {spotlight.mediaType === "tv" ? "Serie" : "Película"}
-                {spotlight.year ? ` · ${spotlight.year}` : ""}
+          <div className="discover-card__stage">
+            <div
+              className="discover-card__poster"
+              onClick={() => openMediaDetails(spotlight)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openMediaDetails(spotlight);
+                }
+              }}
+            >
+              <img src={spotlight.posterUrl} alt={spotlight.title} />
+              <span className="discover-card__poster-hint" aria-hidden="true">
+                Ver detalles
               </span>
-            </p>
+            </div>
 
-            <h2 className="discover-title">{spotlight.title}</h2>
-
-            {socialLine ? (
-              <div className="discover-social">
-                <div className="discover-social__faces">
-                  {socialLine.faces.map((watcher) => (
-                    <span
-                      key={watcher.id}
-                      className="discover-social__face"
-                      title={watcher.displayName}
-                    >
-                      {watcher.avatarUrl ? (
-                        <img src={watcher.avatarUrl} alt="" />
-                      ) : (
-                        initialFor(watcher)
-                      )}
-                    </span>
-                  ))}
-                </div>
-                <p>
-                  A <strong>{socialLine.first.displayName}</strong>
-                  {socialLine.others} {socialLine.verb}
-                </p>
-              </div>
-            ) : null}
-
-            {genres.length ? <p className="discover-facts">{genres.join(" · ")}</p> : null}
-            {secondaryFacts.length ? (
-              <p className="discover-facts discover-facts--quiet">{secondaryFacts.join(" · ")}</p>
-            ) : null}
-
-            {watchOptions.flatrate.length || watchOptions.hasRentOrBuy ? (
-              <div className="discover-watch">
-                <p className="discover-watch__label">Ver ahora en</p>
-                <div className="discover-watch__row">
-                  {watchOptions.flatrate.map((provider) => (
-                    <a
-                      key={provider.id}
-                      className="discover-platform"
-                      href={provider.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={`Buscar en ${provider.name}`}
-                    >
-                      {provider.logoUrl ? (
-                        <img src={provider.logoUrl} alt="" className="discover-platform__logo" />
-                      ) : null}
-                      {provider.name}
-                    </a>
-                  ))}
-                  {watchOptions.hasRentOrBuy && watchOptions.link ? (
-                    <a
-                      className="discover-platform discover-platform--rent"
-                      href={watchOptions.link}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Alquilar
-                    </a>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-
-            {/* Plegado, el texto se corta por CANTIDAD DE LINEAS y no por
-                caracteres: asi ocupa un alto conocido y el "Ver mas" siempre
-                entra sin scrollear. El scroll queda solo para el expandido. */}
-            <div className="discover-overview">
-              <p className={isOverviewOpen ? undefined : "discover-overview__text--clamped"}>
-                {spotlight.overview}
+            <div className="discover-card__body" ref={bodyRef}>
+              <p className={`discover-rank ${current.rank === null ? "is-filler" : ""}`}>
+                {current.rank === null ? "Popular ahora" : `${current.rank}° en tu ranking`}
+                <span>
+                  {" · "}
+                  {spotlight.mediaType === "tv" ? "Serie" : "Película"}
+                  {spotlight.year ? ` · ${spotlight.year}` : ""}
+                </span>
               </p>
-              {overviewPreview.truncated ? (
-                <button
-                  type="button"
-                  className="discover-overview__more"
-                  onClick={() => setIsOverviewOpen((value) => !value)}
-                  aria-expanded={isOverviewOpen}
-                >
-                  {isOverviewOpen ? "Ver menos" : "Ver más"}
-                </button>
+
+              <h2 className="discover-title">{spotlight.title}</h2>
+
+              {socialLine ? (
+                <div className="discover-social">
+                  <div className="discover-social__faces">
+                    {socialLine.faces.map((watcher) => (
+                      <span
+                        key={watcher.id}
+                        className="discover-social__face"
+                        title={watcher.displayName}
+                      >
+                        {watcher.avatarUrl ? (
+                          <img src={watcher.avatarUrl} alt="" />
+                        ) : (
+                          initialFor(watcher)
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                  <p>
+                    A <strong>{socialLine.first.displayName}</strong>
+                    {socialLine.others} {socialLine.verb}
+                  </p>
+                </div>
               ) : null}
+
+              {genres.length ? <p className="discover-facts">{genres.join(" · ")}</p> : null}
+              {secondaryFacts.length ? (
+                <p className="discover-facts discover-facts--quiet">{secondaryFacts.join(" · ")}</p>
+              ) : null}
+
+              {watchOptions.flatrate.length || watchOptions.hasRentOrBuy ? (
+                <div className="discover-watch">
+                  <p className="discover-watch__label">Ver ahora en</p>
+                  <div className="discover-watch__row">
+                    {watchOptions.flatrate.map((provider) => (
+                      <a
+                        key={provider.id}
+                        className="discover-platform"
+                        href={provider.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={`Buscar en ${provider.name}`}
+                      >
+                        {provider.logoUrl ? (
+                          <img src={provider.logoUrl} alt="" className="discover-platform__logo" />
+                        ) : null}
+                        <span className="discover-platform__name">{provider.name}</span>
+                      </a>
+                    ))}
+                    {watchOptions.hasRentOrBuy && watchOptions.link ? (
+                      <a
+                        className="discover-platform discover-platform--rent"
+                        href={watchOptions.link}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Alquilar
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Plegado, el texto se corta por CANTIDAD DE LINEAS y no por
+                  caracteres: asi ocupa un alto conocido y el "Ver mas" siempre
+                  entra sin scrollear. El scroll queda solo para el expandido. */}
+              <div className="discover-overview">
+                <p className={isOverviewOpen ? undefined : "discover-overview__text--clamped"}>
+                  {spotlight.overview}
+                </p>
+                {overviewPreview.truncated ? (
+                  <button
+                    type="button"
+                    className="discover-overview__more"
+                    onClick={() => setIsOverviewOpen((value) => !value)}
+                    aria-expanded={isOverviewOpen}
+                  >
+                    {isOverviewOpen ? "Ver menos" : "Ver más"}
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
 

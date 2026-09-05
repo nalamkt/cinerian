@@ -8,7 +8,6 @@ type UserProfilePageProps = {
   currentUserId: string;
   userId?: string;
   username?: string;
-  onBack: () => void;
   onOpenUserProfile?: (profile: { userId: string; username?: string }) => void;
 };
 
@@ -16,7 +15,6 @@ export function UserProfilePage({
   currentUserId,
   userId,
   username,
-  onBack,
   onOpenUserProfile
 }: UserProfilePageProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -162,13 +160,9 @@ export function UserProfilePage({
   }, [handleToggleFollow, isFollowing, isOwnProfile, isToggling, profile?.username, shareLabel]);
 
   return (
+    // Sin flecha de volver: el dock y el boton atras del navegador ya sacan de
+    // aca, y la flecha empujaba todo el encabezado hacia abajo.
     <div className="profile-page-shell">
-      <div className="profile-page__toolbar">
-        <button type="button" className="media-modal__back" onClick={onBack} aria-label="Volver">
-          ←
-        </button>
-      </div>
-
       {statusMessage ? <div className="inline-status">{statusMessage}</div> : null}
 
       {isLoading ? (
@@ -186,7 +180,7 @@ export function UserProfilePage({
           profile={profile}
           isOwnProfile={isOwnProfile}
           followerCountOverride={followers}
-          headerLabel="Cineriano"
+          headerLabel={null}
           headerAction={action}
           profileMessage={
             isOwnProfile

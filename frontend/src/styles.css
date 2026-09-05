@@ -279,19 +279,18 @@ textarea {
   height: calc(100vh - 32px);
 }
 
+/*
+  Fondo unico: la barra ya no es una tarjeta flotante sobre el fondo de la
+  app. Se apoya directo sobre el, separada del contenido por una linea, como
+  el rail de Instagram.
+*/
 .dock__items {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px;
-  border-radius: 30px;
-  border: 1px solid var(--panel-edge);
-  background:
-    linear-gradient(180deg, rgba(17, 22, 30, 0.96), rgba(12, 15, 21, 0.96)),
-    rgba(17, 22, 30, 0.92);
-  box-shadow: var(--shadow);
+  padding: 18px 20px 18px 2px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   min-height: 100%;
-  backdrop-filter: blur(24px);
 }
 
 .dock__nav {
@@ -299,17 +298,13 @@ textarea {
   gap: 8px;
 }
 
+/* El logo va suelto, sin su propia caja: era otro recuadro dentro del rail. */
 .dock__brand {
   width: 100%;
   height: 78px;
   display: grid;
   place-items: center;
   margin-bottom: 2px;
-  border-radius: 22px;
-  background:
-    radial-gradient(circle at top, rgba(252, 195, 95, 0.18), transparent 72%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
-  border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--accent);
   font-size: 1.25rem;
   font-weight: 900;
@@ -398,6 +393,25 @@ textarea {
 .workspace-content {
   min-width: 0;
   min-height: calc(100vh - 32px);
+}
+
+/*
+  El contenido de cada vista se apoya directo sobre el fondo de la app. Antes
+  era un panel con color, borde y sombra propios encima del degradado del
+  body: dos capas donde alcanza con una.
+
+  Solo aplica al contenedor exterior de la vista. Las tarjetas de adentro
+  (posts del feed, la ficha de Descubri, las secciones del admin) conservan su
+  superficie, que ahi si separa contenidos distintos.
+*/
+.workspace-content > .panel,
+.workspace-content > .profile-page-shell > .panel {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  padding: 22px 4px;
 }
 
 .workspace-content > .panel {
@@ -1168,18 +1182,15 @@ textarea {
     linear-gradient(135deg, rgba(22, 26, 34, 0.95), rgba(17, 21, 28, 0.92));
 }
 
+/*
+  Inicio e Inbox comparten este chasis. Tambien pierde la superficie propia:
+  la separacion entre columnas ya la da el borde de .feed-main.
+*/
 .feed-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
   min-height: calc(100vh - 32px);
-  border: 1px solid var(--panel-edge);
-  border-radius: 32px;
-  background:
-    linear-gradient(180deg, rgba(16, 20, 27, 0.96), rgba(11, 14, 20, 0.98)),
-    rgba(20, 16, 12, 0.92);
-  box-shadow: var(--shadow);
   overflow: hidden;
-  backdrop-filter: blur(22px);
 }
 
 .feed-main {
@@ -2821,6 +2832,15 @@ textarea {
   overflow: hidden;
 }
 
+/*
+  Envoltorio de poster + ficha. En desktop no existe a efectos de layout: la
+  grilla de la tarjeta sigue colocando a sus dos hijos como siempre. En mobile
+  vuelve a ser una caja, y ahi adentro la ficha se apoya sobre el poster.
+*/
+.discover-card__stage {
+  display: contents;
+}
+
 .discover-card__poster {
   grid-row: 1;
 }
@@ -3195,53 +3215,221 @@ textarea {
   }
 }
 
-@media (max-width: 620px) {
+@media (max-width: 680px) {
+  /*
+    En mobile la pantalla entra entera y no scrollea: alto fijo de viewport
+    menos el dock (que es fixed y no ocupa flujo). El poster pasa a ser el
+    fondo de la tarjeta y la ficha se apoya encima, asi los tres botones de
+    accion quedan siempre a la vista sin pelear por el alto con el texto.
+  */
   .discover {
-    height: auto;
+    height: calc(100vh - 100px);
+    height: calc(100dvh - 100px);
     min-height: 0;
-    padding: 8px 0 16px;
-    overflow: visible;
+    padding: 4px 0 0;
+    gap: 8px;
+    overflow: hidden;
   }
 
-  .discover-card {
+  /* Sin filtros activos la barra queda solo con el icono. */
+  .discover-filterbar__empty,
+  .discover-filterbar__label {
+    display: none;
+  }
+
+  .discover-filterbar {
+    justify-content: flex-end;
+  }
+
+  .discover-filterbar__button {
+    gap: 0;
+    padding: 0;
+    width: 40px;
+    height: 40px;
+    justify-content: center;
+    border-radius: 999px;
+  }
+
+  .discover-card.panel {
+    flex: 1;
+    min-height: 0;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto;
-    max-height: none;
-    gap: 18px;
-    padding: 20px;
-    overflow: visible;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 0;
+    padding: 10px 10px 2px;
+    border-radius: 22px;
+    overflow: hidden;
   }
 
-  .discover-card__poster,
-  .discover-card__body,
-  .discover-actions {
-    grid-row: auto;
-  }
-
-  .discover-card__body {
-    overflow: visible;
-    padding-right: 0;
+  .discover-card__stage {
+    display: block;
+    position: relative;
+    grid-row: 1;
+    min-height: 0;
+    border-radius: 14px;
+    overflow: hidden;
   }
 
   .discover-card__poster {
-    max-width: 200px;
-    margin: 0 auto;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    margin: 0;
+    /* Deja de mandar la relacion 2/3: ahora el alto lo fija el stage y la
+       imagen recorta lo que sobra. */
+    aspect-ratio: auto;
+    border-radius: 0;
   }
 
-  /* Sin hover en touch, la pista tiene que estar siempre visible. */
+  /* Sin hover en touch la pista va siempre visible, y arriba a la derecha:
+     abajo quedaria tapada por la ficha. */
   .discover-card__poster-hint {
+    left: auto;
+    right: 10px;
+    top: 10px;
+    bottom: auto;
     opacity: 1;
-    transform: translateX(-50%);
+    transform: none;
+    font-size: 0.68rem;
+    padding: 5px 11px;
+    border-radius: 999px;
+    background: rgba(8, 9, 12, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+  }
+
+  .discover-card__body {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    grid-row: auto;
+    align-self: auto;
+    overflow: visible;
+    padding: 18px 14px 14px;
+    /*
+      Velo opaco de entrada, no un degradado suave: sobre un poster claro el
+      texto queda ilegible y aca no hay segunda oportunidad. Arranca
+      transparente solo en los primeros pixeles para que el corte no se vea
+      como una linea.
+    */
+    background: linear-gradient(
+      180deg,
+      rgba(8, 9, 12, 0),
+      rgba(8, 9, 12, 0.88) 26%,
+      rgba(8, 9, 12, 0.95)
+    );
+  }
+
+  /* La ficha ya no scrollea: el degradado que lo insinuaba sobra. */
+  .discover-card__body::after {
+    display: none;
+  }
+
+  .discover-rank {
+    margin-bottom: 4px;
+    font-size: 0.68rem;
+  }
+
+  .discover-title {
+    font-size: 1.45rem;
+  }
+
+  .discover-social {
+    margin-top: 10px;
+    gap: 9px;
+  }
+
+  .discover-social__face {
+    width: 24px;
+    height: 24px;
+    font-size: 0.7rem;
+  }
+
+  .discover-social p {
+    font-size: 0.86rem;
+  }
+
+  .discover-facts {
+    margin-top: 9px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--muted);
+  }
+
+  /*
+    Lo primero que sobra cuando el alto manda: la duracion y la nota de TMDB
+    (que ademas compite con nuestro propio ranking), el rotulo redundante de
+    las plataformas y la sinopsis. Todo eso sigue en "Ver detalles".
+  */
+  .discover-facts--quiet,
+  .discover-watch__label,
+  .discover-overview {
+    display: none;
+  }
+
+  .discover-watch {
+    margin-top: 12px;
+  }
+
+  .discover-watch__row {
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  /* Solo el logo: la marca ya se reconoce sola y el nombre costaba una fila
+     entera por plataforma. */
+  .discover-platform {
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  .discover-platform__name {
+    display: none;
+  }
+
+  .discover-platform__logo {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+  }
+
+  /* "Alquilar" no tiene logo que lo explique: conserva la pastilla. */
+  .discover-platform--rent {
+    padding: 7px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 0.8rem;
+    white-space: nowrap;
   }
 
   .discover-actions {
+    margin-top: 0;
+    padding-top: 12px;
+    border-top: 0;
     gap: 8px;
-    justify-content: space-between;
+    justify-content: space-around;
+  }
+
+  .discover-action {
+    gap: 6px;
   }
 
   .discover-action__button {
-    width: 52px;
-    height: 52px;
+    width: 50px;
+    height: 50px;
+  }
+
+  .discover-action__button svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .discover-action__label {
+    font-size: 0.7rem;
   }
 }
 
@@ -5928,11 +6116,6 @@ textarea {
   gap: 14px;
 }
 
-.profile-page__toolbar {
-  display: flex;
-  justify-content: flex-start;
-}
-
 .media-modal {
   position: relative;
   width: min(100%, 880px);
@@ -7065,13 +7248,49 @@ textarea {
     min-height: 100%;
   }
 
-  .workspace-grid,
   .feed-shell {
     grid-template-columns: 1fr;
   }
 
-  .dock {
-    height: auto;
+  /*
+    De 1080 para abajo ya no entra el rail ancho con etiquetas, pero tampoco
+    hace falta mandarlo arriba: se colapsa a solo iconos y sigue a la
+    izquierda, como el rail de Instagram en tablet. El contenido conserva todo
+    el alto de la pantalla, que es lo que la barra horizontal se comia.
+  */
+  .workspace-grid {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .dock__items {
+    align-items: center;
+    gap: 10px;
+    padding: 18px 8px;
+  }
+
+  /* El logo es una palabra de relacion 8:1: en 60px utiles no se lee. Se va,
+     igual que en mobile. */
+  .dock__brand {
+    display: none;
+  }
+
+  .dock__nav {
+    justify-items: center;
+    gap: 6px;
+  }
+
+  /* Solo el icono. La etiqueta sobrevive como tooltip y como aria-label. */
+  .dock__button {
+    width: auto;
+    justify-content: center;
+    gap: 0;
+    padding: 6px;
+    border-radius: 16px;
+  }
+
+  .dock__label {
+    display: none;
   }
 
   .feed-main {
@@ -7079,13 +7298,7 @@ textarea {
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  .profile-hero {
-    grid-template-columns: 1fr;
-  }
-
-  .profile-avatar {
-    width: 120px;
-  }
+  /* El encabezado del perfil se resuelve en su propio bloque, mas abajo. */
 
   .profile-summary-grid,
   .profile-insights__grid,
@@ -7119,8 +7332,6 @@ textarea {
   }
 
   .workspace-grid {
-    grid-template-columns: 1fr;
-    gap: 14px;
     min-height: auto;
   }
 
@@ -7132,50 +7343,6 @@ textarea {
   .recommendation-side,
   .admin-shell {
     min-height: auto;
-  }
-
-  .dock {
-    top: 0;
-    height: auto;
-  }
-
-  .dock__items {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 12px;
-    min-height: auto;
-    padding: 14px 16px;
-    border-radius: 24px;
-  }
-
-  .dock__brand {
-    width: 64px;
-    height: 64px;
-    margin-bottom: 0;
-  }
-
-  .dock__brand-copy {
-    padding: 0;
-    gap: 4px;
-  }
-
-  .dock__nav {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
-  .dock__button {
-    justify-content: center;
-    padding-inline: 10px;
-  }
-
-  .dock__button--logout {
-    display: none;
-  }
-
-  .dock__label {
-    font-size: 0.8rem;
   }
 
   .admin-layout,
@@ -7352,6 +7519,12 @@ textarea {
     border-radius: 20px;
   }
 
+  /* El contenedor de la vista no tiene superficie: no necesita margen propio. */
+  .workspace-content > .panel,
+  .workspace-content > .profile-page-shell > .panel {
+    padding: 14px 0;
+  }
+
   .auth-shell__inner,
   .workspace-grid {
     grid-template-columns: 1fr;
@@ -7359,29 +7532,39 @@ textarea {
 
   .dock {
     position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 0;
+    right: 0;
+    bottom: 0;
     top: auto;
     z-index: 35;
     height: auto;
   }
 
+  /*
+    Barra al ras del borde, no una pastilla flotante. Sigue necesitando color
+    propio porque el contenido scrollea por debajo, pero es practicamente el
+    tono con el que termina el fondo de la app, asi que se lee como una sola
+    superficie separada por una linea.
+  */
   .dock__items {
     display: grid;
-    padding: 10px 12px;
+    padding: 8px 10px max(8px, env(safe-area-inset-bottom));
     gap: 8px;
     grid-template-columns: 1fr;
     min-height: auto;
-    border-radius: 24px;
-    background: rgba(34, 28, 24, 0.58);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
-    backdrop-filter: blur(20px) saturate(140%);
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0;
+    background: rgba(8, 10, 14, 0.94);
+    box-shadow: none;
+    backdrop-filter: blur(18px);
   }
 
   .dock__nav {
     display: grid;
+    /* Deshace el rail colapsado: aca los botones vuelven a llenar su columna
+       y la etiqueta vuelve a aparecer debajo del icono. */
+    justify-items: stretch;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
   }
@@ -7408,6 +7591,7 @@ textarea {
   }
 
   .dock__label {
+    display: block;
     font-size: 0.66rem;
     text-align: center;
     line-height: 1.15;
@@ -7433,10 +7617,6 @@ textarea {
 
   .dock {
     order: 2;
-  }
-
-  .feed-shell {
-    border-radius: 22px;
   }
 
   .admin-nav {
@@ -7662,170 +7842,7 @@ textarea {
     border-radius: 16px;
   }
 
-  /**
-   * Encabezado compacto en mobile: foto con el usuario debajo a la izquierda,
-   * nombre con los numeros debajo a la derecha, y bio + acciones a lo ancho.
-   *
-   * Los envoltorios pasan a `display: contents` para que todas las piezas
-   * participen de la misma grilla; asi se reacomodan sin tocar el DOM, que en
-   * escritorio sigue anidado como estaba.
-   */
-  .profile-hero {
-    grid-template-columns: 88px minmax(0, 1fr);
-    column-gap: 14px;
-    row-gap: 11px;
-    justify-items: start;
-    text-align: left;
-  }
-
-  .profile-hero__copy,
-  .profile-hero__header,
-  .profile-hero__header > div:not(.profile-hero__action) {
-    display: contents;
-  }
-
-  .profile-avatar {
-    width: 88px;
-    font-size: 2.1rem;
-    grid-column: 1;
-    grid-row: 1 / span 2;
-  }
-
-  /* "PERFIL" no aporta informacion y costaba una linea entera. */
-  .profile-hero__header .section-eyebrow {
-    display: none;
-  }
-
-  .profile-hero__header h2 {
-    grid-column: 2;
-    grid-row: 1;
-    align-self: center;
-    margin: 0;
-    font-size: 1.22rem;
-    line-height: 1.2;
-  }
-
-  .profile-stats-inline {
-    grid-column: 2;
-    grid-row: 2;
-    align-self: center;
-    width: 100%;
-    justify-content: space-between;
-    gap: 6px;
-  }
-
-  .profile-handle {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: center;
-    margin: 0;
-    font-size: 0.78rem;
-    text-align: center;
-  }
-
-  .profile-stats-inline__item {
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    font-size: 0.68rem;
-  }
-
-  .profile-stats-inline__item:not(:first-child)::before {
-    content: none;
-  }
-
-  .profile-stats-inline__item strong {
-    font-size: 1.05rem;
-  }
-
-  .profile-bio {
-    grid-column: 1 / -1;
-    grid-row: 4;
-    margin: 0;
-    text-align: left;
-    font-size: 0.88rem;
-  }
-
-  .profile-hero__action {
-    grid-column: 1 / -1;
-    grid-row: 5;
-    width: 100%;
-  }
-
-  .profile-genres {
-    grid-column: 1 / -1;
-    grid-row: 6;
-  }
-
-  /* Los badges automaticos ocupaban dos lineas y no se muestran en mobile. */
-  .profile-badges {
-    display: none;
-  }
-
-  /* Una sola fila: Editar perfil ocupa el ancho, compartir y el menu al lado. */
-  .profile-hero__action--own {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .profile-hero__action--own .profile-share-button {
-    order: -1;
-    flex: 1;
-    min-height: 42px;
-    border-radius: 12px;
-    justify-content: center;
-    font-size: 0.84rem;
-    font-weight: 500;
-  }
-
-  .profile-hero__action--own .recommendation-action-button {
-    width: 42px;
-    height: 42px;
-    min-width: 42px;
-    min-height: 42px;
-    border-radius: 12px;
-    flex: none;
-    /* Sin espacio reservado para la etiqueta: aca va solo el icono. */
-    margin-bottom: 0;
-  }
-
-  /* El resto de la app usa este tooltip como etiqueta fija en mobile;
-     en el encabezado del perfil sobra, porque el icono ya se entiende. */
-  .profile-hero__action--own .recommendation-action-button::after {
-    content: none;
-  }
-
-  /* Filtros centrados bajo las pestañas. */
-  .profile-list-toolbar {
-    justify-content: center;
-  }
-
-  .profile-tabs__switcher {
-    width: 100%;
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: max-content;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .profile-tabs__switcher::-webkit-scrollbar {
-    display: none;
-  }
-
-  .profile-tabs__switch {
-    flex: 0 0 auto;
-    white-space: nowrap;
-    font-size: 0.86rem;
-    font-weight: 500;
-  }
-
-  .profile-tabs__switch.is-active {
-    font-weight: 600;
-  }
+  /* El encabezado del perfil vive en su propio bloque fluido al final. */
 
   .profile-grid {
     grid-template-columns: 1fr;
@@ -8704,5 +8721,212 @@ textarea {
     min-height: 0;
     height: 100%;
     padding-bottom: 8px;
+  }
+}
+
+/**
+ * Encabezado del perfil, continuo de 320px a 900px.
+ *
+ * Antes vivia en el bloque de 680px con medidas fijas: se quedaba chico al
+ * estirar y despues pegaba un salto al layout de escritorio. Ahora cada
+ * medida es un clamp() que termina justo en el valor de escritorio, asi que
+ * la transicion es progresiva.
+ *
+ * El problema puntual de los numeros: tenian `width: 100%` con
+ * `space-between`, que los clavaba contra los bordes y abria un hueco cada
+ * vez mas grande a medida que crecia la columna. Ahora el grupo mide lo que
+ * mide su contenido y la separacion tiene techo.
+ */
+@media (max-width: 900px) {
+  .profile-hero {
+    --profile-avatar-size: clamp(78px, 19vw, 160px);
+    grid-template-columns: var(--profile-avatar-size) minmax(0, 1fr);
+    column-gap: clamp(12px, 3.4vw, 26px);
+    row-gap: clamp(10px, 1.8vw, 16px);
+    align-items: start;
+    justify-items: start;
+    text-align: left;
+  }
+
+  /*
+    Los envoltorios pasan a `display: contents` para que todas las piezas
+    participen de la misma grilla; asi se reacomodan sin tocar el DOM, que en
+    escritorio sigue anidado como estaba.
+  */
+  .profile-hero__copy,
+  .profile-hero__header,
+  .profile-hero__header > div:not(.profile-hero__action) {
+    display: contents;
+  }
+
+  .profile-avatar {
+    width: var(--profile-avatar-size);
+    font-size: clamp(1.9rem, 6vw, 3.55rem);
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  /* "PERFIL" no aporta informacion y costaba una linea entera. */
+  .profile-hero__header .section-eyebrow {
+    display: none;
+  }
+
+  .profile-hero__header h2 {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    margin: 0;
+    /* Techo en 1.5rem: es el tamano que toma el h2 arriba de 900px, asi que
+       al cruzar el breakpoint el titulo no cambia de cuerpo. */
+    font-size: clamp(1.14rem, 3.4vw, 1.5rem);
+    line-height: 1.2;
+  }
+
+  .profile-stats-inline {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+    width: auto;
+    max-width: 100%;
+    justify-content: flex-start;
+    gap: clamp(16px, 4.6vw, 34px);
+  }
+
+  .profile-stats-inline__item {
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    font-size: clamp(0.68rem, 1.9vw, 0.84rem);
+  }
+
+  .profile-stats-inline__item:not(:first-child)::before {
+    content: none;
+  }
+
+  .profile-stats-inline__item strong {
+    font-size: clamp(1.02rem, 3vw, 1.32rem);
+  }
+
+  .profile-handle {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: center;
+    margin: 0;
+    font-size: clamp(0.74rem, 2vw, 0.92rem);
+    text-align: center;
+  }
+
+  .profile-bio {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    margin: 0;
+    text-align: left;
+    font-size: clamp(0.86rem, 2.2vw, 1rem);
+  }
+
+  .profile-hero__action {
+    grid-column: 1 / -1;
+    grid-row: 5;
+    width: 100%;
+  }
+
+  .profile-genres {
+    grid-column: 1 / -1;
+    grid-row: 6;
+  }
+
+  /* Los badges automaticos ocupaban dos lineas y no aportaban. */
+  .profile-badges {
+    display: none;
+  }
+
+  /*
+    Una sola fila, igual en "Mi cuenta" y en el perfil de otro usuario: el
+    boton principal ("Editar perfil" o "Seguir") ocupa el ancho y el de
+    compartir queda al lado como icono.
+
+    Con tope, porque cerca de 900px un boton de 800px de ancho se ve raro; y
+    con `flex-start` explicito, porque la regla base alinea a la derecha.
+  */
+  .profile-hero__action {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  /*
+    En el perfil ajeno los dos botones vienen dentro de este envoltorio, asi
+    que la fila real es el envoltorio. En "Mi cuenta" solo envuelve el icono
+    de compartir y tiene que seguir midiendo lo que mide su contenido, por eso
+    la regla lo excluye.
+  */
+  .profile-hero__action .profile-hero__actions:not(.profile-hero__actions--own) {
+    width: 100%;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .profile-hero__action .profile-share-button,
+  .profile-hero__action .profile-follow-button,
+  .profile-hero__action .profile-follow-badge {
+    order: -1;
+    flex: 1;
+    max-width: 420px;
+    min-height: clamp(40px, 5.4vw, 46px);
+    border-radius: 12px;
+    justify-content: center;
+    font-size: clamp(0.82rem, 2.1vw, 0.92rem);
+    font-weight: 500;
+  }
+
+  .profile-hero__action .recommendation-action-button {
+    width: clamp(40px, 5.4vw, 46px);
+    height: clamp(40px, 5.4vw, 46px);
+    min-width: clamp(40px, 5.4vw, 46px);
+    min-height: clamp(40px, 5.4vw, 46px);
+    border-radius: 12px;
+    flex: none;
+    /* Sin espacio reservado para la etiqueta: aca va solo el icono. */
+    margin-bottom: 0;
+  }
+
+  /* El resto de la app usa este tooltip como etiqueta fija en mobile;
+     en el encabezado del perfil sobra, porque el icono ya se entiende. */
+  .profile-hero__action .recommendation-action-button::after {
+    content: none;
+  }
+
+  /* Filtros centrados bajo las pestañas. */
+  .profile-list-toolbar {
+    justify-content: center;
+  }
+
+  .profile-tabs__switcher {
+    width: 100%;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .profile-tabs__switcher::-webkit-scrollbar {
+    display: none;
+  }
+
+  .profile-tabs__switch {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: clamp(0.84rem, 2.1vw, 0.95rem);
+    font-weight: 500;
+  }
+
+  .profile-tabs__switch.is-active {
+    font-weight: 600;
   }
 }

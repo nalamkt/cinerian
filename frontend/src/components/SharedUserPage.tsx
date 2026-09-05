@@ -19,7 +19,7 @@ export function SharedUserPage({ username }: { username: string }) {
           </div>
         </header>
 
-        <UserProfilePage currentUserId="" username={username} onBack={() => window.history.back()} />
+        <UserProfilePage currentUserId="" username={username} />
       </div>
     </div>
   );
