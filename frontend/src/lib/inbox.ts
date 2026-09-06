@@ -104,16 +104,16 @@ function formatRelativeLabel(dateString: string) {
   }
 
   if (diffMin < 60) {
-    return `Hace ${diffMin} min`;
+    return `${diffMin} min`;
   }
 
   const diffHours = Math.round(diffMin / 60);
   if (diffHours < 24) {
-    return `Hace ${diffHours} h`;
+    return `${diffHours} h`;
   }
 
   const diffDays = Math.round(diffHours / 24);
-  return `Hace ${diffDays} d`;
+  return `${diffDays} d`;
 }
 
 function buildFallbackItem(row: RecommendationMessageRow): DiscoveryItem {

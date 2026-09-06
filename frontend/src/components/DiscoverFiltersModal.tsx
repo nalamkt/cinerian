@@ -157,6 +157,7 @@ export function DiscoverFiltersModal({
                     key={provider.id}
                     type="button"
                     className="filters-platform"
+                    aria-label={provider.name}
                     aria-pressed={draft.providerIds.includes(provider.id)}
                     onClick={() => toggleProvider(provider.id)}
                   >
@@ -165,7 +166,7 @@ export function DiscoverFiltersModal({
                     ) : (
                       <span className="filters-platform__logo" />
                     )}
-                    {provider.name}
+                    <span className="filters-platform__name">{provider.name}</span>
                     <span className="filters-platform__check" aria-hidden="true">
                       ✓
                     </span>

@@ -1422,6 +1422,21 @@ textarea {
   font-weight: 700;
 }
 
+.visual-ready-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(8, 10, 14, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.visual-ready-gate .loading-state {
+  min-height: auto;
+}
+
 .loading-state__spinner {
   width: 18px;
   height: 18px;
@@ -2787,14 +2802,31 @@ textarea {
   color: var(--text);
 }
 
-@media (max-width: 560px) {
+@media (max-width: 900px) {
   .filters-platforms,
   .filters-segmented {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .filters-platforms {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+    gap: 10px;
+  }
+
+  .filters-platform {
+    aspect-ratio: 1;
+    justify-content: center;
+    padding: 7px;
+  }
+
+  .filters-platform__name,
+  .filters-platform__check {
+    display: none;
+  }
+
+  .filters-platform__logo {
+    width: 32px;
+    height: 32px;
   }
 }
 
@@ -5081,9 +5113,9 @@ textarea {
 }
 
 .inbox-thread-item__identity {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  justify-items: start;
+  gap: 4px;
   min-width: 0;
   color: var(--muted);
   font-size: 0.9rem;
@@ -5127,6 +5159,20 @@ textarea {
   font-weight: 800;
 }
 
+.inbox-thread-item__profile {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.inbox-thread-item__profile > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .inbox-thread-item__profile-avatar img {
   width: 100%;
   height: 100%;
@@ -5156,6 +5202,8 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .inbox-thread-item__topline strong {
@@ -6947,6 +6995,15 @@ textarea {
 .feed-list {
   display: grid;
   gap: 14px;
+}
+
+.search-highlights__label {
+  margin: 6px 0 2px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .media-card {
@@ -8935,5 +8992,26 @@ textarea {
 
   .profile-tabs__switch.is-active {
     font-weight: 600;
+  }
+}
+
+@media (max-width: 900px) {
+  /* La barra de busqueda no debe ensanchar el panel ni generar scroll lateral. */
+  .feed-header--search {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    margin: 0 0 18px;
+  }
+
+  /* Separa el titulo del borde superior en las fichas horizontales del feed. */
+  .timeline-card__media-copy {
+    padding-top: 10px;
+  }
+}
+
+@media (max-width: 520px) {
+  .timeline-card__media-copy {
+    padding-top: 8px;
   }
 }

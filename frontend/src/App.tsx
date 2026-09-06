@@ -10,6 +10,7 @@ import { RecommendationPanel } from "./components/RecommendationPanel";
 import { SearchPanel } from "./components/SearchPanel";
 import { SharedUserPage } from "./components/SharedUserPage";
 import { UserProfilePage } from "./components/UserProfilePage";
+import { VisualReadyGate } from "./components/VisualReadyGate";
 import { useAuth } from "./hooks/useAuth";
 import { usePublicFeatureFlags } from "./hooks/usePublicFeatureFlags";
 import { getAccessControl, type AppView } from "./lib/access";
@@ -138,6 +139,7 @@ export default function App() {
     () => dockItems.filter((item) => accessControl.canAccessView(item.id)),
     [accessControl]
   );
+  const visualScopeKey = `${activeView}:${selectedProfileRoute?.userId ?? selectedProfileRoute?.username ?? ""}`;
 
   useEffect(() => {
     setLocalProfile(profile);
@@ -483,6 +485,7 @@ export default function App() {
 
   return (
     <MediaDetailsProvider userId={session.user.id}>
+      <VisualReadyGate scopeKey={visualScopeKey} />
       {localProfile && localProfile.gender === null ? (
         <AboutYouOnboardingModal profile={localProfile} onComplete={setLocalProfile} />
       ) : null}

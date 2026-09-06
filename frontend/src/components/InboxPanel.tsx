@@ -956,14 +956,16 @@ export function InboxPanel({ userId, onOpenUserProfile }: InboxPanelProps) {
             <span className={`inbox-thread-item__direction ${isSent ? "is-sent" : "is-received"}`}>
               {isSent ? "Enviado" : "Recibido"}
             </span>
-            <span className="inbox-thread-item__profile-avatar" aria-hidden="true">
-              {counterpart?.avatar_url ? (
-                <img src={counterpart.avatar_url} alt="" />
-              ) : (
-                (counterpart?.display_name ?? "C").slice(0, 1).toUpperCase()
-              )}
+            <span className="inbox-thread-item__profile">
+              <span className="inbox-thread-item__profile-avatar" aria-hidden="true">
+                {counterpart?.avatar_url ? (
+                  <img src={counterpart.avatar_url} alt="" />
+                ) : (
+                  (counterpart?.display_name ?? "C").slice(0, 1).toUpperCase()
+                )}
+              </span>
+              <span>@{counterpart?.username ?? "cineriano"}</span>
             </span>
-            <span>@{counterpart?.username ?? "cineriano"}</span>
           </div>
         </div>
       </button>

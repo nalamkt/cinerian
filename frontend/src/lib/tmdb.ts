@@ -670,6 +670,78 @@ export async function getTrendingTitles(): Promise<DiscoveryItem[]> {
   return items.slice(0, 6);
 }
 
+export async function getFeaturedTalent(): Promise<TalentSearchItem[]> {
+  if (!apiKey) {
+    return [];
+  }
+
+  // Popular people is more stable than the global weekly trend for a mainstream discovery surface.
+  const pages = await Promise.all(
+    [1, 2].map(async (page) => {
+      const url = new URL(`${baseUrl}/person/popular`);
+      url.searchParams.set("api_key", apiKey);
+      url.searchParams.set("language", "en-US");
+      url.searchParams.set("page", String(page));
+
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        throw new Error("No pude traer los talentos destacados.");
+      }
+
+      const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+      return payload.results ?? [];
+    })
+  );
+
+  const seenIds = new Set<number>();
+  return pages
+    .flat()
+    .filter((item) => typeof item.name === "string" && item.name.trim().length > 0)
+    .filter((item) => typeof item.profile_path === "string" && item.profile_path.trim().length > 0)
+    .filter((item) => item.known_for_department === "Acting" || item.known_for_department === "Directing")
+    .filter((item) =>
+      Array.isArray(item.known_for) &&
+      item.known_for.some(
+        (credit) =>
+          typeof credit === "object" &&
+          credit !== null &&
+          (credit as { original_language?: unknown }).original_language === "en"
+      )
+    )
+    .filter((item) => {
+      const id = Number(item.id);
+      if (!Number.isFinite(id) || seenIds.has(id)) {
+        return false;
+      }
+
+      seenIds.add(id);
+      return true;
+    })
+    .slice(0, 4)
+    .map((item) => ({
+      id: Number(item.id),
+      name: String(item.name),
+      knownForDepartment: normalizeDepartment(
+        typeof item.known_for_department === "string" ? item.known_for_department : null
+      ),
+      profileUrl: typeof item.profile_path === "string" ? `${profileBase}${item.profile_path}` : null,
+      knownForTitles: Array.isArray(item.known_for)
+        ? item.known_for
+            .map((credit) =>
+              typeof credit === "object" &&
+              credit !== null &&
+              (typeof (credit as { title?: unknown }).title === "string"
+                ? (credit as { title: string }).title
+                : typeof (credit as { name?: unknown }).name === "string"
+                  ? (credit as { name: string }).name
+                  : null)
+            )
+            .filter((title): title is string => Boolean(title))
+            .slice(0, 3)
+        : []
+    }));
+}
+
 export async function getUpcomingTitles(): Promise<DiscoveryItem[]> {
   const { recentStart, start, end } = getTodayRange();
 

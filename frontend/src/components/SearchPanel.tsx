@@ -16,7 +16,7 @@ import {
   type StoredReaction
 } from "../lib/reactions";
 import { buildWatchedPostBody } from "../lib/reviews";
-import { searchTalent } from "../lib/tmdb";
+import { getFeaturedTalent, getTrendingTitles, searchTalent } from "../lib/tmdb";
 import type { DiscoveryItem, TalentSearchItem } from "../types";
 
 type SearchPanelProps = {
@@ -42,6 +42,9 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [talentResults, setTalentResults] = useState<TalentSearchItem[]>([]);
+  const [weeklyTitles, setWeeklyTitles] = useState<DiscoveryItem[]>([]);
+  const [weeklyTalent, setWeeklyTalent] = useState<TalentSearchItem[]>([]);
+  const [isWeeklyLoading, setIsWeeklyLoading] = useState(true);
   const [isTalentLoading, setIsTalentLoading] = useState(false);
   const [talentError, setTalentError] = useState<string | null>(null);
   const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
@@ -78,6 +81,26 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
     void listProfiles()
       .then(setProfiles)
       .catch(() => setProfiles([]));
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void Promise.allSettled([getTrendingTitles(), getFeaturedTalent()]).then(
+      ([titlesResult, talentResult]) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setWeeklyTitles(titlesResult.status === "fulfilled" ? titlesResult.value.slice(0, 4) : []);
+        setWeeklyTalent(talentResult.status === "fulfilled" ? talentResult.value.slice(0, 4) : []);
+        setIsWeeklyLoading(false);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -131,6 +154,11 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
       )
       .slice(0, 8);
   }, [profiles, query, userId]);
+
+  const isShowingWeeklyTitles = searchMode === "titles" && !query.trim();
+  const isShowingWeeklyTalent = searchMode === "talent" && !query.trim();
+  const displayedTitles = isShowingWeeklyTitles ? weeklyTitles : results;
+  const displayedTalent = isShowingWeeklyTalent ? weeklyTalent : talentResults;
 
   function replaceStoredReaction(item: DiscoveryItem, reaction: StoredReaction["reaction"]) {
     setStoredReactions((current) => [
@@ -310,10 +338,14 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         {searchMode === "titles"
           ? isLoading
             ? "Buscando..."
+            : isShowingWeeklyTitles && isWeeklyLoading
+              ? "Cargando destacados de la semana..."
             : syncMessage
               ? syncMessage
               : error
                 ? error
+                : isShowingWeeklyTitles
+                ? null
                 : `${results.length} resultados listos`
           : searchMode === "people"
             ? query.trim()
@@ -321,16 +353,18 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
               : "Busca un cineriano por nombre o username."
             : isTalentLoading
               ? "Buscando talento..."
+              : isShowingWeeklyTalent && isWeeklyLoading
+                ? "Cargando talentos destacados..."
               : talentError
                 ? talentError
                 : query.trim()
                   ? `${talentResults.length} talentos encontrados`
-                  : "Busca un actor o director por nombre."}
+                  : null}
       </div>
 
       {searchMode === "titles" ? (
         <div className="card-list">
-          {results.map((item) => (
+          {displayedTitles.map((item) => (
             <article
               className="media-card media-card--interactive"
               key={`${item.mediaType}-${item.id}`}
@@ -449,7 +483,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
 
       {searchMode === "talent" ? (
         <div className="card-list">
-          {talentResults.map((talent) => (
+          {displayedTalent.map((talent) => (
             <button
               key={talent.id}
               type="button"
