@@ -340,6 +340,14 @@ function buildFallbackUsername(email: string | undefined, userId: string) {
   return (base && base.length >= 3 ? base : `cinerian_${userId.slice(0, 8)}`).slice(0, 24);
 }
 
+function getAuthRedirectUrl() {
+  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+    return window.location.origin;
+  }
+
+  return "https://cinerian.app";
+}
+
 export async function sendMagicLink(email: string) {
   if (!supabase) {
     throw new Error("Supabase no esta configurado.");
@@ -356,7 +364,7 @@ export async function sendMagicLink(email: string) {
     email,
     options: {
       shouldCreateUser: true,
-      emailRedirectTo: window.location.origin
+      emailRedirectTo: getAuthRedirectUrl()
     }
   });
 }
@@ -385,7 +393,7 @@ export async function signInWithGoogle() {
   return supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: window.location.origin
+      redirectTo: getAuthRedirectUrl()
     }
   });
 }

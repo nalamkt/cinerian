@@ -393,6 +393,11 @@ textarea {
 .workspace-content {
   min-width: 0;
   min-height: calc(100vh - 32px);
+  /* Chasis comun para todas las vistas: evita que el degradado calido del
+     documento se perciba como fondo del contenido en pantallas angostas. */
+  background:
+    radial-gradient(circle at 50% -18%, rgba(252, 195, 95, 0.075), transparent 36%),
+    linear-gradient(180deg, #12100e 0%, #0c0f14 44%, #07090d 100%);
 }
 
 /*
