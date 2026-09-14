@@ -434,7 +434,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   );
 
   return (
-    <section className="discover">
+    <section className={`discover ${activeFilterCount ? "is-filtered" : ""}`}>
       <div className="discover-filterbar">
         <div className="discover-filterbar__chips">
           {activeFilterCount === 0 ? (
@@ -596,19 +596,19 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                 className="discover-action__button"
                 onClick={handleSkip}
                 disabled={isSyncing}
-                aria-label="Ignorar"
+                aria-label="No me interesa"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 6l12 12M18 6L6 18" />
                 </svg>
               </button>
-              <span className="discover-action__label">Ignorar</span>
+              <span className="discover-action__label">No me interesa</span>
             </div>
 
-            <div className="discover-action">
+            <div className="discover-action discover-action--primary">
               <button
                 type="button"
-                className="discover-action__button"
+                className="discover-action__button discover-action__button--primary"
                 onClick={handleWatched}
                 disabled={isSyncing}
                 aria-label="Ya la vi"
@@ -627,13 +627,13 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                 className="discover-action__button"
                 onClick={handleSave}
                 disabled={isSyncing}
-                aria-label="Guardar en watchlist"
+                aria-label="Me interesa, guardar en watchlist"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z" />
                 </svg>
               </button>
-              <span className="discover-action__label">Guardar</span>
+              <span className="discover-action__label">Me interesa</span>
             </div>
           </div>
         </article>

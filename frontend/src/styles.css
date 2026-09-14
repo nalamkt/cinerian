@@ -3257,6 +3257,7 @@ textarea {
     accion quedan siempre a la vista sin pelear por el alto con el texto.
   */
   .discover {
+    position: relative;
     height: calc(100vh - 100px);
     height: calc(100dvh - 100px);
     min-height: 0;
@@ -3282,11 +3283,38 @@ textarea {
     height: 40px;
     justify-content: center;
     border-radius: 999px;
+    /* El ambar se reserva para el ranking y la accion principal. */
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(8, 9, 12, 0.5);
+  }
+
+  /*
+    Sin filtros activos la barra no tiene nada que decir, y una franja de 50px
+    para alojar un boton de 40 es alto regalado. La barra se disuelve
+    (display: contents), los chips vacios no se dibujan y el boton se apoya
+    sobre la esquina del poster. Con filtros puestos la barra vuelve al flujo,
+    porque ahi si hay chips que leer.
+  */
+  .discover:not(.is-filtered) .discover-filterbar {
+    display: contents;
+  }
+
+  .discover:not(.is-filtered) .discover-filterbar__chips {
+    display: none;
+  }
+
+  .discover:not(.is-filtered) .discover-filterbar__button {
+    position: absolute;
+    top: 22px;
+    left: 18px;
+    z-index: 4;
   }
 
   .discover-card.panel {
     flex: 1;
     min-height: 0;
+    /* Separa igual que el ambar, sin pedir atencion. */
+    border-color: rgba(255, 255, 255, 0.10);
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
     gap: 0;
@@ -3334,10 +3362,11 @@ textarea {
     opacity: 1;
     transform: none;
     font-size: 0.68rem;
-    padding: 5px 11px;
-    border-radius: 999px;
-    background: rgba(8, 9, 12, 0.72);
-    border: 1px solid rgba(255, 255, 255, 0.16);
+    font-weight: 500;
+    /* Es una accion secundaria: alcanza con la sombra, sin pastilla que
+       compita con el poster. */
+    color: rgba(255, 255, 255, 0.82);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.95);
   }
 
   .discover-card__body {
@@ -3348,18 +3377,21 @@ textarea {
     grid-row: auto;
     align-self: auto;
     overflow: visible;
-    padding: 18px 14px 14px;
+    /* El padding superior es el lugar donde la rampa hace todo su recorrido. */
+    padding: 48px 14px 14px;
     /*
-      Velo opaco de entrada, no un degradado suave: sobre un poster claro el
-      texto queda ilegible y aca no hay segunda oportunidad. Arranca
-      transparente solo en los primeros pixeles para que el corte no se vea
-      como una linea.
+      La rampa se mide en PIXELES, no en porcentaje. Con 26% el punto opaco
+      dependia del alto de la ficha: con ~148px de ficha caia a los 38px,
+      encima del "1° en tu ranking" que arranca a los 17, y esa linea quedaba
+      sobre el poster a un 40% de opacidad efectiva. En pixeles el velo cierra
+      a los 44px siempre, sin importar cuanto crezca la ficha con un titulo
+      largo o tres plataformas.
     */
     background: linear-gradient(
       180deg,
-      rgba(8, 9, 12, 0),
-      rgba(8, 9, 12, 0.88) 26%,
-      rgba(8, 9, 12, 0.95)
+      rgba(8, 9, 12, 0) 0,
+      rgba(8, 9, 12, 0.93) 44px,
+      rgba(8, 9, 12, 0.97) 100%
     );
   }
 
@@ -3405,13 +3437,29 @@ textarea {
     las plataformas y la sinopsis. Todo eso sigue en "Ver detalles".
   */
   .discover-facts--quiet,
-  .discover-watch__label,
   .discover-overview {
     display: none;
   }
 
+  /*
+    El rotulo vuelve, pero en linea y en minusculas: un logo suelto sin nada
+    que lo introduzca se puede leer como sello de distribuidora en vez de
+    "aca lo ves".
+  */
   .discover-watch {
     margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .discover-watch__label {
+    flex: none;
+    margin: 0;
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: none;
   }
 
   .discover-watch__row {
@@ -3453,15 +3501,21 @@ textarea {
     border-top: 0;
     gap: 8px;
     justify-content: space-around;
+    /* Los circulos ya no miden lo mismo: las etiquetas se alinean por abajo. */
+    align-items: flex-end;
   }
 
   .discover-action {
     gap: 6px;
   }
 
+  /* Descartar y postergar son secundarias: aro gris, sin ambar. */
   .discover-action__button {
     width: 50px;
     height: 50px;
+    border-color: rgba(255, 255, 255, 0.20);
+    background: transparent;
+    color: var(--muted);
   }
 
   .discover-action__button svg {
@@ -3469,8 +3523,33 @@ textarea {
     height: 22px;
   }
 
+  /*
+    "Ya la vi" es la unica que alimenta el algoritmo y la unica que publica en
+    el feed: se distingue por TAMAÑO, no por relleno. El ambar solido ya
+    significa "seleccionado" en esta app (el item activo del dock, la pestaña
+    activa del feed), asi que un circulo pintado se leeria como "ya la marcaste"
+    justo cuando el boton invita a marcarla.
+  */
+  .discover-action__button--primary {
+    width: 58px;
+    height: 58px;
+    border: 1.5px solid var(--accent);
+    background: rgba(252, 195, 95, 0.10);
+    color: var(--text);
+  }
+
+  .discover-action__button--primary svg {
+    width: 25px;
+    height: 25px;
+  }
+
   .discover-action__label {
     font-size: 0.7rem;
+  }
+
+  .discover-action--primary .discover-action__label {
+    color: var(--text);
+    font-weight: 700;
   }
 }
 
