@@ -61,6 +61,7 @@ export function EditorialOnboardingModal({
             className="profile-share-button"
             disabled={isSaving}
             onClick={() => void persistPreferences(defaultEditorialPreferences())}
+            data-escape-dismiss
           >
             {isSaving ? "Guardando..." : "Usar una selección sugerida"}
           </button>

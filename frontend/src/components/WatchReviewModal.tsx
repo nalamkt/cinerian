@@ -46,21 +46,6 @@ export function WatchReviewModal({ item, isSaving = false, onClose, onSubmit }: 
     setIsCommentOpen(false);
   }, [item]);
 
-  useEffect(() => {
-    if (!item) {
-      return;
-    }
-
-    function handleKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [item, onClose]);
-
   if (!item) {
     return null;
   }
@@ -76,7 +61,7 @@ export function WatchReviewModal({ item, isSaving = false, onClose, onSubmit }: 
         aria-label={`Que te parecio ${item.title}`}
         onClick={(event) => event.stopPropagation()}
       >
-        <button type="button" className="review-modal__close" onClick={onClose} aria-label="Cerrar">
+        <button type="button" className="review-modal__close" onClick={onClose} aria-label="Cerrar" data-escape-dismiss>
           ×
         </button>
 

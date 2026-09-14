@@ -2338,8 +2338,8 @@ textarea {
 }
 
 .follow-suggestions h2 {
-  max-width: 12ch;
   margin-top: 6px;
+  white-space: nowrap;
 }
 
 .follow-suggestions__intro {
@@ -2378,6 +2378,12 @@ textarea {
 
 .follow-suggestions__user {
   cursor: default;
+}
+
+@media (max-width: 520px) {
+  .follow-suggestions h2 {
+    white-space: normal;
+  }
 }
 
 @keyframes follow-suggestions-backdrop-in {

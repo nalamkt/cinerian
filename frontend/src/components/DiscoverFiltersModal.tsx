@@ -57,21 +57,6 @@ export function DiscoverFiltersModal({
     };
   }, [isOpen, catalog.length]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    function handleKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [isOpen, onClose]);
-
   const visibleProviders = useMemo(() => {
     const normalized = normalizeForSearch(query.trim());
     if (!normalized) {
@@ -103,7 +88,7 @@ export function DiscoverFiltersModal({
         aria-label="Filtros de Descubri"
         onClick={(event) => event.stopPropagation()}
       >
-        <button type="button" className="filters-modal__close" onClick={onClose} aria-label="Cerrar">
+        <button type="button" className="filters-modal__close" onClick={onClose} aria-label="Cerrar" data-escape-dismiss>
           ×
         </button>
 

@@ -89,6 +89,7 @@ export function AboutYouOnboardingModal({ profile, onComplete }: AboutYouOnboard
             className="profile-share-button"
             disabled={isSaving}
             onClick={() => void persist("no_dice", "")}
+            data-escape-dismiss
           >
             {isSaving ? "Guardando..." : "Prefiero no decir"}
           </button>

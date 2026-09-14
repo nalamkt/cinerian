@@ -1,4 +1,5 @@
 import { CinerianLogo } from "./CinerianLogo";
+import { MediaDetailsProvider } from "./MediaDetailsModal";
 import { UserProfilePage } from "./UserProfilePage";
 
 export function SharedUserPage({ username }: { username: string }) {
@@ -19,7 +20,9 @@ export function SharedUserPage({ username }: { username: string }) {
           </div>
         </header>
 
-        <UserProfilePage currentUserId="" username={username} />
+        <MediaDetailsProvider>
+          <UserProfilePage currentUserId="" username={username} />
+        </MediaDetailsProvider>
       </div>
     </div>
   );

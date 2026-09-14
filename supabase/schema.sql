@@ -81,6 +81,18 @@ create table if not exists public.user_follows (
   check (follower_id <> following_id)
 );
 
+create table if not exists public.invites (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique,
+  inviter_id uuid not null references public.profiles(id) on delete cascade,
+  redeemed_by uuid references auth.users(id) on delete set null,
+  redeemed_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists invites_code_idx on public.invites (code);
+create index if not exists invites_inviter_id_idx on public.invites (inviter_id);
+
 create table if not exists public.recommendation_messages (
   id uuid primary key default gen_random_uuid(),
   sender_id uuid not null references public.profiles(id) on delete cascade,
@@ -193,6 +205,7 @@ alter table public.profiles enable row level security;
 alter table public.media_reactions enable row level security;
 alter table public.feed_posts enable row level security;
 alter table public.user_follows enable row level security;
+alter table public.invites enable row level security;
 alter table public.recommendation_messages enable row level security;
 alter table public.recommendation_message_replies enable row level security;
 alter table public.feed_post_comments enable row level security;
@@ -240,6 +253,17 @@ create policy "users manage own follows"
   on public.user_follows for all
   using (auth.uid() = follower_id)
   with check (auth.uid() = follower_id);
+
+create policy "invites are publicly readable by code"
+  on public.invites for select using (true);
+
+create policy "users create own invites"
+  on public.invites for insert with check (auth.uid() = inviter_id);
+
+create policy "invitee redeems unclaimed invite"
+  on public.invites for update
+  using (redeemed_by is null)
+  with check (auth.uid() = redeemed_by);
 
 create policy "recommendation messages read by participants"
   on public.recommendation_messages for select

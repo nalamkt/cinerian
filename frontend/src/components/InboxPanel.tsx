@@ -40,21 +40,6 @@ function CommentPostPreviewModal({
   onOpenTitle: (item: NonNullable<CommentInboxNotification["item"]>) => void;
   onDeleteComment: (comment: FeedComment) => void;
 }) {
-  useEffect(() => {
-    if (!notification) {
-      return;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [notification, onClose]);
-
   if (!notification) {
     return null;
   }
@@ -68,7 +53,7 @@ function CommentPostPreviewModal({
         aria-label="Publicación comentada"
         onClick={(event) => event.stopPropagation()}
       >
-        <button type="button" className="review-modal__close" onClick={onClose} aria-label="Cerrar">
+        <button type="button" className="review-modal__close" onClick={onClose} aria-label="Cerrar" data-escape-dismiss>
           ×
         </button>
         <p className="review-modal__kicker">Publicación</p>

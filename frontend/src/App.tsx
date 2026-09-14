@@ -17,6 +17,7 @@ import { getAccessControl, type AppView } from "./lib/access";
 import { trackProductEvent } from "./lib/analytics";
 import { signOut } from "./lib/auth";
 import { fetchUnreadInboxCount, INBOX_UPDATED_EVENT } from "./lib/inbox";
+import { createAndShareInvite, PENDING_INVITE_STORAGE_KEY } from "./lib/invites";
 import {
   buildSharedProfilePath,
   parseSharedProfilePath,
@@ -26,7 +27,6 @@ import { hasSupabaseEnv, supabase } from "./lib/supabase";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "./lib/auth";
 const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
-const FOLLOW_SUGGESTIONS_SESSION_KEY = "cinerian-follow-suggestions-shown";
 export const FEED_SCROLL_TO_TOP_EVENT = "cinerian:feed-scroll-to-top";
 export const FEED_REFRESH_EDITORIAL_EVENT = "cinerian:feed-refresh-editorial";
 
@@ -124,8 +124,10 @@ export default function App() {
     username: string;
   } | null>(() => parseSharedProfilePath(window.location.pathname));
   const [shareLabel, setShareLabel] = useState("Compartir perfil");
+  const [inviteLabel, setInviteLabel] = useState("Invitar");
   const [showFollowSuggestions, setShowFollowSuggestions] = useState(false);
   const viewSessionRef = useRef<ViewSessionRef | null>(null);
+  const followSuggestionsLoginRef = useRef<string | null>(null);
   const accessControl = useMemo(
     () =>
       getAccessControl({
@@ -142,22 +144,68 @@ export default function App() {
   const visualScopeKey = `${activeView}:${selectedProfileRoute?.userId ?? selectedProfileRoute?.username ?? ""}`;
 
   useEffect(() => {
+    function dismissTopmostPopup(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) {
+        return;
+      }
+
+      const dismissControls = Array.from(
+        document.querySelectorAll<HTMLButtonElement>("[data-escape-dismiss]")
+      ).filter((control) => {
+        const style = window.getComputedStyle(control);
+        return (
+          !control.disabled &&
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          control.getClientRects().length > 0
+        );
+      });
+      const topmostControl = dismissControls[dismissControls.length - 1];
+
+      if (!topmostControl) {
+        return;
+      }
+
+      // Each popup exposes its own dismissal action; Escape only closes the top layer.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      topmostControl.click();
+    }
+
+    window.addEventListener("keydown", dismissTopmostPopup, true);
+    return () => window.removeEventListener("keydown", dismissTopmostPopup, true);
+  }, []);
+
+  useEffect(() => {
     setLocalProfile(profile);
   }, [profile]);
 
   useEffect(() => {
-    if (!sessionUserId || !localProfile || localProfile.gender === null) {
+    if (!sessionUserId) {
+      followSuggestionsLoginRef.current = null;
+      setShowFollowSuggestions(false);
       return;
     }
 
-    const storageKey = `${FOLLOW_SUGGESTIONS_SESSION_KEY}:${sessionUserId}`;
-    if (window.sessionStorage.getItem(storageKey)) {
+    if (!localProfile || localProfile.gender === null || followSuggestionsLoginRef.current === sessionUserId) {
       return;
     }
 
-    window.sessionStorage.setItem(storageKey, "true");
+    followSuggestionsLoginRef.current = sessionUserId;
+    setSelectedProfileRoute(null);
+    setActiveView("feed");
+    if (window.location.pathname !== "/") {
+      window.history.replaceState({}, "", "/");
+    }
     setShowFollowSuggestions(true);
   }, [localProfile, sessionUserId]);
+
+  useEffect(() => {
+    const inviteCode = new URLSearchParams(window.location.search).get("invite");
+    if (inviteCode) {
+      window.localStorage.setItem(PENDING_INVITE_STORAGE_KEY, inviteCode);
+    }
+  }, []);
 
   useEffect(() => {
     if (selectedProfileRoute) {
@@ -175,6 +223,37 @@ export default function App() {
   const ownProfileAction = useMemo(() => {
     return (
       <div className="profile-hero__actions profile-hero__actions--own">
+        <button
+          type="button"
+          className="recommendation-action-button recommendation-action-button--small"
+          disabled={!sessionUserId}
+          data-tooltip={inviteLabel}
+          aria-label={inviteLabel}
+          onClick={async () => {
+            if (!sessionUserId) {
+              return;
+            }
+
+            try {
+              const result = await createAndShareInvite(sessionUserId);
+              if (result === "cancelled") {
+                return;
+              }
+              setInviteLabel(result === "shared" ? "Invitación enviada" : "Link copiado");
+            } catch {
+              setInviteLabel("No se pudo invitar");
+            } finally {
+              window.setTimeout(() => setInviteLabel("Invitar"), 1800);
+            }
+          }}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M19 8v6" />
+            <path d="M22 11h-6" />
+          </svg>
+        </button>
         <button
           type="button"
           className="recommendation-action-button recommendation-action-button--small"
@@ -202,7 +281,7 @@ export default function App() {
         </button>
       </div>
     );
-  }, [localProfile?.username, shareLabel]);
+  }, [inviteLabel, localProfile?.username, sessionUserId, shareLabel]);
 
   useEffect(() => {
     function syncRouteFromLocation() {

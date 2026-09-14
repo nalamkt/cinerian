@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { ensureProfile, getCurrentSession, type Profile } from "../lib/auth";
+import { followUser } from "../lib/follows";
+import { PENDING_INVITE_STORAGE_KEY, redeemInvite } from "../lib/invites";
 import { supabase } from "../lib/supabase";
 
 type AuthState = {
@@ -10,9 +12,44 @@ type AuthState = {
   error: string | null;
 };
 
-async function establishProfile(user: User): Promise<Profile> {
-  const { profile } = await ensureProfile({ user });
+const profileEstablishmentTasks = new Map<string, Promise<Profile>>();
+
+async function establishProfileForUser(user: User): Promise<Profile> {
+  const { profile, wasCreated } = await ensureProfile({ user });
+  const inviteCode = window.localStorage.getItem(PENDING_INVITE_STORAGE_KEY);
+
+  if (wasCreated && inviteCode) {
+    try {
+      const inviterId = await redeemInvite(inviteCode, user.id);
+      if (inviterId && inviterId !== user.id) {
+        await followUser(user.id, inviterId);
+      }
+    } catch {
+      // The account was created successfully; a later login can continue normally.
+    } finally {
+      window.localStorage.removeItem(PENDING_INVITE_STORAGE_KEY);
+    }
+  } else if (inviteCode) {
+    // Existing members can open a shared link without changing their follows.
+    window.localStorage.removeItem(PENDING_INVITE_STORAGE_KEY);
+  }
+
   return profile;
+}
+
+function establishProfile(user: User): Promise<Profile> {
+  const activeTask = profileEstablishmentTasks.get(user.id);
+  if (activeTask) {
+    return activeTask;
+  }
+
+  const task = establishProfileForUser(user);
+  profileEstablishmentTasks.set(user.id, task);
+  void task.then(
+    () => profileEstablishmentTasks.delete(user.id),
+    () => profileEstablishmentTasks.delete(user.id)
+  );
+  return task;
 }
 
 export function useAuth() {

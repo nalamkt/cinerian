@@ -379,6 +379,7 @@ export function ProfilePanel({
                 className="profile-people-modal__close"
                 onClick={closePeoplePopup}
                 aria-label="Cerrar"
+                data-escape-dismiss
               >
                 ×
               </button>
@@ -465,6 +466,7 @@ export function ProfilePanel({
                     className="media-modal__back"
                     onClick={() => setIsEditing(false)}
                     aria-label="Cerrar editor"
+                    data-escape-dismiss
                   >
                     ×
                   </button>

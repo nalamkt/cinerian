@@ -194,7 +194,13 @@ export function MediaDetailsSheet({
     <div className={`media-modal ${publicMode ? "media-modal--public" : ""}`} role="dialog" aria-modal={!publicMode}>
       <div className="media-modal__toolbar">
         {onClose ? (
-          <button type="button" className="media-modal__back" onClick={onClose} aria-label="Volver">
+          <button
+            type="button"
+            className="media-modal__back"
+            onClick={onClose}
+            aria-label="Volver"
+            data-escape-dismiss
+          >
             ←
           </button>
         ) : (
@@ -474,23 +480,6 @@ function MediaDetailsModal({
   const [isReviewSaving, setIsReviewSaving] = useState(false);
   const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
   const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
-
-  useEffect(() => {
-    if (!item) {
-      return;
-    }
-
-    function handleKeydown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeydown);
-    return () => {
-      window.removeEventListener("keydown", handleKeydown);
-    };
-  }, [item, onClose]);
 
   useEffect(() => {
     setShareLabel("Compartir");

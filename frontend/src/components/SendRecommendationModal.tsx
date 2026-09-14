@@ -119,7 +119,7 @@ export function SendRecommendationModal({
             <h3>{item.title}</h3>
             <p className="send-modal__meta">{recipientCountLabel} en tu circulo</p>
           </div>
-          <button type="button" className="review-modal__close" onClick={onClose} aria-label="Cerrar">
+          <button type="button" className="review-modal__close" onClick={onClose} aria-label="Cerrar" data-escape-dismiss>
             ×
           </button>
         </div>

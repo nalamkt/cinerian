@@ -161,21 +161,6 @@ export function TalentDetailsModal({
     };
   }, [userId]);
 
-  useEffect(() => {
-    if (!item) {
-      return;
-    }
-
-    function handleKeydown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
-  }, [item, onClose]);
-
   if (!item) {
     return null;
   }
@@ -206,7 +191,13 @@ export function TalentDetailsModal({
         >
           <div className="media-modal media-modal--public talent-modal talent-modal--page">
             <div className="media-modal__toolbar">
-              <button type="button" className="media-modal__back" onClick={onClose} aria-label="Volver">
+              <button
+                type="button"
+                className="media-modal__back"
+                onClick={onClose}
+                aria-label="Volver"
+                data-escape-dismiss
+              >
                 ←
               </button>
             </div>

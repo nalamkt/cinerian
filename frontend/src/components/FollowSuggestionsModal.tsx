@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { listProfiles, type Profile } from "../lib/auth";
-import { fetchFollowingUserIds, followUser } from "../lib/follows";
+import { fetchFollowedByUsers, fetchFollowingUserIds, followUser } from "../lib/follows";
 
 type FollowSuggestionsModalProps = {
   userId: string;
@@ -19,14 +19,19 @@ export function FollowSuggestionsModal({ userId, onClose }: FollowSuggestionsMod
     async function loadSuggestions() {
       try {
         const [profiles, followedIds] = await Promise.all([listProfiles(), fetchFollowingUserIds(userId)]);
+        const friendsOfFriendsIds = await fetchFollowedByUsers(followedIds);
         if (!isMounted) {
           return;
         }
 
         setFollowingIds(followedIds);
+        const candidateIds = new Set(friendsOfFriendsIds);
         setSuggestions(
           profiles
-            .filter((profile) => profile.id !== userId && !followedIds.includes(profile.id))
+            .filter(
+              (profile) =>
+                profile.id !== userId && !followedIds.includes(profile.id) && candidateIds.has(profile.id)
+            )
             .slice(0, 5)
         );
       } catch {
@@ -47,17 +52,6 @@ export function FollowSuggestionsModal({ userId, onClose }: FollowSuggestionsMod
   }, [userId]);
 
   useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  useEffect(() => {
     if (!isLoading && suggestions.length === 0) {
       onClose();
     }
@@ -69,12 +63,13 @@ export function FollowSuggestionsModal({ userId, onClose }: FollowSuggestionsMod
     }
 
     setFollowingInFlight(targetUserId);
-    setFollowingIds((current) => [...current, targetUserId]);
 
     try {
       await followUser(userId, targetUserId);
+      setFollowingIds((current) => [...current, targetUserId]);
+      setSuggestions((current) => current.filter((profile) => profile.id !== targetUserId));
     } catch {
-      setFollowingIds((current) => current.filter((id) => id !== targetUserId));
+      // Keep the suggestion available so the user can retry if the follow request fails.
     } finally {
       setFollowingInFlight(null);
     }
@@ -93,7 +88,7 @@ export function FollowSuggestionsModal({ userId, onClose }: FollowSuggestionsMod
         aria-modal="true"
         aria-labelledby="follow-suggestions-title"
       >
-        <button type="button" className="follow-suggestions__close" onClick={onClose} aria-label="Cerrar">
+        <button type="button" className="follow-suggestions__close" onClick={onClose} aria-label="Cerrar" data-escape-dismiss>
           ×
         </button>
 

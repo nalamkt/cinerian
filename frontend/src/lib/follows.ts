@@ -87,6 +87,23 @@ export async function fetchFollowingUserIds(userId: string): Promise<string[]> {
   return (data ?? []).map((entry) => entry.following_id as string);
 }
 
+export async function fetchFollowedByUsers(userIds: string[]): Promise<string[]> {
+  if (!supabase || userIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("user_follows")
+    .select("following_id")
+    .in("follower_id", userIds);
+
+  if (error) {
+    throw error;
+  }
+
+  return [...new Set((data ?? []).map((entry) => entry.following_id as string))];
+}
+
 export async function fetchFollowerUserIds(userId: string): Promise<string[]> {
   if (!supabase) {
     return [];
