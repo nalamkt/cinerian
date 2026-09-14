@@ -437,9 +437,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     <section className={`discover ${activeFilterCount ? "is-filtered" : ""}`}>
       <div className="discover-filterbar">
         <div className="discover-filterbar__chips">
-          {activeFilterCount === 0 ? (
-            <span className="discover-filterbar__empty">Sin filtros</span>
-          ) : (
+          {activeFilterCount === 0 ? null : (
             <>
               {filters.contentType === "all" ? null : (
                 <span className="discover-chip discover-chip--plain">

@@ -2478,11 +2478,6 @@ textarea {
   min-width: 0;
 }
 
-.discover-filterbar__empty {
-  font-size: 0.86rem;
-  color: var(--muted);
-}
-
 .discover-chip {
   display: inline-flex;
   align-items: center;
@@ -2519,8 +2514,8 @@ textarea {
   gap: 8px;
   padding: 8px 15px;
   border-radius: 999px;
-  border: 1px solid rgba(252, 195, 95, 0.45);
-  background: rgba(252, 195, 95, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text);
   font-size: 0.86rem;
   font-weight: 700;
@@ -2530,8 +2525,8 @@ textarea {
 }
 
 .discover-filterbar__button:hover {
-  border-color: var(--accent);
-  background: rgba(252, 195, 95, 0.13);
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .discover-filterbar__button:focus-visible {
@@ -2993,7 +2988,7 @@ textarea {
 }
 
 .discover-social {
-  margin-top: 20px;
+  margin-top: 16px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -3040,25 +3035,25 @@ textarea {
 }
 
 .discover-facts {
-  margin: 24px 0 0;
+  margin: 18px 0 0;
   font-size: 1rem;
   font-weight: 600;
   color: var(--text);
 }
 
 .discover-facts--quiet {
-  margin-top: 6px;
+  margin-top: 4px;
   font-weight: 500;
   font-size: 0.92rem;
   color: var(--muted);
 }
 
 .discover-watch {
-  margin-top: 26px;
+  margin-top: 20px;
 }
 
 .discover-watch__label {
-  margin: 0 0 11px;
+  margin: 0 0 9px;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.15em;
@@ -3112,7 +3107,7 @@ textarea {
 }
 
 .discover-overview {
-  margin: 26px 0 0;
+  margin: 18px 0 0;
   font-size: 1rem;
   color: var(--muted);
   line-height: 1.65;
@@ -3158,11 +3153,13 @@ textarea {
 .discover-actions {
   grid-row: 2;
   grid-column: 1 / -1;
-  margin-top: 34px;
-  padding-top: 28px;
+  margin-top: 18px;
+  padding-top: 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   justify-content: center;
+  /* Los circulos ya no miden lo mismo: las etiquetas se alinean por abajo. */
+  align-items: flex-end;
   gap: 34px;
 }
 
@@ -3170,19 +3167,22 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 11px;
+  gap: 9px;
 }
 
+/*
+  Descartar y postergar son acciones secundarias: aro neutro. El ambar se
+  reserva para el puesto en el ranking y para la accion principal; cuando lo
+  llevaban los tres botones mas el de filtros mas el borde de la tarjeta, no
+  distinguia nada.
+*/
 .discover-action__button {
   width: 68px;
   height: 68px;
   border-radius: 999px;
-  /* Borde en el ambar de Cinerian para que las tres acciones resalten sobre
-     la tarjeta. Va a media opacidad: a full, tres aros iguales compiten entre
-     si y con el poster. */
-  border: 1px solid rgba(252, 195, 95, 0.45);
-  background: rgba(252, 195, 95, 0.05);
-  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  background: transparent;
+  color: var(--muted);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -3191,8 +3191,34 @@ textarea {
 
 .discover-action__button:hover:not(:disabled) {
   transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/*
+  "Ya la vi" es la unica que alimenta el algoritmo y la unica que publica en el
+  feed. Se distingue por TAMAÑO, no por relleno: el ambar solido ya significa
+  "seleccionado" en esta app (el item activo del dock, la pestaña activa del
+  feed), asi que un circulo pintado se leeria como "ya la marcaste" justo
+  cuando el boton invita a marcarla.
+*/
+.discover-action__button--primary {
+  width: 78px;
+  height: 78px;
+  border: 1.5px solid var(--accent);
+  background: rgba(252, 195, 95, 0.10);
+  color: var(--text);
+}
+
+.discover-action__button--primary:hover:not(:disabled) {
   border-color: var(--accent);
-  background: rgba(252, 195, 95, 0.12);
+  background: rgba(252, 195, 95, 0.18);
+}
+
+
+.discover-action--primary .discover-action__label {
+  color: var(--text);
+  font-weight: 700;
 }
 
 .discover-action__button:disabled {
@@ -3208,6 +3234,11 @@ textarea {
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.discover-action__button--primary svg {
+  width: 30px;
+  height: 30px;
 }
 
 .discover-action__label {
@@ -3267,7 +3298,6 @@ textarea {
   }
 
   /* Sin filtros activos la barra queda solo con el icono. */
-  .discover-filterbar__empty,
   .discover-filterbar__label {
     display: none;
   }
@@ -3283,8 +3313,7 @@ textarea {
     height: 40px;
     justify-content: center;
     border-radius: 999px;
-    /* El ambar se reserva para el ranking y la accion principal. */
-    border-color: rgba(255, 255, 255, 0.18);
+    /* Flota sobre el poster: necesita fondo propio para despegarse. */
     background: rgba(8, 9, 12, 0.5);
   }
 
@@ -3509,13 +3538,9 @@ textarea {
     gap: 6px;
   }
 
-  /* Descartar y postergar son secundarias: aro gris, sin ambar. */
   .discover-action__button {
     width: 50px;
     height: 50px;
-    border-color: rgba(255, 255, 255, 0.20);
-    background: transparent;
-    color: var(--muted);
   }
 
   .discover-action__button svg {
