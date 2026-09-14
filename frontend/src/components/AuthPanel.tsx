@@ -1,42 +1,88 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { sendMagicLink, signInWithGoogle, verifyEmailOtp } from "../lib/auth";
 
 type AuthPanelProps = {
   isSupabaseReady: boolean;
 };
 
+type AuthMessage = {
+  kind: "ok" | "error";
+  text: string;
+};
+
+const RESEND_COOLDOWN_SECONDS = 60;
+
+/*
+  Ningun mensaje de Supabase llega crudo al usuario: son en ingles y tecnicos.
+  El texto original se manda a la consola para poder diagnosticar.
+*/
 function getAuthErrorMessage(error: unknown) {
   if (!(error instanceof Error)) {
-    return "No pude autenticarte.";
+    return "No pudimos autenticarte. Probá de nuevo en un momento.";
   }
+
+  console.error("[auth]", error.message);
 
   const normalizedMessage = error.message.toLowerCase();
 
   if (normalizedMessage.includes("email rate limit exceeded")) {
-    return "Supabase bloqueo temporalmente el envio de emails. Si la confirmacion por email esta activa, espera al menos 60 segundos y revisa Authentication > Rate Limits y Authentication > Emails > SMTP en Supabase.";
+    return "Pediste varios emails seguidos. Esperá un minuto y volvé a intentar.";
   }
 
   if (normalizedMessage.includes("user already registered")) {
-    return "Ese email ya tiene una cuenta. Prueba iniciar sesion o recuperar la contrasena.";
+    return "Ese email ya tiene cuenta. Pedí el link de acceso y entrás igual.";
   }
 
-  return error.message;
+  if (normalizedMessage.includes("expired")) {
+    return "Ese código ya venció. Pedí uno nuevo y usalo dentro de los 10 minutos.";
+  }
+
+  if (normalizedMessage.includes("token") || normalizedMessage.includes("otp")) {
+    return "Ese código no es válido. Revisá que sean los 6 dígitos del último email.";
+  }
+
+  if (
+    normalizedMessage.includes("invalid email") ||
+    normalizedMessage.includes("unable to validate email")
+  ) {
+    return "Ese email no parece válido. Fijate si le falta algo.";
+  }
+
+  return "No pudimos autenticarte. Probá de nuevo en un momento.";
 }
 
 export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
   const [email, setEmail] = useState("");
   const [step, setStep] = useState<"request" | "verify">("request");
   const [otpCode, setOtpCode] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<AuthMessage | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const codeInputRef = useRef<HTMLInputElement>(null);
+
+  /* El contador ataca la causa del rate limit de Supabase, no el sintoma. */
+  useEffect(() => {
+    if (cooldown <= 0) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setCooldown((value) => value - 1), 1000);
+    return () => window.clearTimeout(timeoutId);
+  }, [cooldown]);
+
+  useEffect(() => {
+    if (step === "verify") {
+      codeInputRef.current?.focus();
+    }
+  }, [step]);
 
   async function requestEmailSignIn() {
-    if (isSubmitting) {
+    if (isSubmitting || cooldown > 0) {
       return;
     }
 
     if (!isSupabaseReady) {
-      setMessage("Faltan las credenciales de Supabase.");
+      setMessage({ kind: "error", text: "Faltan las credenciales de Supabase." });
       return;
     }
 
@@ -50,9 +96,13 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
       }
 
       setStep("verify");
-      setMessage("Te enviamos un email con tu link magico y tu codigo de acceso.");
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+      setMessage({
+        kind: "ok",
+        text: "Listo, te lo mandamos. Puede tardar un minuto en llegar."
+      });
     } catch (error) {
-      setMessage(getAuthErrorMessage(error));
+      setMessage({ kind: "error", text: getAuthErrorMessage(error) });
     } finally {
       setIsSubmitting(false);
     }
@@ -71,7 +121,7 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
     }
 
     if (!isSupabaseReady) {
-      setMessage("Faltan las credenciales de Supabase.");
+      setMessage({ kind: "error", text: "Faltan las credenciales de Supabase." });
       return;
     }
 
@@ -79,20 +129,18 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
       setIsSubmitting(true);
       setMessage(null);
 
-      if (step === "verify") {
-        const { error } = await verifyEmailOtp({
-          email,
-          token: otpCode.trim()
-        });
+      const { error } = await verifyEmailOtp({
+        email,
+        token: otpCode.trim()
+      });
 
-        if (error) {
-          throw error;
-        }
-
-        setMessage("Codigo verificado. Entrando a Cinerian...");
+      if (error) {
+        throw error;
       }
+
+      setMessage({ kind: "ok", text: "Código verificado. Entrando a Cinerian..." });
     } catch (error) {
-      setMessage(getAuthErrorMessage(error));
+      setMessage({ kind: "error", text: getAuthErrorMessage(error) });
     } finally {
       setIsSubmitting(false);
     }
@@ -104,7 +152,7 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
     }
 
     if (!isSupabaseReady) {
-      setMessage("Faltan las credenciales de Supabase.");
+      setMessage({ kind: "error", text: "Faltan las credenciales de Supabase." });
       return;
     }
 
@@ -117,18 +165,104 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
         throw error;
       }
     } catch (error) {
-      setMessage(getAuthErrorMessage(error));
+      setMessage({ kind: "error", text: getAuthErrorMessage(error) });
       setIsSubmitting(false);
     }
   }
 
   return (
-    <section className="panel auth-panel">
-      <p className="section-eyebrow">Acceso</p>
-      <h2>Entra a Cinerian</h2>
+    <section className="auth-panel">
+      <h2>{step === "verify" ? "Revisá tu email" : "Entrá a Cinerian"}</h2>
+
+      <form className="auth-form" onSubmit={handleSubmit}>
+        {step === "verify" ? (
+          <p className="auth-sent-to">
+            Te lo enviamos a <strong>{email}</strong>. Tocá el link del mensaje, o pegá el
+            código de 6 dígitos acá abajo.
+          </p>
+        ) : null}
+
+        {step === "request" ? (
+          <>
+            <label className="auth-field" htmlFor="auth-email">
+              <span className="sr-only">Email</span>
+              <input
+                id="auth-email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoFocus
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="Tu email"
+                required
+                disabled={isSubmitting}
+              />
+            </label>
+
+            <button type="submit" className="primary-button" disabled={isSubmitting}>
+              {isSubmitting ? <span className="button-spinner" aria-hidden="true" /> : null}
+              {isSubmitting ? "Enviando" : "Enviame el link de acceso"}
+            </button>
+
+            <p className="auth-hint">Sin contraseña: te llega un link para entrar de una.</p>
+          </>
+        ) : (
+          <>
+            <label className="auth-field" htmlFor="auth-code">
+              <span className="sr-only">Código del email</span>
+              <input
+                id="auth-code"
+                ref={codeInputRef}
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                className="auth-code-input"
+                value={otpCode}
+                onChange={(event) =>
+                  setOtpCode(event.target.value.replace(/\s/g, "").slice(0, 6))
+                }
+                placeholder="Código de 6 dígitos"
+                required
+              />
+            </label>
+
+            <button type="submit" className="primary-button" disabled={isSubmitting}>
+              {isSubmitting ? <span className="button-spinner" aria-hidden="true" /> : null}
+              {isSubmitting ? "Verificando" : "Ingresar con el código"}
+            </button>
+
+            <div className="auth-resend">
+              <span className="auth-resend__cooldown">
+                {cooldown > 0 ? `Reenviar en ${cooldown}s` : "¿No llegó?"}
+              </span>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => void requestEmailSignIn()}
+                disabled={isSubmitting || cooldown > 0}
+              >
+                Reenviar email
+              </button>
+            </div>
+          </>
+        )}
+
+        {message ? (
+          <div className={`auth-status auth-status--${message.kind}`} role="status" aria-live="polite">
+            {message.text}
+          </div>
+        ) : null}
+      </form>
 
       {step === "request" ? (
         <>
+          <div className="auth-divider" aria-hidden="true">
+            <span />
+            <b>o</b>
+            <span />
+          </div>
+
           <button
             type="button"
             className="google-button"
@@ -143,90 +277,21 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
             </svg>
             Continuar con Google
           </button>
-
-          <div className="auth-divider" aria-hidden="true">
-            <span />
-            <b>o</b>
-            <span />
-          </div>
         </>
-      ) : null}
-
-      <form className="auth-form" onSubmit={handleSubmit}>
-        {step === "verify" ? (
-          <div className="auth-email-sent">
-            <h3>Revisa tu email</h3>
-            <p>
-              Te enviamos un email a <strong>{email}</strong>. Podes entrar tocando el link magico
-              del correo o pegar el codigo que recibiste aca.
-            </p>
-          </div>
-        ) : null}
-
-        <label className="input-stack">
-          <span>Email</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="vos@cinerian.com"
-            required
-            disabled={isSubmitting || step === "verify"}
-          />
-        </label>
-
-        {step === "verify" ? (
-          <label className="input-stack">
-            <span>Token del email</span>
-            <input
-              type="text"
-              inputMode="text"
-              autoComplete="one-time-code"
-              value={otpCode}
-              onChange={(event) =>
-                setOtpCode(event.target.value.replace(/\s/g, "").slice(0, 12))
-              }
-              placeholder="Pega el token del email"
-              required
-            />
-          </label>
-        ) : null}
-
-        <button type="submit" className="primary-button" disabled={isSubmitting}>
-          {isSubmitting
-            ? "Procesando..."
-            : step === "verify"
-              ? "Ingresar con el codigo"
-              : "Iniciar sesion con email"}
+      ) : (
+        <button
+          type="button"
+          className="text-button auth-back"
+          onClick={() => {
+            setStep("request");
+            setOtpCode("");
+            setMessage(null);
+          }}
+          disabled={isSubmitting}
+        >
+          ← Usar otro email
         </button>
-
-        {step === "verify" ? (
-          <div className="auth-email-actions">
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => {
-                setStep("request");
-                setOtpCode("");
-                setMessage(null);
-              }}
-              disabled={isSubmitting}
-            >
-              Usar otro email
-            </button>
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => void requestEmailSignIn()}
-              disabled={isSubmitting}
-            >
-              Reenviar email
-            </button>
-          </div>
-        ) : null}
-      </form>
-
-      {message ? <div className="inline-status">{message}</div> : null}
+      )}
     </section>
   );
 }

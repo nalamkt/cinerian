@@ -1,5 +1,6 @@
 import { AboutYouOnboardingModal } from "./components/AboutYouOnboardingModal";
 import { AuthPanel } from "./components/AuthPanel";
+import { AuthShowcase } from "./components/AuthShowcase";
 import { CinerianLogo } from "./components/CinerianLogo";
 import { FeedPanel } from "./components/FeedPanel";
 import { FollowSuggestionsModal } from "./components/FollowSuggestionsModal";
@@ -541,22 +542,21 @@ export default function App() {
 
     return (
       <div className="auth-shell">
-        <div className="auth-shell__inner">
-          <section className="auth-hero-card">
-            <CinerianLogo className="auth-logo" />
-            <p className="section-eyebrow">Cinerian</p>
-            <h1>Tu mundo de pelis y series, ahora con identidad real</h1>
-            <p className="section-description">
-              Sumate a Cinerian para registrar lo que viste, puntuar, recomendar y descubrir que
-              mirar con una experiencia social hecha para cinefilos.
-            </p>
-          </section>
-
-          <div className="auth-shell__form">
-            {error ? <div className="app-alert">{error}</div> : null}
-            {isLoading ? <div className="app-alert">Cargando sesion...</div> : null}
-            <AuthPanel isSupabaseReady={hasSupabaseEnv} />
+        <section className="auth-intro">
+          <CinerianLogo className="auth-logo" />
+          <div className="auth-intro__body">
+            <h1>
+              Tu ranking de películas no lo arma un algoritmo.{" "}
+              <em>Lo arma tu círculo.</em>
+            </h1>
+            <AuthShowcase />
           </div>
+        </section>
+
+        <div className="auth-shell__form">
+          {error ? <div className="app-alert">{error}</div> : null}
+          {isLoading ? <div className="app-alert">Cargando sesión...</div> : null}
+          <AuthPanel isSupabaseReady={hasSupabaseEnv} />
         </div>
       </div>
     );

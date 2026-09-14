@@ -52,21 +52,20 @@ export function AdminPanelPage() {
   if (!session) {
     return (
       <div className="auth-shell">
-        <div className="auth-shell__inner">
-          <section className="auth-hero-card">
-            <CinerianLogo className="auth-logo" />
-            <p className="section-eyebrow">Panel</p>
+        <section className="auth-intro">
+          <CinerianLogo className="auth-logo" />
+          <div className="auth-intro__body">
             <h1>Control operativo de Cinerian</h1>
-            <p className="section-description">
+            <p className="auth-intro__note">
               Ingresá con una cuenta interna para ver métricas, flags y logs de la app en una vista separada.
             </p>
-          </section>
-
-          <div className="auth-shell__form">
-            {error ? <div className="app-alert">{error}</div> : null}
-            {isLoading ? <div className="app-alert">Cargando sesion...</div> : null}
-            <AuthPanel isSupabaseReady={hasSupabaseEnv} />
           </div>
+        </section>
+
+        <div className="auth-shell__form">
+          {error ? <div className="app-alert">{error}</div> : null}
+          {isLoading ? <div className="app-alert">Cargando sesión...</div> : null}
+          <AuthPanel isSupabaseReady={hasSupabaseEnv} />
         </div>
       </div>
     );
@@ -74,13 +73,12 @@ export function AdminPanelPage() {
 
   if (!canAccessPanel) {
     return (
-      <div className="auth-shell">
-        <div className="auth-shell__inner">
-          <section className="auth-hero-card">
-            <CinerianLogo className="auth-logo" />
-            <p className="section-eyebrow">Panel</p>
+      <div className="auth-shell auth-shell--single">
+        <section className="auth-intro">
+          <CinerianLogo className="auth-logo" />
+          <div className="auth-intro__body">
             <h1>Acceso restringido</h1>
-            <p className="section-description">
+            <p className="auth-intro__note">
               Esta cuenta no tiene permiso para entrar a `/panel`. Agregala a la whitelist interna o al acceso admin en Supabase.
             </p>
             <div className="token-row">
@@ -89,8 +87,8 @@ export function AdminPanelPage() {
                 <a href="/">Volver a la app</a>
               </span>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
       </div>
     );
   }
