@@ -497,6 +497,45 @@ function normalizeCredit(item: Record<string, unknown>): TalentCredit | null {
   };
 }
 
+function creditNumber(item: Record<string, unknown>, key: string): number {
+  const value = item[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function creditReleaseDate(item: Record<string, unknown>): number {
+  const date =
+    typeof item.release_date === "string"
+      ? item.release_date
+      : typeof item.first_air_date === "string"
+        ? item.first_air_date
+        : "";
+  const timestamp = Date.parse(date);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sortTalentCreditsByRelevance(
+  credits: Record<string, unknown>[]
+): Record<string, unknown>[] {
+  return [...credits].sort((left, right) => {
+    const popularityDifference = creditNumber(right, "popularity") - creditNumber(left, "popularity");
+    if (popularityDifference !== 0) {
+      return popularityDifference;
+    }
+
+    const ratingDifference = creditNumber(right, "vote_average") - creditNumber(left, "vote_average");
+    if (ratingDifference !== 0) {
+      return ratingDifference;
+    }
+
+    const voteCountDifference = creditNumber(right, "vote_count") - creditNumber(left, "vote_count");
+    if (voteCountDifference !== 0) {
+      return voteCountDifference;
+    }
+
+    return creditReleaseDate(right) - creditReleaseDate(left);
+  });
+}
+
 function uniqueTalentCredits(credits: TalentCredit[]): TalentCredit[] {
   const seen = new Set<string>();
 
@@ -1356,14 +1395,17 @@ export async function getTalentDetails(personId: number): Promise<TalentDetails 
   } | undefined) ?? { cast: [], crew: [] };
 
   const actingCredits = uniqueTalentCredits(
-    (combinedCredits.cast ?? [])
+    sortTalentCreditsByRelevance(combinedCredits.cast ?? [])
       .map((item) => normalizeCredit(item))
       .filter((item): item is TalentCredit => Boolean(item))
   );
 
   const directingCredits = uniqueTalentCredits(
-    (combinedCredits.crew ?? [])
-      .filter((item) => item.job === "Director" || item.department === "Directing")
+    sortTalentCreditsByRelevance(
+      (combinedCredits.crew ?? []).filter(
+        (item) => item.job === "Director" || item.department === "Directing"
+      )
+    )
       .map((item) => normalizeCredit(item))
       .filter((item): item is TalentCredit => Boolean(item))
   );

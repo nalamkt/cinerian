@@ -8,9 +8,10 @@ import {
   type RecommendationReaction,
   type StoredReaction
 } from "../lib/reactions";
-import type { TalentDetails, TalentSearchItem } from "../types";
+import type { TalentCredit, TalentDetails, TalentSearchItem } from "../types";
 
 const CREDITS_PAGE_SIZE = 12;
+type CreditOrder = "known" | "recent";
 
 type TalentDetailsModalProps = {
   item: TalentSearchItem | null;
@@ -29,6 +30,18 @@ const REACTION_LABELS: Partial<Record<RecommendationReaction, string>> = {
   disliked: "No me gusto",
   watchlist: "Guardada"
 };
+
+function orderCredits(credits: TalentCredit[], order: CreditOrder): TalentCredit[] {
+  if (order === "known") {
+    return credits;
+  }
+
+  return [...credits].sort((left, right) => {
+    const rightYear = Number.parseInt(right.year, 10) || 0;
+    const leftYear = Number.parseInt(left.year, 10) || 0;
+    return rightYear - leftYear;
+  });
+}
 
 function TalentCreditReaction({ reaction }: { reaction: RecommendationReaction | undefined }) {
   if (!reaction || reaction === "ignored") {
@@ -75,6 +88,7 @@ export function TalentDetailsModal({
   const [isLoading, setIsLoading] = useState(false);
   const [visibleActingCredits, setVisibleActingCredits] = useState(CREDITS_PAGE_SIZE);
   const [visibleDirectingCredits, setVisibleDirectingCredits] = useState(CREDITS_PAGE_SIZE);
+  const [creditOrder, setCreditOrder] = useState<CreditOrder>("known");
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
 
   useEffect(() => {
@@ -106,6 +120,7 @@ export function TalentDetailsModal({
   useEffect(() => {
     setVisibleActingCredits(CREDITS_PAGE_SIZE);
     setVisibleDirectingCredits(CREDITS_PAGE_SIZE);
+    setCreditOrder("known");
   }, [item?.id]);
 
   useEffect(() => {
@@ -168,6 +183,14 @@ export function TalentDetailsModal({
   const reactionsByCredit = new Map(
     storedReactions.map((reaction) => [`${reaction.mediaType}-${reaction.tmdbId}`, reaction.reaction])
   );
+  const actingCredits = details ? orderCredits(details.actingCredits, creditOrder) : [];
+  const directingCredits = details ? orderCredits(details.directingCredits, creditOrder) : [];
+
+  function changeCreditOrder(order: CreditOrder) {
+    setCreditOrder(order);
+    setVisibleActingCredits(CREDITS_PAGE_SIZE);
+    setVisibleDirectingCredits(CREDITS_PAGE_SIZE);
+  }
 
   const modal = (
     <div
@@ -222,11 +245,23 @@ export function TalentDetailsModal({
                   <p className="media-modal__overview">{details.biography}</p>
                 </section>
 
-                {details.actingCredits.length ? (
+                {actingCredits.length ? (
                   <section className="media-modal__section">
-                    <p className="section-eyebrow">Como actor / actriz</p>
+                    <div className="talent-modal__section-heading">
+                      <p className="section-eyebrow">Como actor / actriz</p>
+                      <label className="talent-modal__credit-order">
+                        <span>Ordenar por</span>
+                        <select
+                          value={creditOrder}
+                          onChange={(event) => changeCreditOrder(event.target.value as CreditOrder)}
+                        >
+                          <option value="known">Mas conocidos</option>
+                          <option value="recent">Mas recientes</option>
+                        </select>
+                      </label>
+                    </div>
                     <div className="talent-modal__credits">
-                      {details.actingCredits.slice(0, visibleActingCredits).map((credit) => (
+                      {actingCredits.slice(0, visibleActingCredits).map((credit) => (
                         <article
                           className="talent-modal__credit talent-modal__credit--interactive"
                           key={`cast-${credit.mediaType}-${credit.id}`}
@@ -256,23 +291,35 @@ export function TalentDetailsModal({
                         </article>
                       ))}
                     </div>
-                    {visibleActingCredits < details.actingCredits.length ? (
+                    {visibleActingCredits < actingCredits.length ? (
                       <button
                         type="button"
                         className="talent-modal__load-more"
                         onClick={() => setVisibleActingCredits((count) => count + CREDITS_PAGE_SIZE)}
                       >
-                        Ver mas ({Math.min(CREDITS_PAGE_SIZE, details.actingCredits.length - visibleActingCredits)})
+                        Ver mas ({Math.min(CREDITS_PAGE_SIZE, actingCredits.length - visibleActingCredits)})
                       </button>
                     ) : null}
                   </section>
                 ) : null}
 
-                {details.directingCredits.length ? (
+                {directingCredits.length ? (
                   <section className="media-modal__section">
-                    <p className="section-eyebrow">Como director / directora</p>
+                    <div className="talent-modal__section-heading">
+                      <p className="section-eyebrow">Como director / directora</p>
+                      <label className="talent-modal__credit-order">
+                        <span>Ordenar por</span>
+                        <select
+                          value={creditOrder}
+                          onChange={(event) => changeCreditOrder(event.target.value as CreditOrder)}
+                        >
+                          <option value="known">Mas conocidos</option>
+                          <option value="recent">Mas recientes</option>
+                        </select>
+                      </label>
+                    </div>
                     <div className="talent-modal__credits">
-                      {details.directingCredits.slice(0, visibleDirectingCredits).map((credit) => (
+                      {directingCredits.slice(0, visibleDirectingCredits).map((credit) => (
                         <article
                           className="talent-modal__credit talent-modal__credit--interactive"
                           key={`crew-${credit.mediaType}-${credit.id}`}
@@ -302,13 +349,13 @@ export function TalentDetailsModal({
                         </article>
                       ))}
                     </div>
-                    {visibleDirectingCredits < details.directingCredits.length ? (
+                    {visibleDirectingCredits < directingCredits.length ? (
                       <button
                         type="button"
                         className="talent-modal__load-more"
                         onClick={() => setVisibleDirectingCredits((count) => count + CREDITS_PAGE_SIZE)}
                       >
-                        Ver mas ({Math.min(CREDITS_PAGE_SIZE, details.directingCredits.length - visibleDirectingCredits)})
+                        Ver mas ({Math.min(CREDITS_PAGE_SIZE, directingCredits.length - visibleDirectingCredits)})
                       </button>
                     ) : null}
                   </section>

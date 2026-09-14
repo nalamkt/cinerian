@@ -31,11 +31,11 @@
 body {
   margin: 0;
   font-family: var(--font-body);
+  background-color: #080b10;
   background:
-    radial-gradient(circle at top left, rgba(252, 195, 95, 0.15), transparent 24%),
-    radial-gradient(circle at top right, rgba(255, 147, 92, 0.12), transparent 20%),
-    radial-gradient(circle at bottom right, rgba(112, 161, 255, 0.11), transparent 22%),
-    linear-gradient(180deg, #050608 0%, #0c0f14 48%, #07090d 100%);
+    radial-gradient(90% 34% at 50% -12%, rgba(252, 195, 95, 0.055), transparent 62%),
+    radial-gradient(78% 28% at 100% 100%, rgba(112, 161, 255, 0.035), transparent 70%),
+    linear-gradient(180deg, #0d0e0f 0%, #0a0d12 46%, #07090d 100%);
   background-attachment: fixed;
   color: var(--text);
   min-height: 100vh;
@@ -393,11 +393,8 @@ textarea {
 .workspace-content {
   min-width: 0;
   min-height: calc(100vh - 32px);
-  /* Chasis comun para todas las vistas: evita que el degradado calido del
-     documento se perciba como fondo del contenido en pantallas angostas. */
-  background:
-    radial-gradient(circle at 50% -18%, rgba(252, 195, 95, 0.075), transparent 36%),
-    linear-gradient(180deg, #12100e 0%, #0c0f14 44%, #07090d 100%);
+  /* Todas las vistas dejan ver el mismo fondo del documento, sin marcos. */
+  background: transparent;
 }
 
 /*
@@ -7089,6 +7086,48 @@ textarea {
 
 .talent-modal__known-for {
   margin-top: 12px;
+}
+
+.talent-modal__section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.talent-modal__section-heading .section-eyebrow {
+  margin-bottom: 0;
+}
+
+.talent-modal__credit-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.talent-modal__credit-order select {
+  appearance: none;
+  min-height: 34px;
+  padding: 7px 30px 7px 12px;
+  border: 1px solid rgba(255, 187, 54, 0.3);
+  border-radius: 999px;
+  color: var(--text);
+  background:
+    linear-gradient(45deg, transparent 50%, var(--accent) 50%) calc(100% - 14px) 14px / 5px 5px no-repeat,
+    linear-gradient(135deg, var(--accent) 50%, transparent 50%) calc(100% - 9px) 14px / 5px 5px no-repeat,
+    rgba(255, 187, 54, 0.08);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.talent-modal__credit-order select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .talent-modal__credits {
