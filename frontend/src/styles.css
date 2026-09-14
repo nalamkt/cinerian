@@ -2945,10 +2945,13 @@ textarea {
   padding-right: 6px;
 }
 
-/* Sticky al fondo del area visible: cuando queda contenido abajo aparece un
-   degradado que lo insinua. Sin nada que scrollear cae sobre el fondo de la
-   tarjeta y no se nota. */
-.discover-card__body::after {
+/*
+  Sticky al fondo del area visible: insinua que hay mas para scrollear. La
+  clase la pone el componente segun la posicion REAL del scroll — sin eso el
+  degradado estaba siempre puesto y oscurecia la ultima linea de la sinopsis
+  aunque no hubiera nada debajo.
+*/
+.discover-card__body.has-more-below::after {
   content: "";
   display: block;
   position: sticky;
@@ -3429,7 +3432,7 @@ textarea {
   }
 
   /* La ficha ya no scrollea: el degradado que lo insinuaba sobra. */
-  .discover-card__body::after {
+  .discover-card__body.has-more-below::after {
     display: none;
   }
 

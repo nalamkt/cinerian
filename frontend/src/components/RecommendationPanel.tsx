@@ -34,8 +34,6 @@ type RecommendationPanelProps = {
   userId: string;
 };
 
-const OVERVIEW_PREVIEW_LENGTH = 180;
-
 /**
  * Tope de paginas que pedimos al armar el mazo. Cada pagina ya escanea varias
  * de TMDB por dentro, asi que esto alcanza de sobra; esta para que un usuario
@@ -43,16 +41,6 @@ const OVERVIEW_PREVIEW_LENGTH = 180;
  */
 const MAX_DECK_PAGES = 20;
 const EMPTY_WATCH: WatchOptions = { flatrate: [], hasRentOrBuy: false, link: null };
-
-function truncateOverview(text: string, maxLength = OVERVIEW_PREVIEW_LENGTH) {
-  if (text.length <= maxLength) {
-    return { text, truncated: false };
-  }
-
-  const sliced = text.slice(0, maxLength);
-  const safeSlice = sliced.includes(" ") ? sliced.slice(0, sliced.lastIndexOf(" ")) : sliced;
-  return { text: `${safeSlice.trim()}…`, truncated: true };
-}
 
 /**
  * "A Isidoro y 2 mas les gusto" — solo cuenta a quienes les gusto o les encanto.
@@ -104,7 +92,10 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const [spotlightDetails, setSpotlightDetails] = useState<MediaDetails | null>(null);
   const [watchOptions, setWatchOptions] = useState<WatchOptions>(EMPTY_WATCH);
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
+  const [isOverviewClamped, setIsOverviewClamped] = useState(false);
+  const [hasMoreBelow, setHasMoreBelow] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const overviewRef = useRef<HTMLParagraphElement | null>(null);
 
   const reactedKeys = useMemo(
     () => new Set(storedReactions.map((entry) => `${entry.mediaType}-${entry.tmdbId}`)),
@@ -121,10 +112,6 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     : null;
   const spotlight = current?.item ?? null;
 
-  const overviewPreview = useMemo(
-    () => (spotlight ? truncateOverview(spotlight.overview) : { text: "", truncated: false }),
-    [spotlight]
-  );
   const socialLine = useMemo(
     () => (current ? buildSocialLine(current.watchers) : null),
     [current]
@@ -320,6 +307,72 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     };
   }, [spotlight]);
 
+  /*
+    Mide si la sinopsis se corta DE VERDAD, en vez de adivinarlo por cantidad
+    de caracteres: el recorte lo hace el CSS por LINEAS, asi que un texto de
+    190 caracteres que entra en cuatro lineas no tiene nada que expandir y no
+    debe mostrar el boton.
+
+    Solo se mide plegado. Expandido no hay recorte que medir, y recalcular ahi
+    daria "no se corta" y se llevaria puesto el "Ver menos".
+  */
+  useEffect(() => {
+    const node = overviewRef.current;
+    if (!node || isOverviewOpen) {
+      return;
+    }
+
+    function measure() {
+      const element = overviewRef.current;
+      if (element) {
+        setIsOverviewClamped(element.scrollHeight > element.clientHeight + 1);
+      }
+    }
+
+    measure();
+
+    // El corte depende del ancho disponible y de la fuente ya cargada: el
+    // mismo texto pasa de entrar a no entrar al cambiar el tamaño de la
+    // ventana.
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [spotlight, isOverviewOpen]);
+
+  /*
+    El degradado del fondo insinua que hay mas para scrollear, pero estaba
+    puesto siempre: cuando no habia nada debajo igual oscurecia la ultima
+    linea de la sinopsis. Ahora sigue la posicion real del scroll y desaparece
+    al llegar al fondo.
+  */
+  useEffect(() => {
+    const node = bodyRef.current;
+    if (!node) {
+      return;
+    }
+
+    function update() {
+      const element = bodyRef.current;
+      if (element) {
+        setHasMoreBelow(element.scrollTop + element.clientHeight < element.scrollHeight - 1);
+      }
+    }
+
+    update();
+    node.addEventListener("scroll", update, { passive: true });
+
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+
+    return () => {
+      node.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+    // Las plataformas y los generos llegan async: cada uno cambia el alto del
+    // contenido sin que la caja cambie de tamaño, asi que hay que remedir.
+  }, [spotlight, spotlightDetails, watchOptions, isOverviewOpen]);
+
   function goNext() {
     if (!availableEntries.length) {
       return;
@@ -492,7 +545,10 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
               </span>
             </div>
 
-            <div className="discover-card__body" ref={bodyRef}>
+            <div
+              className={`discover-card__body ${hasMoreBelow ? "has-more-below" : ""}`}
+              ref={bodyRef}
+            >
               <p className={`discover-rank ${current.rank === null ? "is-filler" : ""}`}>
                 {current.rank === null ? "Popular ahora" : `${current.rank}° en tu ranking`}
                 <span>
@@ -570,10 +626,13 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                   caracteres: asi ocupa un alto conocido y el "Ver mas" siempre
                   entra sin scrollear. El scroll queda solo para el expandido. */}
               <div className="discover-overview">
-                <p className={isOverviewOpen ? undefined : "discover-overview__text--clamped"}>
+                <p
+                  ref={overviewRef}
+                  className={isOverviewOpen ? undefined : "discover-overview__text--clamped"}
+                >
                   {spotlight.overview}
                 </p>
-                {overviewPreview.truncated ? (
+                {isOverviewClamped ? (
                   <button
                     type="button"
                     className="discover-overview__more"
