@@ -97,15 +97,18 @@ button:disabled {
 /*
   Todo escala con el viewport: en pantallas grandes el contenido crece en vez de
   quedarse chico y disperso en el medio de la pantalla.
+
+  El ritmo vertical se mide en vh y no en vw, para que la columna entera entre
+  en 100vh tambien cuando la pantalla es ancha y baja.
 */
 .auth-intro {
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: clamp(24px, 3vw, 44px);
+  gap: clamp(20px, 3.5vh, 44px);
   padding:
-    clamp(28px, 2.6vw, 52px)
+    clamp(24px, 3.5vh, 52px)
     clamp(32px, 4vw, 80px)
-    clamp(36px, 4vw, 72px)
+    clamp(28px, 5vh, 72px)
     clamp(32px, 4.5vw, 96px);
 }
 
@@ -113,15 +116,21 @@ button:disabled {
   display: grid;
   align-content: center;
   justify-items: start;
-  gap: clamp(26px, 3.4vw, 54px);
+  gap: clamp(20px, 4vh, 54px);
 }
 
+/*
+  El cuerpo se limita por el ancho Y por el alto: el que quede chico manda. Sin
+  el tope en vh, en un monitor ancho y bajo el titular empujaba la ilustracion
+  fuera de la pantalla. El max-width en ch mantiene el alto predecible, porque
+  la cantidad de lineas no cambia cuando cambia el cuerpo.
+*/
 .auth-intro h1 {
   margin: 0;
-  font-size: clamp(1.9rem, 3.9vw, 4rem);
+  font-size: clamp(1.9rem, min(3.9vw, 5vh), 4rem);
   line-height: 1.1;
   color: var(--text);
-  max-width: 16ch;
+  max-width: 20ch;
   text-wrap: balance;
 }
 
@@ -146,9 +155,13 @@ button:disabled {
 
 /* ---------- La ilustracion: el ranking, no un mosaico decorativo ---------- */
 
+/*
+  El alto de la ilustracion sale de su ancho (aspect-ratio), asi que el tope en
+  vh es lo que la hace entrar en pantallas bajas.
+*/
 .auth-showcase {
   position: relative;
-  width: min(660px, 100%);
+  width: min(660px, 100%, 56vh);
   aspect-ratio: 1 / 0.82;
   container-type: inline-size;
 }
@@ -339,7 +352,7 @@ button:disabled {
 /* El logo va arriba a la izquierda: la marca no grita en su propia pantalla. */
 .auth-logo {
   display: block;
-  width: clamp(148px, 11vw, 210px);
+  width: clamp(140px, min(11vw, 22vh), 210px);
 }
 
 .panel h2,
