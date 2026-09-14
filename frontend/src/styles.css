@@ -31,12 +31,9 @@
 body {
   margin: 0;
   font-family: var(--font-body);
-  background-color: #080b10;
-  background:
-    radial-gradient(90% 34% at 50% -12%, rgba(252, 195, 95, 0.055), transparent 62%),
-    radial-gradient(78% 28% at 100% 100%, rgba(112, 161, 255, 0.035), transparent 70%),
-    linear-gradient(180deg, #0d0e0f 0%, #0a0d12 46%, #07090d 100%);
-  background-attachment: fixed;
+  /* Negro plano: un solo fondo en toda la app. El degradado y sus tintes
+     competian con los posters, que son lo unico que deberia tener color. */
+  background: #000;
   color: var(--text);
   min-height: 100vh;
   letter-spacing: 0.01em;
@@ -2840,6 +2837,19 @@ textarea {
   overflow: hidden;
 }
 
+/*
+  Sin superficie propia: la tarjeta llevaba la clase panel, que le daba fondo,
+  borde ambar, sombra y blur. Eran dos planos donde alcanza con uno — la misma
+  decision que ya estaba tomada para el contenedor de cada vista. El poster
+  queda como el unico objeto con superficie de la pantalla.
+*/
+.discover-card.panel {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
 .discover-card {
   width: min(100%, 1220px);
   /* min-height: 0 deja que flex la encoja hasta el espacio libre. Sin esto el
@@ -3158,7 +3168,9 @@ textarea {
   grid-column: 1 / -1;
   margin-top: 18px;
   padding-top: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  /* Sin el borde de la tarjeta, esta linea es lo unico que separa las acciones
+     del contenido: sube de 0.06 para poder con el trabajo sola. */
+  border-top: 1px solid rgba(255, 255, 255, 0.11);
   display: flex;
   justify-content: center;
   /* Los circulos ya no miden lo mismo: las etiquetas se alinean por abajo. */
@@ -3349,8 +3361,6 @@ textarea {
   .discover-card.panel {
     flex: 1;
     min-height: 0;
-    /* Separa igual que el ambar, sin pedir atencion. */
-    border-color: rgba(255, 255, 255, 0.10);
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
     gap: 0;
