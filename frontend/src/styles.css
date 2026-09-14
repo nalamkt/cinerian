@@ -504,8 +504,12 @@ textarea {
 }
 
 .auth-code-input {
-  letter-spacing: 0.3em;
+  letter-spacing: 0.24em;
   font-variant-numeric: tabular-nums;
+}
+
+.auth-code-input::placeholder {
+  letter-spacing: normal;
 }
 
 .auth-hint {

@@ -38,7 +38,7 @@ function getAuthErrorMessage(error: unknown) {
   }
 
   if (normalizedMessage.includes("token") || normalizedMessage.includes("otp")) {
-    return "Ese código no es válido. Revisá que sean los 6 dígitos del último email.";
+    return "Ese código no es válido. Revisá que sea el del último email que te llegó.";
   }
 
   if (
@@ -178,7 +178,7 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
         {step === "verify" ? (
           <p className="auth-sent-to">
             Te lo enviamos a <strong>{email}</strong>. Tocá el link del mensaje, o pegá el
-            código de 6 dígitos acá abajo.
+            código que te llegó acá abajo.
           </p>
         ) : null}
 
@@ -215,14 +215,14 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
                 id="auth-code"
                 ref={codeInputRef}
                 type="text"
-                inputMode="numeric"
+                inputMode="text"
                 autoComplete="one-time-code"
                 className="auth-code-input"
                 value={otpCode}
                 onChange={(event) =>
-                  setOtpCode(event.target.value.replace(/\s/g, "").slice(0, 6))
+                  setOtpCode(event.target.value.replace(/\s/g, "").slice(0, 12))
                 }
-                placeholder="Código de 6 dígitos"
+                placeholder="Pegá el código del email"
                 required
               />
             </label>
