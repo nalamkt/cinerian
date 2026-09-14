@@ -86,7 +86,7 @@ button:disabled {
 .auth-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 1.1fr 1fr;
+  grid-template-columns: 1.35fr 1fr;
 }
 
 .auth-shell--single {
@@ -94,26 +94,34 @@ button:disabled {
   place-items: center;
 }
 
+/*
+  Todo escala con el viewport: en pantallas grandes el contenido crece en vez de
+  quedarse chico y disperso en el medio de la pantalla.
+*/
 .auth-intro {
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 26px;
-  padding: 34px 48px 48px 44px;
+  gap: clamp(24px, 3vw, 44px);
+  padding:
+    clamp(28px, 2.6vw, 52px)
+    clamp(32px, 4vw, 80px)
+    clamp(36px, 4vw, 72px)
+    clamp(32px, 4.5vw, 96px);
 }
 
 .auth-intro__body {
   display: grid;
   align-content: center;
   justify-items: start;
-  gap: 34px;
+  gap: clamp(26px, 3.4vw, 54px);
 }
 
 .auth-intro h1 {
   margin: 0;
-  font-size: clamp(1.75rem, 3.2vw, 2.5rem);
-  line-height: 1.14;
+  font-size: clamp(1.9rem, 3.9vw, 4rem);
+  line-height: 1.1;
   color: var(--text);
-  max-width: 19ch;
+  max-width: 16ch;
   text-wrap: balance;
 }
 
@@ -132,7 +140,7 @@ button:disabled {
   display: grid;
   align-content: center;
   justify-items: center;
-  padding: 48px 40px;
+  padding: 48px clamp(32px, 3.5vw, 72px);
   border-left: 1px solid rgba(246, 241, 232, 0.13);
 }
 
@@ -140,9 +148,9 @@ button:disabled {
 
 .auth-showcase {
   position: relative;
-  width: min(400px, 100%);
+  width: min(660px, 100%);
   aspect-ratio: 1 / 0.82;
-  margin-left: 14px;
+  container-type: inline-size;
 }
 
 .auth-showcase__card {
@@ -199,17 +207,17 @@ button:disabled {
 
 .auth-showcase__rank {
   position: absolute;
-  top: 7px;
-  left: 7px;
-  z-index: 3;
-  min-width: 19px;
-  height: 19px;
-  padding: 0 5px;
-  border-radius: 6px;
-  background: rgba(10, 12, 16, 0.82);
+  top: 4cqw;
+  left: 4cqw;
+  z-index: 4;
+  min-width: 4.4cqw;
+  height: 4.4cqw;
+  padding: 0 1.2cqw;
+  border-radius: 1.6cqw;
+  background: rgba(10, 12, 16, 0.86);
   border: 1px solid var(--panel-edge-strong);
   color: var(--accent);
-  font-size: 0.62rem;
+  font-size: 2.1cqw;
   font-weight: 800;
   line-height: 1;
   display: grid;
@@ -229,12 +237,12 @@ button:disabled {
   right: 0;
   bottom: 0;
   z-index: 2;
-  padding: 9px 10px;
+  padding: 2.4cqw 2.6cqw;
 }
 
 .auth-showcase__title {
-  margin: 0 0 3px;
-  font-size: 0.72rem;
+  margin: 0 0 0.6cqw;
+  font-size: 2.5cqw;
   font-weight: 700;
   line-height: 1.2;
   color: var(--text);
@@ -242,7 +250,7 @@ button:disabled {
 
 .auth-showcase__score {
   margin: 0;
-  font-size: 0.62rem;
+  font-size: 2.1cqw;
   color: var(--accent);
   font-weight: 700;
 }
@@ -252,26 +260,26 @@ button:disabled {
   z-index: 5;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
+  gap: 1.4cqw;
+  padding: 1.5cqw 2.4cqw;
   border-radius: 999px;
   background: rgba(18, 21, 27, 0.94);
   border: 1px solid rgba(246, 241, 232, 0.12);
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.6);
-  font-size: 0.7rem;
+  font-size: 2.2cqw;
   color: var(--text);
   white-space: nowrap;
 }
 
 .auth-showcase__chip--top {
   top: 1%;
-  left: -14px;
-  padding-left: 8px;
+  left: -2cqw;
+  padding-left: 1.5cqw;
 }
 
 .auth-showcase__chip--bottom {
-  bottom: 5%;
-  right: -18px;
+  bottom: 4%;
+  right: -2.5cqw;
 }
 
 .auth-showcase__faces {
@@ -280,11 +288,11 @@ button:disabled {
 
 .auth-showcase__faces i {
   display: block;
-  width: 17px;
-  height: 17px;
+  width: 3.2cqw;
+  height: 3.2cqw;
   border-radius: 50%;
   border: 1.5px solid var(--bg-soft);
-  margin-right: -6px;
+  margin-right: -1.1cqw;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
 }
 
@@ -328,10 +336,10 @@ button:disabled {
   backdrop-filter: blur(22px);
 }
 
-/* El logo va chico y arriba a la izquierda: la marca no grita en su pantalla. */
+/* El logo va arriba a la izquierda: la marca no grita en su propia pantalla. */
 .auth-logo {
   display: block;
-  width: 148px;
+  width: clamp(148px, 11vw, 210px);
 }
 
 .panel h2,
@@ -450,7 +458,7 @@ textarea {
 }
 
 .auth-panel {
-  width: min(330px, 100%);
+  width: min(400px, 100%);
 }
 
 /*
@@ -460,9 +468,22 @@ textarea {
 .auth-panel h2 {
   margin: 0 0 4px;
   font-family: var(--font-body);
-  font-size: 1rem;
+  font-size: clamp(1rem, 1.1vw, 1.3rem);
   font-weight: 700;
   letter-spacing: 0;
+}
+
+/* Los controles del acceso son mas grandes que los del resto de la app. */
+.auth-panel input {
+  padding: 17px 19px;
+  font-size: 1rem;
+}
+
+.auth-panel .primary-button,
+.auth-panel .google-button {
+  min-height: 54px;
+  padding: 15px 20px;
+  font-size: 1rem;
 }
 
 .auth-field {
@@ -476,14 +497,14 @@ textarea {
 
 .auth-hint {
   text-align: center;
-  font-size: 0.79rem;
+  font-size: 0.85rem;
   color: var(--muted);
   line-height: 1.45;
 }
 
 .auth-sent-to {
   color: var(--muted);
-  font-size: 0.87rem;
+  font-size: 0.92rem;
   line-height: 1.5;
 }
 
@@ -8044,9 +8065,9 @@ textarea {
   }
 
   .auth-intro h1 {
-    font-size: 1.36rem;
-    line-height: 1.2;
-    max-width: 19ch;
+    font-size: clamp(1.5rem, 5.6vw, 2.1rem);
+    line-height: 1.18;
+    max-width: 18ch;
   }
 
   .auth-showcase {
