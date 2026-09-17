@@ -1,6 +1,8 @@
 import { listProfiles, type Profile } from "./auth";
 import { supabase } from "./supabase";
-import type { AppView, ProductFeature } from "./access";
+import { isAppView, type AppView, type ProductFeature } from "./access";
+
+const DEFAULT_APP_VIEW: AppView = "feed";
 
 export type AdminMetric = {
   label: string;
@@ -98,6 +100,7 @@ export type AdminDashboardSnapshot = {
   modules: AdminModuleStatus[];
   logs: AdminLogEntry[];
   toggles: AdminFeatureToggle[];
+  defaultView: AppView;
   activity: AdminActivityPoint[];
   signupActivity: AdminActivityPoint[];
   featureUsage: AdminFeatureUsageStat[];
@@ -152,6 +155,15 @@ type AdminFeatureFlagRow = {
   feature_key: ProductFeature;
   enabled: boolean;
   display_name: string | null;
+};
+
+type AdminAppSettingsRow = {
+  default_view: string;
+};
+
+export type PublicAppConfiguration = {
+  enabledFeatures: ProductFeature[] | null;
+  defaultView: AppView;
 };
 
 type AdminLogRow = {
@@ -505,13 +517,36 @@ async function fetchAdminFeatureFlagRows() {
   ) as AdminFeatureFlagRow[];
 }
 
-export async function fetchPublicFeatureFlags() {
-  const rows = await fetchAdminFeatureFlagRows();
-  if (!rows) {
+async function fetchAdminAppSettings() {
+  if (!supabase) {
     return null;
   }
 
-  return rows.filter((entry) => entry.enabled).map((entry) => entry.feature_key);
+  const { data, error } = await supabase
+    .from("admin_app_settings")
+    .select("default_view")
+    .eq("setting_key", "public-app")
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  return data as AdminAppSettingsRow | null;
+}
+
+export async function fetchPublicAppConfiguration(): Promise<PublicAppConfiguration> {
+  const [rows, settings] = await Promise.all([fetchAdminFeatureFlagRows(), fetchAdminAppSettings()]);
+
+  return {
+    enabledFeatures: rows ? rows.filter((entry) => entry.enabled).map((entry) => entry.feature_key) : null,
+    defaultView: isAppView(settings?.default_view) ? settings.default_view : DEFAULT_APP_VIEW
+  };
+}
+
+export async function fetchPublicFeatureFlags() {
+  const configuration = await fetchPublicAppConfiguration();
+  return configuration.enabledFeatures;
 }
 
 export async function insertAdminLog(input: AdminLogInsert) {
@@ -607,6 +642,42 @@ export async function persistPublicFeatureFlags(input: {
       })
     )
   );
+}
+
+export async function persistPublicDefaultView(input: { defaultView: AppView; updatedBy: string }) {
+  if (!supabase) {
+    throw new Error("Supabase no esta configurado.");
+  }
+
+  if (!isAppView(input.defaultView) || input.defaultView === "user") {
+    throw new Error("La pantalla principal elegida no es valida.");
+  }
+
+  const previous = await fetchAdminAppSettings();
+  const { error } = await supabase.from("admin_app_settings").upsert(
+    {
+      setting_key: "public-app",
+      default_view: input.defaultView,
+      updated_by: input.updatedBy,
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: "setting_key" }
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  if (previous?.default_view !== input.defaultView) {
+    await insertAdminLog({
+      source: "feature-flags",
+      level: "info",
+      title: "Pantalla principal actualizada",
+      detail: `La app va a iniciar en ${input.defaultView}.`,
+      context: { previousDefaultView: previous?.default_view ?? null, defaultView: input.defaultView },
+      createdBy: input.updatedBy
+    });
+  }
 }
 
 export function attachAdminTelemetry(userId: string | null) {
@@ -830,6 +901,7 @@ export async function fetchAdminDashboardSnapshot(): Promise<AdminDashboardSnaps
     inboxMessages,
     editorialNews,
     flagRows,
+    appSettings,
     logs,
     adminMembers,
     productEvents,
@@ -845,6 +917,7 @@ export async function fetchAdminDashboardSnapshot(): Promise<AdminDashboardSnaps
     fetchTableCount("recommendation_messages"),
     fetchTableCount("news_items"),
     fetchAdminFeatureFlagRows(),
+    fetchAdminAppSettings(),
     fetchAdminLogs(),
     fetchAdminAccessMembers(),
     fetchProductEventRows(sinceIso),
@@ -1127,6 +1200,7 @@ export async function fetchAdminDashboardSnapshot(): Promise<AdminDashboardSnaps
     label: flagRowMap.get(feature.id)?.display_name?.trim() || feature.defaultLabel,
     enabled: flagRowMap.get(feature.id)?.enabled ?? true
   }));
+  const defaultView = isAppView(appSettings?.default_view) ? appSettings.default_view : DEFAULT_APP_VIEW;
 
   const auditLogs = (logs.status === "ok" ? logs.rows : []).filter((entry) => entry.source === "feature-flags");
   const systemLogs = (logs.status === "ok" ? logs.rows : []).filter((entry) => entry.source !== "feature-flags");
@@ -1207,6 +1281,7 @@ export async function fetchAdminDashboardSnapshot(): Promise<AdminDashboardSnaps
     modules,
     logs: systemLogs.length > 0 ? systemLogs : buildFallbackLogs(),
     toggles,
+    defaultView,
     activity,
     signupActivity: signups,
     featureUsage,

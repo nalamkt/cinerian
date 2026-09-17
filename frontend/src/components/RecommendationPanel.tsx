@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
+import { LoadingState } from "./LoadingState";
 import { demoDiscovery } from "../data/demoData";
 import { createFeedPost } from "../lib/feed";
 import {
@@ -78,11 +79,13 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   // pintara Interstellar por un instante antes de llegar las recomendaciones.
   const [filters, setFilters] = useState<DiscoverFilters>(NO_FILTERS);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isProviderSummaryOpen, setIsProviderSummaryOpen] = useState(false);
   const [isSavingFilters, setIsSavingFilters] = useState(false);
   const [areFiltersReady, setAreFiltersReady] = useState(false);
   const [providerCatalog, setProviderCatalog] = useState<ProviderOption[]>([]);
   const [entries, setEntries] = useState<RankedRecommendation[]>([]);
   const [isLoadingDeck, setIsLoadingDeck] = useState(true);
+  const [isInitialCardReady, setIsInitialCardReady] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [page, setPage] = useState(1);
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
@@ -96,6 +99,33 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const overviewRef = useRef<HTMLParagraphElement | null>(null);
+  const providerSummaryRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isProviderSummaryOpen) {
+      return;
+    }
+
+    function closeWhenClickingOutside(event: PointerEvent) {
+      if (!providerSummaryRef.current?.contains(event.target as Node)) {
+        setIsProviderSummaryOpen(false);
+      }
+    }
+
+    function closeWithEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsProviderSummaryOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeWhenClickingOutside);
+    document.addEventListener("keydown", closeWithEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeWhenClickingOutside);
+      document.removeEventListener("keydown", closeWithEscape);
+    };
+  }, [isProviderSummaryOpen]);
 
   const reactedKeys = useMemo(
     () => new Set(storedReactions.map((entry) => `${entry.mediaType}-${entry.tmdbId}`)),
@@ -168,6 +198,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
 
     let isMounted = true;
     setIsLoadingDeck(true);
+    setIsInitialCardReady(false);
     setEntries([]);
     setCurrentIndex(0);
 
@@ -278,6 +309,9 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     if (!spotlight) {
       setSpotlightDetails(null);
       setWatchOptions(EMPTY_WATCH);
+      if (!isLoadingDeck) {
+        setIsInitialCardReady(true);
+      }
       return;
     }
 
@@ -300,12 +334,17 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
           setSpotlightDetails(null);
           setWatchOptions(EMPTY_WATCH);
         }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsInitialCardReady(true);
+        }
       });
 
     return () => {
       isMounted = false;
     };
-  }, [spotlight]);
+  }, [spotlight, isLoadingDeck]);
 
   /*
     Mide si la sinopsis se corta DE VERDAD, en vez de adivinarlo por cantidad
@@ -420,6 +459,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     try {
       setIsSavingFilters(true);
       await saveDiscoverFilters(userId, next);
+      setIsInitialCardReady(false);
       setFilters(next);
       setIsFiltersOpen(false);
     } catch {
@@ -485,9 +525,21 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const selectedProviders = providerCatalog.filter((provider) =>
     filters.providerIds.includes(provider.id)
   );
+  const primaryProvider = selectedProviders[0] ?? null;
+  const additionalProviderCount = Math.max(0, selectedProviders.length - 1);
+  const isDiscoverBooting = !areFiltersReady || isLoadingDeck || !isInitialCardReady;
 
   return (
     <section className={`discover ${activeFilterCount ? "is-filtered" : ""}`}>
+      {isDiscoverBooting ? (
+        <div className="discover-loading-gate" role="status" aria-live="polite">
+          <div className="discover-loading-gate__card">
+            <p className="section-eyebrow">Descubrí</p>
+            <LoadingState label="Armando tu ranking..." />
+          </div>
+        </div>
+      ) : (
+        <>
       <div className="discover-filterbar">
         <div className="discover-filterbar__chips">
           {activeFilterCount === 0 ? null : (
@@ -497,14 +549,42 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                   {CONTENT_TYPE_LABEL[filters.contentType]}
                 </span>
               )}
-              {selectedProviders.map((provider) => (
-                <span className="discover-chip" key={provider.id}>
-                  {provider.logoUrl ? (
-                    <img src={provider.logoUrl} alt="" className="discover-chip__logo" />
+              {primaryProvider ? (
+                <div className="discover-provider-summary" ref={providerSummaryRef}>
+                  <button
+                    type="button"
+                    className="discover-chip discover-provider-summary__trigger"
+                    aria-expanded={isProviderSummaryOpen}
+                    aria-controls="discover-selected-providers"
+                    onClick={() => setIsProviderSummaryOpen((current) => !current)}
+                  >
+                    {primaryProvider.logoUrl ? (
+                      <img src={primaryProvider.logoUrl} alt="" className="discover-chip__logo" />
+                    ) : null}
+                    <span>{primaryProvider.name}</span>
+                    {additionalProviderCount ? <strong>+{additionalProviderCount}</strong> : null}
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m7 10 5 5 5-5" />
+                    </svg>
+                  </button>
+
+                  {isProviderSummaryOpen ? (
+                    <div
+                      className="discover-provider-summary__menu"
+                      id="discover-selected-providers"
+                      role="list"
+                      aria-label="Plataformas seleccionadas"
+                    >
+                      {selectedProviders.map((provider) => (
+                        <span className="discover-provider-summary__item" key={provider.id} role="listitem">
+                          {provider.logoUrl ? <img src={provider.logoUrl} alt="" /> : null}
+                          {provider.name}
+                        </span>
+                      ))}
+                    </div>
                   ) : null}
-                  {provider.name}
-                </span>
-              ))}
+                </div>
+              ) : null}
             </>
           )}
         </div>
@@ -695,14 +775,19 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
           </div>
         </article>
       ) : (
-        <div className="discover-card panel">
-          <div className="empty-like-state">
-            {isLoadingDeck ? "Armando tu ranking…" : "Buscando mas titulos para recomendarte…"}
-          </div>
+        <div className="discover-empty-state">
+          <p className="section-eyebrow">Descubrí</p>
+          <h2>No encontramos títulos con estos filtros</h2>
+          <p>Probá ampliar tus plataformas o cambiar el tipo de contenido para seguir descubriendo.</p>
+          <button type="button" className="primary-button" onClick={() => setIsFiltersOpen(true)}>
+            Revisar filtros
+          </button>
         </div>
       )}
 
       {syncMessage ? <div className="inline-status">{syncMessage}</div> : null}
+        </>
+      )}
 
       <DiscoverFiltersModal
         isOpen={isFiltersOpen}

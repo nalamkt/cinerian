@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { SendRecommendationModal } from "./SendRecommendationModal";
 import { TalentDetailsModal } from "./TalentDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
+import { getRatedReactionLabel, RatedReactionIcon } from "./RatedReactionIcon";
 import { createFeedPost, fetchFeedPosts } from "../lib/feed";
 import { getProviderSearchUrl } from "../lib/providerLinks";
 import {
@@ -142,6 +143,7 @@ type MediaDetailsSheetProps = {
   saveLabel?: string;
   onWatched?: () => void;
   watchedLabel?: string;
+  watchedReaction?: RatedReaction | null;
   canSave?: boolean;
   canMarkWatched?: boolean;
   publicCta?: ReactNode;
@@ -162,6 +164,7 @@ export function MediaDetailsSheet({
   saveLabel,
   onWatched,
   watchedLabel,
+  watchedReaction,
   canSave = false,
   canMarkWatched = false,
   publicCta,
@@ -281,18 +284,15 @@ export function MediaDetailsSheet({
                     <button
                       type="button"
                       className={`recommendation-action-button ${
-                        watchedLabel === "Vista" ? "recommendation-action-button--primary" : ""
+                        watchedReaction ? "recommendation-action-button--primary" : ""
                       }`}
                       onClick={onWatched}
                       data-tooltip={watchedLabel ?? "Ya la vi"}
                       aria-label={watchedLabel ?? "Ya la vi"}
                     >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-                        <circle cx="12" cy="12" r="2.5" />
-                      </svg>
+                      <RatedReactionIcon reaction={watchedReaction} />
                     </button>
-                    <span className="media-modal__action-label">Ya la vi</span>
+                    <span className="media-modal__action-label">{watchedLabel ?? "Ya la vi"}</span>
                   </div>
                 ) : null}
                 {canSave && onSave ? (
@@ -476,6 +476,7 @@ function MediaDetailsModal({
   const [shareLabel, setShareLabel] = useState("Compartir");
   const [saveLabel, setSaveLabel] = useState("Guardar");
   const [watchedLabel, setWatchedLabel] = useState("Ya la vi");
+  const [watchedReaction, setWatchedReaction] = useState<RatedReaction | null>(null);
   const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
   const [isReviewSaving, setIsReviewSaving] = useState(false);
   const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
@@ -489,6 +490,7 @@ function MediaDetailsModal({
     if (!item || !userId) {
       setSaveLabel("Guardar");
       setWatchedLabel("Ya la vi");
+      setWatchedReaction(null);
       return;
     }
 
@@ -506,20 +508,26 @@ function MediaDetailsModal({
             entry.mediaType === item.mediaType &&
             entry.reaction === "watchlist"
         );
-        const isWatched = reactions.some(
+        const ratedReaction = reactions.find(
           (entry) =>
             entry.tmdbId === item.id &&
             entry.mediaType === item.mediaType &&
             isRatedReaction(entry.reaction)
-        );
+        )?.reaction;
 
         setSaveLabel(isSaved ? "Guardado" : "Guardar");
-        setWatchedLabel(isWatched ? "Vista" : "Ya la vi");
+        setWatchedReaction(ratedReaction && isRatedReaction(ratedReaction) ? ratedReaction : null);
+        setWatchedLabel(
+          ratedReaction && isRatedReaction(ratedReaction)
+            ? getRatedReactionLabel(ratedReaction)
+            : "Ya la vi"
+        );
       })
       .catch(() => {
         if (isMounted) {
           setSaveLabel("Guardar");
           setWatchedLabel("Ya la vi");
+          setWatchedReaction(null);
         }
       });
 
@@ -601,8 +609,9 @@ function MediaDetailsModal({
         score: details?.score ?? 0
       };
 
-      if (watchedLabel === "Vista") {
+      if (watchedReaction) {
         await removeStoredRatedReaction(userId, normalizedItem);
+        setWatchedReaction(null);
         setWatchedLabel("Quitada");
         window.setTimeout(() => setWatchedLabel("Ya la vi"), 1800);
         return;
@@ -610,8 +619,11 @@ function MediaDetailsModal({
 
       setReviewItem(normalizedItem);
     } catch {
-      setWatchedLabel(watchedLabel === "Vista" ? "No pude quitar" : "No pude marcar");
-      window.setTimeout(() => setWatchedLabel("Ya la vi"), 1800);
+      setWatchedLabel(watchedReaction ? "No pude quitar" : "No pude marcar");
+      window.setTimeout(
+        () => setWatchedLabel(getRatedReactionLabel(watchedReaction)),
+        1800
+      );
     }
   }
 
@@ -638,7 +650,8 @@ function MediaDetailsModal({
         tmdbId: reviewItem.id,
         mediaType: reviewItem.mediaType
       });
-      setWatchedLabel("Vista");
+      setWatchedReaction(input.reaction);
+      setWatchedLabel(getRatedReactionLabel(input.reaction));
       setReviewItem(null);
     } catch {
       setWatchedLabel("No pude marcar");
@@ -703,6 +716,7 @@ function MediaDetailsModal({
             saveLabel={saveLabel}
             onWatched={handleWatched}
             watchedLabel={watchedLabel}
+            watchedReaction={watchedReaction}
             canSave={Boolean(userId)}
             canMarkWatched={Boolean(userId)}
             onOpenTalent={setActiveTalent}

@@ -160,6 +160,13 @@ create table if not exists public.admin_feature_flags (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.admin_app_settings (
+  setting_key text primary key check (setting_key = 'public-app'),
+  default_view text not null default 'feed' check (default_view in ('feed', 'search', 'recommendations', 'inbox')),
+  updated_by uuid references public.profiles(id) on delete set null,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 alter table public.admin_feature_flags
   add column if not exists display_name text;
 
@@ -201,6 +208,10 @@ values
   ('premieres', 'Estrenos', true)
 on conflict (feature_key) do nothing;
 
+insert into public.admin_app_settings (setting_key, default_view)
+values ('public-app', 'feed')
+on conflict (setting_key) do nothing;
+
 alter table public.profiles enable row level security;
 alter table public.media_reactions enable row level security;
 alter table public.feed_posts enable row level security;
@@ -213,7 +224,12 @@ alter table public.feed_post_comment_notifications enable row level security;
 alter table public.product_events enable row level security;
 alter table public.admin_access enable row level security;
 alter table public.admin_feature_flags enable row level security;
+alter table public.admin_app_settings enable row level security;
 alter table public.admin_logs enable row level security;
+
+revoke all on table public.admin_app_settings from anon, authenticated;
+grant select on table public.admin_app_settings to anon, authenticated;
+grant insert, update, delete on table public.admin_app_settings to authenticated;
 
 create policy "profiles are public read"
   on public.profiles for select
@@ -353,6 +369,15 @@ create policy "feature flags are public read"
 
 create policy "admins manage feature flags"
   on public.admin_feature_flags for all
+  using (public.is_admin_user())
+  with check (public.is_admin_user());
+
+create policy "app settings are public read"
+  on public.admin_app_settings for select
+  using (true);
+
+create policy "admins manage app settings"
+  on public.admin_app_settings for all
   using (public.is_admin_user())
   with check (public.is_admin_user());
 

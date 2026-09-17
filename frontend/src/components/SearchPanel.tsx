@@ -3,6 +3,7 @@ import { useMediaDetails } from "./MediaDetailsModal";
 import { SendRecommendationModal } from "./SendRecommendationModal";
 import { TalentDetailsModal } from "./TalentDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
+import { getRatedReactionLabel, RatedReactionIcon } from "./RatedReactionIcon";
 import { useDiscovery } from "../hooks/useDiscovery";
 import { createFeedPost } from "../lib/feed";
 import { listProfiles, type Profile } from "../lib/auth";
@@ -27,7 +28,7 @@ type SearchPanelProps = {
 type SearchMode = "titles" | "people" | "talent";
 
 /** Vista = marcada con pulgar arriba o abajo (ya no existe un estado 'watched' aparte). */
-function isWatchedReaction(reaction: RecommendationReaction | undefined) {
+function isWatchedReaction(reaction: RecommendationReaction | undefined): reaction is RatedReaction {
   return reaction === "superliked" || reaction === "liked" || reaction === "disliked";
 }
 
@@ -287,7 +288,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   }
 
   return (
-    <section className="panel">
+    <section className="panel search-panel">
       <header className="feed-header feed-header--search">
         <button
           type="button"
@@ -364,7 +365,11 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
 
       {searchMode === "titles" ? (
         <div className="card-list">
-          {displayedTitles.map((item) => (
+          {displayedTitles.map((item) => {
+            const reaction = reactionMap[`${item.mediaType}-${item.id}`];
+            const watchedReaction = isWatchedReaction(reaction) ? reaction : null;
+
+            return (
             <article
               className="media-card media-card--interactive"
               key={`${item.mediaType}-${item.id}`}
@@ -427,9 +432,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
                   <button
                     type="button"
                     className={`recommendation-action-button recommendation-action-button--small ${
-                      isWatchedReaction(reactionMap[`${item.mediaType}-${item.id}`])
-                        ? "recommendation-action-button--primary"
-                        : ""
+                      watchedReaction ? "recommendation-action-button--primary" : ""
                     }`}
                     disabled={isSyncing}
                     onClick={(event) => {
@@ -437,21 +440,19 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
                       void handleWatchedToggle(item);
                     }}
                     data-tooltip={
-                      isWatchedReaction(reactionMap[`${item.mediaType}-${item.id}`]) ? "Vista" : "Ya la vi"
+                      getRatedReactionLabel(watchedReaction)
                     }
                     aria-label={
-                      isWatchedReaction(reactionMap[`${item.mediaType}-${item.id}`]) ? "Vista" : "Ya la vi"
+                      getRatedReactionLabel(watchedReaction)
                     }
                   >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-                      <circle cx="12" cy="12" r="2.5" />
-                    </svg>
+                    <RatedReactionIcon reaction={watchedReaction} />
                   </button>
                 </div>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       ) : null}
 

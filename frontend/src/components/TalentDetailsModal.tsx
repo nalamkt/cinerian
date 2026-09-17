@@ -25,9 +25,9 @@ const THUMB_PATH =
   "M7 10v10M7 10l3.5-6a2.5 2.5 0 0 1 2.4 3.2L12 10h6a2 2 0 0 1 2 2.4l-1.2 6a2 2 0 0 1-2 1.6H7";
 
 const REACTION_LABELS: Partial<Record<RecommendationReaction, string>> = {
-  superliked: "Me encanto",
-  liked: "Me gusto",
-  disliked: "No me gusto",
+  superliked: "Me encantó",
+  liked: "Me gustó",
+  disliked: "No me gustó",
   watchlist: "Guardada"
 };
 

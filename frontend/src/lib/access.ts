@@ -3,6 +3,12 @@ import type { Profile } from "./auth";
 
 export type AppView = "feed" | "search" | "recommendations" | "inbox" | "user";
 
+export const APP_VIEWS: AppView[] = ["feed", "search", "recommendations", "inbox", "user"];
+
+export function isAppView(value: string | null | undefined): value is AppView {
+  return APP_VIEWS.includes(value as AppView);
+}
+
 export type ProductFeature =
   | AppView
   | "editorial"

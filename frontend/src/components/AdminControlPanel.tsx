@@ -4,11 +4,12 @@ import {
   addAdminAccessMember,
   fetchAdminDashboardSnapshot,
   formatAdminTimestamp,
+  persistPublicDefaultView,
   persistPublicFeatureFlags,
   removeAdminAccessMember,
   type AdminDashboardSnapshot
 } from "../lib/admin";
-import type { ProductFeature } from "../lib/access";
+import { isAppView, type AppView, type ProductFeature } from "../lib/access";
 
 type AdminControlPanelProps = {
   operatorName: string;
@@ -26,6 +27,7 @@ const FALLBACK_SNAPSHOT: AdminDashboardSnapshot = {
   modules: [],
   logs: [],
   toggles: [],
+  defaultView: "feed",
   activity: [],
   signupActivity: [],
   featureUsage: [],
@@ -286,6 +288,11 @@ export function AdminControlPanel({
     [snapshot.featureUsage]
   );
 
+  const availableDefaultViews = useMemo(
+    () => snapshot.toggles.filter((toggle) => toggle.enabled && isAppView(toggle.id) && toggle.id !== "user"),
+    [snapshot.toggles]
+  );
+
   const selectedLog = useMemo(() => {
     if (!filteredLogs.length) {
       return null;
@@ -356,6 +363,21 @@ export function AdminControlPanel({
     }));
 
     await handleSaveFlags(nextToggles);
+  }
+
+  async function handleDefaultViewChange(defaultView: AppView) {
+    setIsSavingFlags(true);
+
+    try {
+      await persistPublicDefaultView({ defaultView, updatedBy: sessionUserId });
+      await onFeatureOverridesChange();
+      await loadSnapshot();
+      setError(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "No pude guardar la pantalla principal.");
+    } finally {
+      setIsSavingFlags(false);
+    }
   }
 
   function handleRenameDraft(featureId: ProductFeature, value: string) {
@@ -666,8 +688,28 @@ export function AdminControlPanel({
           </div>
 
           <div className="info-box admin-note">
+            <strong>Pantalla principal</strong>
+            <p>Define en que seccion entra cada usuario al abrir o volver a iniciar sesion en la app.</p>
+            <label className="admin-input-stack">
+              <span>Seccion de inicio</span>
+              <select
+                value={availableDefaultViews.some((view) => view.id === snapshot.defaultView) ? snapshot.defaultView : ""}
+                disabled={!hasDatabaseAdminAccess || isSavingFlags || availableDefaultViews.length === 0}
+                onChange={(event) => void handleDefaultViewChange(event.target.value as AppView)}
+              >
+                {availableDefaultViews.length === 0 ? <option value="">Activa al menos una seccion</option> : null}
+                {availableDefaultViews.map((view) => (
+                  <option key={view.id} value={view.id}>
+                    {draftToggleLabels[view.id] ?? view.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="info-box admin-note">
             <strong>Alcance actual</strong>
-            <p>Los switches y nombres visibles se guardan en `admin_feature_flags` y afectan la configuracion publica de la app.</p>
+            <p>Los switches y nombres visibles se guardan en `admin_feature_flags`; la pantalla principal queda en `admin_app_settings` y afecta la configuracion publica de la app.</p>
           </div>
           {!hasDatabaseAdminAccess ? (
             <div className="app-alert">

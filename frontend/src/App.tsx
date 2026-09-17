@@ -1,4 +1,3 @@
-import { AboutYouOnboardingModal } from "./components/AboutYouOnboardingModal";
 import { AuthPanel } from "./components/AuthPanel";
 import { AuthShowcase } from "./components/AuthShowcase";
 import { CinerianLogo } from "./components/CinerianLogo";
@@ -12,6 +11,7 @@ import { SearchPanel } from "./components/SearchPanel";
 import { SharedUserPage } from "./components/SharedUserPage";
 import { UserProfilePage } from "./components/UserProfilePage";
 import { VisualReadyGate } from "./components/VisualReadyGate";
+import { WelcomeOnboarding } from "./components/WelcomeOnboarding";
 import { useAuth } from "./hooks/useAuth";
 import { usePublicFeatureFlags } from "./hooks/usePublicFeatureFlags";
 import { getAccessControl, type AppView } from "./lib/access";
@@ -27,7 +27,6 @@ import {
 import { hasSupabaseEnv, supabase } from "./lib/supabase";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "./lib/auth";
-const ACTIVE_VIEW_STORAGE_KEY = "cinerian-active-view";
 export const FEED_SCROLL_TO_TOP_EVENT = "cinerian:feed-scroll-to-top";
 export const FEED_REFRESH_EDITORIAL_EVENT = "cinerian:feed-refresh-editorial";
 
@@ -103,17 +102,10 @@ type ViewSessionRef = {
 
 export default function App() {
   const { session, profile, isLoading, error } = useAuth();
-  const { enabledFeatures } = usePublicFeatureFlags();
+  const { enabledFeatures, defaultView, isLoading: isLoadingPublicConfiguration } = usePublicFeatureFlags();
   const sessionUserId = session?.user.id ?? null;
   const [localProfile, setLocalProfile] = useState<Profile | null>(profile);
-  const [activeView, setActiveView] = useState<AppView>(() => {
-    if (typeof window === "undefined") {
-      return "feed";
-    }
-
-    const storedView = window.localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY);
-    return dockItems.some((item) => item.id === storedView) ? (storedView as AppView) : "feed";
-  });
+  const [activeView, setActiveView] = useState<AppView>("feed");
   const [unreadInboxCount, setUnreadInboxCount] = useState(0);
   const [highlightedFeedPost, setHighlightedFeedPost] = useState<{
     postId: string;
@@ -126,9 +118,11 @@ export default function App() {
   } | null>(() => parseSharedProfilePath(window.location.pathname));
   const [shareLabel, setShareLabel] = useState("Compartir perfil");
   const [inviteLabel, setInviteLabel] = useState("Invitar");
+  const [showWelcomeOnboarding, setShowWelcomeOnboarding] = useState(false);
   const [showFollowSuggestions, setShowFollowSuggestions] = useState(false);
   const viewSessionRef = useRef<ViewSessionRef | null>(null);
   const followSuggestionsLoginRef = useRef<string | null>(null);
+  const hasAppliedDefaultViewRef = useRef(false);
   const accessControl = useMemo(
     () =>
       getAccessControl({
@@ -184,22 +178,24 @@ export default function App() {
   useEffect(() => {
     if (!sessionUserId) {
       followSuggestionsLoginRef.current = null;
+      setShowWelcomeOnboarding(false);
       setShowFollowSuggestions(false);
       return;
     }
 
-    if (!localProfile || localProfile.gender === null || followSuggestionsLoginRef.current === sessionUserId) {
+    if (!localProfile || followSuggestionsLoginRef.current === sessionUserId) {
       return;
     }
 
     followSuggestionsLoginRef.current = sessionUserId;
     setSelectedProfileRoute(null);
-    setActiveView("feed");
+    hasAppliedDefaultViewRef.current = false;
+    setActiveView(defaultView);
     if (window.location.pathname !== "/") {
       window.history.replaceState({}, "", "/");
     }
-    setShowFollowSuggestions(true);
-  }, [localProfile, sessionUserId]);
+    setShowWelcomeOnboarding(true);
+  }, [defaultView, localProfile, sessionUserId]);
 
   useEffect(() => {
     const inviteCode = new URLSearchParams(window.location.search).get("invite");
@@ -217,9 +213,21 @@ export default function App() {
       return;
     }
 
-    const fallbackView = visibleDockItems[0]?.id ?? "user";
+    const fallbackView = visibleDockItems.find((item) => item.id === defaultView)?.id ?? visibleDockItems[0]?.id ?? "user";
     setActiveView(fallbackView);
-  }, [accessControl, activeView, selectedProfileRoute, visibleDockItems]);
+  }, [accessControl, activeView, defaultView, selectedProfileRoute, visibleDockItems]);
+
+  useEffect(() => {
+    if (hasAppliedDefaultViewRef.current || isLoadingPublicConfiguration || selectedProfileRoute) {
+      return;
+    }
+
+    const initialView = accessControl.canAccessView(defaultView)
+      ? defaultView
+      : visibleDockItems[0]?.id ?? "user";
+    setActiveView(initialView);
+    hasAppliedDefaultViewRef.current = true;
+  }, [accessControl, defaultView, isLoadingPublicConfiguration, selectedProfileRoute, visibleDockItems]);
 
   const ownProfileAction = useMemo(() => {
     return (
@@ -292,14 +300,6 @@ export default function App() {
     window.addEventListener("popstate", syncRouteFromLocation);
     return () => window.removeEventListener("popstate", syncRouteFromLocation);
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, activeView);
-  }, [activeView]);
 
   useEffect(() => {
     const currentTrackedView: AppView = selectedProfileRoute ? "user" : activeView;
@@ -565,10 +565,17 @@ export default function App() {
   return (
     <MediaDetailsProvider userId={session.user.id}>
       <VisualReadyGate scopeKey={visualScopeKey} />
-      {localProfile && localProfile.gender === null ? (
-        <AboutYouOnboardingModal profile={localProfile} onComplete={setLocalProfile} />
+      {showWelcomeOnboarding && localProfile ? (
+        <WelcomeOnboarding
+          profile={localProfile}
+          onProfileUpdated={setLocalProfile}
+          onComplete={() => {
+            setShowWelcomeOnboarding(false);
+            setShowFollowSuggestions(true);
+          }}
+        />
       ) : null}
-      {showFollowSuggestions ? (
+      {!showWelcomeOnboarding && showFollowSuggestions ? (
         <FollowSuggestionsModal userId={session.user.id} onClose={() => setShowFollowSuggestions(false)} />
       ) : null}
 
