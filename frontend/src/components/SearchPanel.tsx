@@ -5,7 +5,7 @@ import { TalentDetailsModal } from "./TalentDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { getRatedReactionLabel, RatedReactionIcon } from "./RatedReactionIcon";
 import { useDiscovery } from "../hooks/useDiscovery";
-import { createFeedPost } from "../lib/feed";
+import { createFeedPost, removeFeedEvent } from "../lib/feed";
 import { listProfiles, type Profile } from "../lib/auth";
 import {
   fetchStoredReactions,
@@ -190,16 +190,6 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         });
       }
 
-      if (isWatchedReaction(reaction)) {
-        await createFeedPost({
-          userId,
-          postType: "rating",
-          body: `Marco ${item.title} como ya vista desde el buscador.`,
-          tmdbId: item.id,
-          mediaType: item.mediaType
-        });
-      }
-
       replaceStoredReaction(item, reaction);
     } catch {
       setSyncMessage("No pude guardar esta accion.");
@@ -251,17 +241,26 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         item: reviewItem,
         reaction: input.reaction
       });
-      await createFeedPost({
-        userId,
-        postType: "rating",
-        body: buildWatchedPostBody({
-          item: reviewItem,
-          reaction: input.reaction,
-          comment: input.comment
-        }),
-        tmdbId: reviewItem.id,
-        mediaType: reviewItem.mediaType
-      });
+      if (input.comment.trim()) {
+        await createFeedPost({
+          userId,
+          postType: "rating",
+          body: buildWatchedPostBody({
+            item: reviewItem,
+            reaction: input.reaction,
+            comment: input.comment
+          }),
+          tmdbId: reviewItem.id,
+          mediaType: reviewItem.mediaType
+        });
+      } else {
+        await removeFeedEvent({
+          userId,
+          postType: "rating",
+          tmdbId: reviewItem.id,
+          mediaType: reviewItem.mediaType
+        });
+      }
 
       replaceStoredReaction(reviewItem, input.reaction);
       setReviewItem(null);

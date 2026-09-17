@@ -7113,12 +7113,36 @@ textarea {
 .media-modal__providers a {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   padding: 10px 14px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.07);
   background: rgba(255, 255, 255, 0.04);
   color: var(--text);
   text-decoration: none;
+}
+
+.media-modal__providers img {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.media-modal__availability-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 187, 54, 0.42);
+  border-radius: 999px;
+  background: rgba(255, 187, 54, 0.12);
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .media-modal__providers a:hover {
@@ -7238,6 +7262,19 @@ textarea {
   color: var(--muted);
 }
 
+.media-modal__review-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.media-modal__review-reaction .rated-reaction-icon {
+  font-size: 1rem;
+}
+
 .media-modal__review-stars {
   display: flex;
   gap: 6px;
@@ -7249,6 +7286,28 @@ textarea {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
+}
+
+/* El elenco se recorre como una sola tira; no compite con el resto de la ficha. */
+.media-modal__cast--carousel {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 4px 2px 12px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.media-modal__cast--carousel .media-modal__cast-card {
+  width: 152px;
+  flex: 0 0 152px;
+  scroll-snap-align: start;
+}
+
+.media-modal__cast--carousel .media-modal__cast-avatar {
+  width: 112px;
 }
 
 .media-modal__cast-card {
@@ -9496,6 +9555,20 @@ textarea {
 
   .media-modal__cast--creators {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .media-modal__cast--carousel {
+    gap: 14px;
+    padding-bottom: 10px;
+  }
+
+  .media-modal__cast--carousel .media-modal__cast-card {
+    width: 128px;
+    flex-basis: 128px;
+  }
+
+  .media-modal__cast--carousel .media-modal__cast-avatar {
+    width: 92px;
   }
 
   .media-modal__cast-avatar {

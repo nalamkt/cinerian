@@ -3,6 +3,7 @@ import type {
   MediaDetails,
   MediaType,
   SeriesAiringInfo,
+  StreamingProvider,
   TalentCredit,
   TalentDetails,
   TalentSearchItem
@@ -872,13 +873,7 @@ export async function getSimilarTitles(tmdbId: number, mediaType: MediaType): Pr
     .map((item) => normalizeItem({ ...item, media_type: mediaType }));
 }
 
-export type WatchProvider = {
-  id: number;
-  name: string;
-  logoUrl: string | null;
-  /** A donde mandamos al usuario cuando toca la plataforma. */
-  url: string;
-};
+export type WatchProvider = StreamingProvider;
 
 /**
  * TMDB no entrega enlaces profundos por plataforma: su campo `link` apunta a la
@@ -1011,6 +1006,35 @@ function getWatchOptions(payload: Record<string, unknown>, title: string): Watch
       mapProviders(regional.buy, title, link).length > 0,
     link
   };
+}
+
+function hasCurrentTheatricalRelease(payload: Record<string, unknown>, hasStreaming: boolean) {
+  if (hasStreaming) {
+    return false;
+  }
+
+  const releaseDates = payload.release_dates as
+    | {
+        results?: Array<{
+          iso_3166_1?: string;
+          release_dates?: Array<{ type?: number; release_date?: string }>;
+        }>;
+      }
+    | undefined;
+  const regional = releaseDates?.results?.find((item) => item.iso_3166_1 === "AR") ??
+    releaseDates?.results?.find((item) => item.iso_3166_1 === "US");
+  const theatricalDate = regional?.release_dates
+    ?.filter((entry) => entry.type === 3 || entry.type === 4)
+    .map((entry) => entry.release_date ?? "")
+    .sort()[0];
+
+  if (!theatricalDate) {
+    return false;
+  }
+
+  const premiereTime = new Date(theatricalDate).getTime();
+  const elapsedDays = (Date.now() - premiereTime) / 86_400_000;
+  return elapsedDays >= 0 && elapsedDays <= 120;
 }
 
 export async function getWatchOptionsFor(
@@ -1170,7 +1194,15 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
 
     return {
       ...fallback,
+      providers: fallback.providers.map((name) => ({
+        id: 0,
+        name,
+        logoUrl: null,
+        url: buildProviderUrl(name, fallback.title, null)
+      })),
       backdropUrl: null,
+      releaseDate: fallback.releaseDate ?? null,
+      isTheatrical: false,
       runtimeLabel: null,
       releaseLabel: null,
       countryLabel: null,
@@ -1211,6 +1243,7 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
   const payload = (await detailResponse.json()) as Record<string, unknown>;
   const providersPayload = providersResponse.ok ? ((await providersResponse.json()) as Record<string, unknown>) : {};
   const item = normalizeItem({ ...payload, media_type: mediaType });
+  const watchOptions = getWatchOptions(providersPayload, item.title);
   const cast =
     ((payload.credits as { cast?: Array<Record<string, unknown>> } | undefined)?.cast ?? [])
       .slice(0, 40)
@@ -1254,7 +1287,9 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
     ...item,
     backdropUrl:
       typeof payload.backdrop_path === "string" ? `${backdropBase}${payload.backdrop_path}` : null,
-    providers: getProvidersLabel(providersPayload),
+    providers: watchOptions.flatrate,
+    releaseDate: item.releaseDate ?? null,
+    isTheatrical: mediaType === "movie" && hasCurrentTheatricalRelease(payload, watchOptions.flatrate.length > 0),
     runtimeLabel: formatRuntime(runtime),
     releaseLabel: formatDate(
       typeof payload.release_date === "string"

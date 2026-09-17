@@ -17,6 +17,7 @@ import { usePublicFeatureFlags } from "./hooks/usePublicFeatureFlags";
 import { getAccessControl, type AppView } from "./lib/access";
 import { trackProductEvent } from "./lib/analytics";
 import { signOut } from "./lib/auth";
+import { fetchDiscoverFilters } from "./lib/discoverFilters";
 import { fetchUnreadInboxCount, INBOX_UPDATED_EVENT } from "./lib/inbox";
 import { createAndShareInvite, PENDING_INVITE_STORAGE_KEY } from "./lib/invites";
 import {
@@ -176,25 +177,51 @@ export default function App() {
   }, [profile]);
 
   useEffect(() => {
+    let isMounted = true;
+
     if (!sessionUserId) {
       followSuggestionsLoginRef.current = null;
       setShowWelcomeOnboarding(false);
       setShowFollowSuggestions(false);
-      return;
+      return () => {
+        isMounted = false;
+      };
     }
 
     if (!localProfile || followSuggestionsLoginRef.current === sessionUserId) {
-      return;
+      return () => {
+        isMounted = false;
+      };
     }
 
-    followSuggestionsLoginRef.current = sessionUserId;
+    const userId = sessionUserId;
+    const profileForOnboarding = localProfile;
+    followSuggestionsLoginRef.current = userId;
     setSelectedProfileRoute(null);
     hasAppliedDefaultViewRef.current = false;
     setActiveView(defaultView);
     if (window.location.pathname !== "/") {
       window.history.replaceState({}, "", "/");
     }
-    setShowWelcomeOnboarding(true);
+
+    async function checkOnboarding() {
+      const filters = await fetchDiscoverFilters(userId);
+      if (!isMounted) {
+        return;
+      }
+
+      // A new account has neither preference. Existing members only see this
+      // flow again when either their genres or streaming services are missing.
+      const needsOnboarding =
+        profileForOnboarding.favorite_genres.length === 0 || filters.providerIds.length === 0;
+      setShowWelcomeOnboarding(needsOnboarding);
+      setShowFollowSuggestions(false);
+    }
+
+    void checkOnboarding();
+    return () => {
+      isMounted = false;
+    };
   }, [defaultView, localProfile, sessionUserId]);
 
   useEffect(() => {

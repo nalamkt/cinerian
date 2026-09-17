@@ -3,7 +3,7 @@ import { useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { LoadingState } from "./LoadingState";
 import { demoDiscovery } from "../data/demoData";
-import { createFeedPost } from "../lib/feed";
+import { createFeedPost, removeFeedEvent } from "../lib/feed";
 import {
   fetchStoredReactions,
   REACTIONS_UPDATED_EVENT,
@@ -202,18 +202,32 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     setEntries([]);
     setCurrentIndex(0);
 
-    void fetchSocialRecommendations(userId, 1, 12, filters)
-      .then((results) => {
-        if (!isMounted) {
-          return;
-        }
+    void (async () => {
+      let results: RankedRecommendation[] = [];
+      let resolvedPage = 1;
 
-        setEntries(results);
-        setPage(1);
-      })
+      // Una pagina puede quedar vacia aunque haya recomendaciones mas adelante
+      // (por ejemplo, si toda la primera ya fue reaccionada). No mostramos el
+      // estado vacio hasta recorrer el mazo disponible.
+      for (let candidatePage = 1; candidatePage <= MAX_DECK_PAGES; candidatePage += 1) {
+        results = await fetchSocialRecommendations(userId, candidatePage, 12, filters);
+        resolvedPage = candidatePage;
+        if (results.length) {
+          break;
+        }
+      }
+
+      if (!isMounted) {
+        return;
+      }
+
+      setEntries(results);
+      setPage(resolvedPage);
+    })()
       .catch(() => {
         if (isMounted) {
           setEntries(demoDiscovery.map((item) => ({ item, rank: null, watchers: [] })));
+          setPage(1);
         }
       })
       .finally(() => {
@@ -492,17 +506,26 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       setIsSyncing(true);
       setSyncMessage(null);
       await saveStoredReaction({ userId, item: reviewItem, reaction: watchedReaction });
-      await createFeedPost({
-        userId,
-        postType: "rating",
-        body: buildWatchedPostBody({
-          item: reviewItem,
-          reaction: input.reaction,
-          comment: input.comment
-        }),
-        tmdbId: reviewItem.id,
-        mediaType: reviewItem.mediaType
-      });
+      if (input.comment.trim()) {
+        await createFeedPost({
+          userId,
+          postType: "rating",
+          body: buildWatchedPostBody({
+            item: reviewItem,
+            reaction: input.reaction,
+            comment: input.comment
+          }),
+          tmdbId: reviewItem.id,
+          mediaType: reviewItem.mediaType
+        });
+      } else {
+        await removeFeedEvent({
+          userId,
+          postType: "rating",
+          tmdbId: reviewItem.id,
+          mediaType: reviewItem.mediaType
+        });
+      }
       replaceStoredReaction(reviewItem, watchedReaction);
       setReviewItem(null);
       if (spotlight && spotlight.id === reviewItem.id) {

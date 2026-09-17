@@ -128,6 +128,24 @@ function mapFeedCommentRow(entry: FeedCommentRow): FeedComment {
   };
 }
 
+function keepLatestMediaEvents(posts: FeedEntry[]) {
+  const seen = new Set<string>();
+
+  return posts.filter((post) => {
+    if (!post.tmdbId || !post.mediaType) {
+      return true;
+    }
+
+    const eventKey = `${post.userId}-${post.tmdbId}-${post.mediaType}-${post.type}`;
+    if (seen.has(eventKey)) {
+      return false;
+    }
+
+    seen.add(eventKey);
+    return true;
+  });
+}
+
 export async function createFeedPost(input: {
   userId: string;
   body: string;
@@ -139,13 +157,61 @@ export async function createFeedPost(input: {
     return;
   }
 
-  const { error } = await supabase.from("feed_posts").insert({
+  const payload = {
     user_id: input.userId,
     body: input.body,
     post_type: input.postType,
     tmdb_id: input.tmdbId ?? null,
     media_type: input.mediaType ?? null
-  });
+  };
+
+  let error: Error | null = null;
+
+  // A title action is its current state, not a timeline of duplicate clicks.
+  if (input.tmdbId && input.mediaType) {
+    const { error: upsertError } = await supabase
+      .from("feed_posts")
+      .upsert(
+        { ...payload, created_at: new Date().toISOString() },
+        { onConflict: "user_id,tmdb_id,media_type,post_type" }
+      );
+
+    // The fallback keeps existing installations working until the matching
+    // unique constraint in feed_event_deduplication.sql is applied.
+    if (upsertError?.code === "42P10") {
+      const { data: latestEvent, error: lookupError } = await supabase
+        .from("feed_posts")
+        .select("id")
+        .eq("user_id", input.userId)
+        .eq("tmdb_id", input.tmdbId)
+        .eq("media_type", input.mediaType)
+        .eq("post_type", input.postType)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lookupError) {
+        throw lookupError;
+      }
+
+      if (latestEvent) {
+        const { error: updateError } = await supabase
+          .from("feed_posts")
+          .update({ body: input.body, created_at: new Date().toISOString() })
+          .eq("id", latestEvent.id)
+          .eq("user_id", input.userId);
+        error = updateError;
+      } else {
+        const { error: insertError } = await supabase.from("feed_posts").insert(payload);
+        error = insertError;
+      }
+    } else {
+      error = upsertError;
+    }
+  } else {
+    const { error: insertError } = await supabase.from("feed_posts").insert(payload);
+    error = insertError;
+  }
 
   if (error) {
     throw error;
@@ -178,7 +244,7 @@ export async function fetchFeedPosts(): Promise<FeedEntry[]> {
     throw error;
   }
 
-  return ((data ?? []) as FeedPostRow[]).map(mapFeedRow);
+  return keepLatestMediaEvents(((data ?? []) as FeedPostRow[]).map(mapFeedRow));
 }
 
 export async function fetchFeedPostById(postId: string): Promise<FeedEntry | null> {
@@ -215,7 +281,7 @@ export async function fetchFeedPostsByUsers(userIds: string[]): Promise<FeedEntr
     throw error;
   }
 
-  return ((data ?? []) as FeedPostRow[]).map(mapFeedRow);
+  return keepLatestMediaEvents(((data ?? []) as FeedPostRow[]).map(mapFeedRow));
 }
 
 export async function fetchUserTextPosts(userId: string): Promise<FeedEntry[]> {
@@ -234,7 +300,30 @@ export async function fetchUserTextPosts(userId: string): Promise<FeedEntry[]> {
     throw error;
   }
 
-  return ((data ?? []) as FeedPostRow[]).map(mapFeedRow);
+  return keepLatestMediaEvents(((data ?? []) as FeedPostRow[]).map(mapFeedRow));
+}
+
+export async function removeFeedEvent(input: {
+  userId: string;
+  postType: FeedEntry["type"];
+  tmdbId: number;
+  mediaType: MediaType;
+}) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("feed_posts")
+    .delete()
+    .eq("user_id", input.userId)
+    .eq("post_type", input.postType)
+    .eq("tmdb_id", input.tmdbId)
+    .eq("media_type", input.mediaType);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function fetchUserMediaPosts(userId: string): Promise<FeedEntry[]> {

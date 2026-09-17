@@ -74,8 +74,24 @@ export function WelcomeOnboarding({ profile, onProfileUpdated, onComplete }: Wel
 
   const visibleProviders = useMemo(() => {
     const query = normalizeForSearch(providerQuery.trim());
-    return query ? providers.filter((provider) => normalizeForSearch(provider.name).includes(query)) : providers;
-  }, [providerQuery, providers]);
+    const matchingProviders = query
+      ? providers.filter((provider) => normalizeForSearch(provider.name).includes(query))
+      : providers;
+
+    // Selected services stay together at the top, newest selection first.
+    return [...matchingProviders].sort((left, right) => {
+      const leftIndex = providerIds.indexOf(left.id);
+      const rightIndex = providerIds.indexOf(right.id);
+      const leftSelected = leftIndex !== -1;
+      const rightSelected = rightIndex !== -1;
+
+      if (leftSelected !== rightSelected) {
+        return leftSelected ? -1 : 1;
+      }
+
+      return leftSelected ? leftIndex - rightIndex : 0;
+    });
+  }, [providerIds, providerQuery, providers]);
 
   function toggleGenre(genre: string) {
     setGenres((current) =>
@@ -89,7 +105,7 @@ export function WelcomeOnboarding({ profile, onProfileUpdated, onComplete }: Wel
     setProviderIds((current) =>
       current.includes(providerId)
         ? current.filter((entry) => entry !== providerId)
-        : [...current, providerId]
+        : [providerId, ...current]
     );
   }
 

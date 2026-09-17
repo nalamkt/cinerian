@@ -69,6 +69,13 @@ export type SeriesAiringInfo = {
   nextEpisodeDayLabel: string | null;
 };
 
+export type StreamingProvider = {
+  id: number;
+  name: string;
+  logoUrl: string | null;
+  url: string;
+};
+
 export type MediaDetails = {
   id: number;
   title: string;
@@ -78,8 +85,10 @@ export type MediaDetails = {
   posterUrl: string;
   backdropUrl: string | null;
   genres: string[];
-  providers: string[];
+  providers: StreamingProvider[];
   score: number;
+  releaseDate: string | null;
+  isTheatrical: boolean;
   runtimeLabel: string | null;
   releaseLabel: string | null;
   countryLabel: string | null;

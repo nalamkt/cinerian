@@ -3,7 +3,7 @@ import { SendRecommendationModal } from "./SendRecommendationModal";
 import { TalentDetailsModal } from "./TalentDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { getRatedReactionLabel, RatedReactionIcon } from "./RatedReactionIcon";
-import { createFeedPost, fetchFeedPosts } from "../lib/feed";
+import { createFeedPost, fetchFeedPosts, removeFeedEvent } from "../lib/feed";
 import { getProviderSearchUrl } from "../lib/providerLinks";
 import {
   fetchStoredReactions,
@@ -27,22 +27,22 @@ type MediaDetailsContextValue = {
 const MediaDetailsContext = createContext<MediaDetailsContextValue | null>(null);
 
 function parseFeedReview(body: string) {
-  const match = body.match(/^(Le gusto|No le gusto) (.+?)(, le dio| y le dio) (\d)\/5(?: y dijo: "([\s\S]+)")?\.?$/);
-  if (match) {
-    return {
-      sentiment: match[1],
-      quote: match[5] ?? ""
-    };
-  }
-
-  const matchWithoutStars = body.match(/^(Le gusto|No le gusto) (.+?)(?: y dijo: "([\s\S]+)")?\.?$/);
-  if (!matchWithoutStars) {
+  const match =
+    body.match(/^(Le encanto|Le gusto|No le gusto) .+?(?:, le dio| y le dio) \d\/5 y dijo: "([\s\S]+)"\.?$/) ??
+    body.match(/^(Le encanto|Le gusto|No le gusto) .+? y dijo: "([\s\S]+)"\.?$/);
+  if (!match?.[2].trim()) {
     return null;
   }
 
+  const reactionBySentiment: Record<string, RatedReaction> = {
+    "Le encanto": "superliked",
+    "Le gusto": "liked",
+    "No le gusto": "disliked"
+  };
+
   return {
-    sentiment: matchWithoutStars[1],
-    quote: matchWithoutStars[3] ?? ""
+    reaction: reactionBySentiment[match[1]],
+    quote: match[2].trim()
   };
 }
 
@@ -73,6 +73,14 @@ function useMediaDetailsData(item: MediaReference | null) {
             resolvedDetails = {
               ...fallbackItem,
               backdropUrl: null,
+              providers: fallbackItem.providers.map((name) => ({
+                id: 0,
+                name,
+                logoUrl: null,
+                url: getProviderSearchUrl(name, fallbackItem.title)
+              })),
+              releaseDate: fallbackItem.releaseDate ?? null,
+              isTheatrical: false,
               runtimeLabel: null,
               releaseLabel: null,
               countryLabel: null,
@@ -107,7 +115,9 @@ function useMediaDetailsData(item: MediaReference | null) {
 
           setFeedPosts(
             posts
+              .filter((post) => post.type === "rating")
               .filter((post) => post.tmdbId === currentItem.id && post.mediaType === currentItem.mediaType)
+              .filter((post) => Boolean(parseFeedReview(post.body)))
               .slice(0, 4)
           );
         })
@@ -127,8 +137,6 @@ function useMediaDetailsData(item: MediaReference | null) {
 
   return { details, feedPosts, isLoading, hasFailed };
 }
-
-const CAST_PREVIEW_COUNT = 8;
 
 type MediaDetailsSheetProps = {
   item: MediaReference | null;
@@ -173,7 +181,6 @@ export function MediaDetailsSheet({
 }: MediaDetailsSheetProps) {
   // El elenco llega completo desde TMDB; mostramos una tanda y el resto queda
   // detras de "Ver todo" para que la ficha no arranque desbordada.
-  const [showAllCast, setShowAllCast] = useState(false);
   const technicalData = useMemo(() => {
     if (!details) {
       return [];
@@ -188,6 +195,7 @@ export function MediaDetailsSheet({
       { label: "Presupuesto", value: details.budgetLabel }
     ].filter((itemData) => Boolean(itemData.value));
   }, [details]);
+  const isUpcoming = Boolean(details?.releaseDate && new Date(`${details.releaseDate}T12:00:00`).getTime() > Date.now());
 
   if (!item) {
     return null;
@@ -257,16 +265,19 @@ export function MediaDetailsSheet({
                     <span>Reseñas cinerianas</span>
                   </div>
                 </div>
-                {details.providers.length ? (
+                {isUpcoming || details.isTheatrical || details.providers.length ? (
                   <div className="media-modal__providers">
+                    {isUpcoming ? <span className="media-modal__availability-badge">Próximamente</span> : null}
+                    {details.isTheatrical ? <span className="media-modal__availability-badge">Solo en cines</span> : null}
                     {details.providers.map((provider) => (
                       <a
-                        key={provider}
-                        href={getProviderSearchUrl(provider, details.title)}
+                        key={`${provider.id}-${provider.name}`}
+                        href={provider.url || getProviderSearchUrl(provider.name, details.title)}
                         target="_blank"
                         rel="noreferrer"
                       >
-                        {provider}
+                        {provider.logoUrl ? <img src={provider.logoUrl} alt="" aria-hidden="true" /> : null}
+                        {provider.name}
                       </a>
                     ))}
                   </div>
@@ -360,7 +371,13 @@ export function MediaDetailsSheet({
                     <article className="media-modal__review-card" key={post.id}>
                       <strong>{post.author}</strong>
                       <span className="media-modal__review-meta">{post.createdAtLabel}</span>
-                      <p>{review?.quote || post.body}</p>
+                      {review ? (
+                        <span className="media-modal__review-reaction">
+                          <RatedReactionIcon reaction={review.reaction} />
+                          {getRatedReactionLabel(review.reaction)}
+                        </span>
+                      ) : null}
+                      <p>{review?.quote}</p>
                     </article>
                   );
                 })}
@@ -373,8 +390,8 @@ export function MediaDetailsSheet({
           {details.cast.length ? (
             <section className="media-modal__section">
               <p className="section-eyebrow">Elenco</p>
-              <div className="media-modal__cast">
-                {(showAllCast ? details.cast : details.cast.slice(0, CAST_PREVIEW_COUNT)).map((person) => (
+              <div className="media-modal__cast media-modal__cast--carousel">
+                {details.cast.map((person) => (
                   <button
                     type="button"
                     className="media-modal__cast-card media-modal__cast-card--interactive"
@@ -397,18 +414,6 @@ export function MediaDetailsSheet({
                   </button>
                 ))}
               </div>
-              {details.cast.length > CAST_PREVIEW_COUNT ? (
-                <button
-                  type="button"
-                  className="media-modal__cast-toggle"
-                  onClick={() => setShowAllCast((value) => !value)}
-                  aria-expanded={showAllCast}
-                >
-                  {showAllCast
-                    ? "Ver menos"
-                    : `Ver todo el elenco (${details.cast.length})`}
-                </button>
-              ) : null}
             </section>
           ) : null}
 
@@ -549,7 +554,7 @@ function MediaDetailsModal({
       overview: details?.overview ?? "",
       posterUrl: details?.posterUrl ?? "",
       genres: details?.genres ?? [],
-      providers: details?.providers ?? [],
+      providers: details?.providers.map((provider) => provider.name) ?? [],
       score: details?.score ?? 0
     });
   }
@@ -568,7 +573,7 @@ function MediaDetailsModal({
         overview: details?.overview ?? "",
         posterUrl: details?.posterUrl ?? "",
         genres: details?.genres ?? [],
-        providers: details?.providers ?? [],
+        providers: details?.providers.map((provider) => provider.name) ?? [],
         score: details?.score ?? 0
       };
 
@@ -605,7 +610,7 @@ function MediaDetailsModal({
         overview: details?.overview ?? "",
         posterUrl: details?.posterUrl ?? "",
         genres: details?.genres ?? [],
-        providers: details?.providers ?? [],
+        providers: details?.providers.map((provider) => provider.name) ?? [],
         score: details?.score ?? 0
       };
 
@@ -639,17 +644,26 @@ function MediaDetailsModal({
         item: reviewItem,
         reaction: input.reaction
       });
-      await createFeedPost({
-        userId,
-        postType: "rating",
-        body: buildWatchedPostBody({
-          item: reviewItem,
-          reaction: input.reaction,
-          comment: input.comment
-        }),
-        tmdbId: reviewItem.id,
-        mediaType: reviewItem.mediaType
-      });
+      if (input.comment.trim()) {
+        await createFeedPost({
+          userId,
+          postType: "rating",
+          body: buildWatchedPostBody({
+            item: reviewItem,
+            reaction: input.reaction,
+            comment: input.comment
+          }),
+          tmdbId: reviewItem.id,
+          mediaType: reviewItem.mediaType
+        });
+      } else {
+        await removeFeedEvent({
+          userId,
+          postType: "rating",
+          tmdbId: reviewItem.id,
+          mediaType: reviewItem.mediaType
+        });
+      }
       setWatchedReaction(input.reaction);
       setWatchedLabel(getRatedReactionLabel(input.reaction));
       setReviewItem(null);
