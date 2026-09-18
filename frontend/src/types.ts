@@ -109,6 +109,45 @@ export type MediaDetails = {
     character: string | null;
     profileUrl: string | null;
   }>;
+  crew: Array<{
+    id: number;
+    name: string;
+    roleLabel: string;
+    profileUrl: string | null;
+  }>;
+  seasons: SeasonSummary[];
+};
+
+export type SeasonSummary = {
+  id: number;
+  seasonNumber: number;
+  name: string;
+  overview: string;
+  posterUrl: string | null;
+  airDate: string | null;
+  airDateLabel: string | null;
+  episodeCount: number;
+};
+
+export type EpisodeSummary = {
+  id: number;
+  seasonNumber: number;
+  episodeNumber: number;
+  name: string;
+  overview: string;
+  stillUrl: string | null;
+  airDate: string | null;
+  airDateLabel: string | null;
+  runtime: number | null;
+  runtimeLabel: string | null;
+  score: number;
+};
+
+export type EpisodeReference = {
+  showId: number;
+  showTitle: string;
+  seasonNumber: number;
+  episodeNumber: number;
 };
 
 export type FeedEntry = {

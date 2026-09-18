@@ -469,18 +469,40 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     goNext();
   }
 
-  async function handleApplyFilters(next: DiscoverFilters) {
+  /*
+    Guarda sin cerrar el modal. Los chips de la barra necesitan poder sacar un
+    filtro sin cambiar de contexto; el modal grande cierra por su lado.
+  */
+  async function persistFilters(next: DiscoverFilters) {
     try {
       setIsSavingFilters(true);
       await saveDiscoverFilters(userId, next);
       setIsInitialCardReady(false);
       setFilters(next);
-      setIsFiltersOpen(false);
     } catch {
       setSyncMessage("No pude guardar los filtros.");
     } finally {
       setIsSavingFilters(false);
     }
+  }
+
+  async function handleApplyFilters(next: DiscoverFilters) {
+    await persistFilters(next);
+    setIsFiltersOpen(false);
+  }
+
+  function handleRemoveProvider(providerId: number) {
+    const nextIds = filters.providerIds.filter((id) => id !== providerId);
+    if (nextIds.length === 0) {
+      // Sin plataformas el summary desaparece: dejar el dropdown "abierto"
+      // ensuciaba el estado la proxima vez que aparecia.
+      setIsProviderSummaryOpen(false);
+    }
+    void persistFilters({ ...filters, providerIds: nextIds });
+  }
+
+  function handleClearContentType() {
+    void persistFilters({ ...filters, contentType: "all" });
   }
 
   function handleSave() {
@@ -570,6 +592,16 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
               {filters.contentType === "all" ? null : (
                 <span className="discover-chip discover-chip--plain">
                   {CONTENT_TYPE_LABEL[filters.contentType]}
+                  <button
+                    type="button"
+                    className="discover-chip__remove"
+                    onClick={handleClearContentType}
+                    aria-label={`Quitar filtro ${CONTENT_TYPE_LABEL[filters.contentType]}`}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
                 </span>
               )}
               {primaryProvider ? (
@@ -599,10 +631,24 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                       aria-label="Plataformas seleccionadas"
                     >
                       {selectedProviders.map((provider) => (
-                        <span className="discover-provider-summary__item" key={provider.id} role="listitem">
+                        <div
+                          className="discover-provider-summary__item"
+                          key={provider.id}
+                          role="listitem"
+                        >
                           {provider.logoUrl ? <img src={provider.logoUrl} alt="" /> : null}
-                          {provider.name}
-                        </span>
+                          <span className="discover-provider-summary__name">{provider.name}</span>
+                          <button
+                            type="button"
+                            className="discover-chip__remove"
+                            onClick={() => handleRemoveProvider(provider.id)}
+                            aria-label={`Quitar ${provider.name} de los filtros`}
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M6 6l12 12M18 6L6 18" />
+                            </svg>
+                          </button>
+                        </div>
                       ))}
                     </div>
                   ) : null}

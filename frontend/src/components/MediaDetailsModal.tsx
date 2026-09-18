@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { EpisodeDetailsModal } from "./EpisodeDetailsModal";
+import { SeasonsSection } from "./SeasonsSection";
 import { SendRecommendationModal } from "./SendRecommendationModal";
 import { TalentDetailsModal } from "./TalentDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
@@ -16,7 +18,7 @@ import {
 import { buildWatchedPostBody } from "../lib/reviews";
 import { buildSharedMediaUrl, shareMediaLink } from "../lib/share";
 import { getTitleById, getTitleDetails } from "../lib/tmdb";
-import type { FeedEntry, MediaDetails, DiscoveryItem, TalentSearchItem } from "../types";
+import type { EpisodeReference, FeedEntry, MediaDetails, DiscoveryItem, TalentSearchItem } from "../types";
 
 export type MediaReference = Pick<DiscoveryItem, "id" | "mediaType" | "title">;
 
@@ -90,7 +92,9 @@ function useMediaDetailsData(item: MediaReference | null) {
               budgetLabel: null,
               trailerUrl: null,
               creators: [],
-              cast: []
+              cast: [],
+              crew: [],
+              seasons: []
             };
           }
         }
@@ -157,6 +161,8 @@ type MediaDetailsSheetProps = {
   publicCta?: ReactNode;
   publicMode?: boolean;
   onOpenTalent?: (talent: TalentSearchItem) => void;
+  onOpenEpisode?: (reference: EpisodeReference) => void;
+  userId?: string;
 };
 
 export function MediaDetailsSheet({
@@ -177,10 +183,37 @@ export function MediaDetailsSheet({
   canMarkWatched = false,
   publicCta,
   publicMode = false,
-  onOpenTalent
+  onOpenTalent,
+  onOpenEpisode,
+  userId
 }: MediaDetailsSheetProps) {
   // El elenco llega completo desde TMDB; mostramos una tanda y el resto queda
   // detras de "Ver todo" para que la ficha no arranque desbordada.
+  const crewList = useMemo(() => {
+    if (!details) {
+      return [];
+    }
+    if (details.crew.length) {
+      return details.crew;
+    }
+    return details.creators.map((person) => ({
+      id: person.id,
+      name: person.name,
+      roleLabel: person.roleLabel ?? (details.mediaType === "movie" ? "Director" : "Creador / Creadora"),
+      profileUrl: person.profileUrl
+    }));
+  }, [details]);
+  const [creditsTab, setCreditsTab] = useState<"cast" | "crew">("cast");
+  useEffect(() => {
+    if (!details) {
+      return;
+    }
+    if (!details.cast.length && crewList.length) {
+      setCreditsTab("crew");
+    } else {
+      setCreditsTab("cast");
+    }
+  }, [details, crewList.length]);
   const technicalData = useMemo(() => {
     if (!details) {
       return [];
@@ -212,7 +245,17 @@ export function MediaDetailsSheet({
             aria-label="Volver"
             data-escape-dismiss
           >
-            ←
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
           </button>
         ) : (
           <div />
@@ -240,7 +283,7 @@ export function MediaDetailsSheet({
             style={
               details.backdropUrl
                 ? {
-                    backgroundImage: `linear-gradient(180deg, rgba(11, 10, 8, 0.15), rgba(17, 14, 10, 0.94)), url(${details.backdropUrl})`
+                    backgroundImage: `linear-gradient(180deg, rgba(11, 10, 8, 0.15) 0%, rgba(11, 10, 8, 0.35) 45%, rgba(11, 10, 8, 0.78) 75%, rgba(11, 10, 8, 0.94) 100%), url(${details.backdropUrl})`
                   }
                 : undefined
             }
@@ -267,6 +310,9 @@ export function MediaDetailsSheet({
                 </div>
                 {isUpcoming || details.isTheatrical || details.providers.length ? (
                   <div className="media-modal__providers">
+                    {details.providers.length && !isUpcoming && !details.isTheatrical ? (
+                      <span className="media-modal__providers-label">Donde ver:</span>
+                    ) : null}
                     {isUpcoming ? <span className="media-modal__availability-badge">Próximamente</span> : null}
                     {details.isTheatrical ? <span className="media-modal__availability-badge">Solo en cines</span> : null}
                     {details.providers.map((provider) => (
@@ -360,6 +406,16 @@ export function MediaDetailsSheet({
             ) : null}
           </section>
 
+          {details.mediaType === "tv" && details.seasons.length && onOpenEpisode ? (
+            <SeasonsSection
+              showId={details.id}
+              showTitle={details.title}
+              seasons={details.seasons}
+              onOpenEpisode={onOpenEpisode}
+              userId={userId ?? null}
+            />
+          ) : null}
+
           <section className="media-modal__section">
             <p className="section-eyebrow">Reseñas de cinerianos</p>
             {feedPosts.length ? (
@@ -387,64 +443,90 @@ export function MediaDetailsSheet({
             )}
           </section>
 
-          {details.cast.length ? (
+          {details.cast.length || crewList.length ? (
             <section className="media-modal__section">
-              <p className="section-eyebrow">Elenco</p>
-              <div className="media-modal__cast media-modal__cast--carousel">
-                {details.cast.map((person) => (
+              <div className="media-modal__credits-tabs" role="tablist">
+                {details.cast.length ? (
                   <button
                     type="button"
-                    className="media-modal__cast-card media-modal__cast-card--interactive"
-                    key={person.id}
-                    onClick={() =>
-                      onOpenTalent?.({
-                        id: person.id,
-                        name: person.name,
-                        knownForDepartment: "Actor / Actriz",
-                        profileUrl: person.profileUrl,
-                        knownForTitles: []
-                      })
-                    }
+                    role="tab"
+                    aria-selected={creditsTab === "cast"}
+                    className={`media-modal__credits-tab ${
+                      creditsTab === "cast" ? "is-active" : ""
+                    }`}
+                    onClick={() => setCreditsTab("cast")}
                   >
-                    <div className="media-modal__cast-avatar">
-                      {person.profileUrl ? <img src={person.profileUrl} alt={person.name} /> : <span>🎭</span>}
-                    </div>
-                    <strong>{person.name}</strong>
-                    {person.character ? <span>{person.character}</span> : null}
+                    Reparto
                   </button>
-                ))}
+                ) : null}
+                {crewList.length ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={creditsTab === "crew"}
+                    className={`media-modal__credits-tab ${
+                      creditsTab === "crew" ? "is-active" : ""
+                    }`}
+                    onClick={() => setCreditsTab("crew")}
+                  >
+                    Equipo
+                  </button>
+                ) : null}
               </div>
-            </section>
-          ) : null}
-
-          {details.creators.length ? (
-            <section className="media-modal__section">
-              <p className="section-eyebrow">
-                {details.mediaType === "movie" ? "Direccion" : "Creacion"}
-              </p>
-              <div className="media-modal__cast media-modal__cast--creators">
-                {details.creators.map((person) => (
-                  <button
-                    type="button"
-                    className="media-modal__cast-card media-modal__cast-card--interactive"
-                    key={`creator-${person.id}`}
-                    onClick={() =>
-                      onOpenTalent?.({
-                        id: person.id,
-                        name: person.name,
-                        knownForDepartment: person.roleLabel ?? "Talento",
-                        profileUrl: person.profileUrl,
-                        knownForTitles: []
-                      })
-                    }
-                  >
-                    <div className="media-modal__cast-avatar">
-                      {person.profileUrl ? <img src={person.profileUrl} alt={person.name} /> : <span>🎬</span>}
-                    </div>
-                    <strong>{person.name}</strong>
-                    {person.roleLabel ? <span>{person.roleLabel}</span> : null}
-                  </button>
-                ))}
+              <div className="media-modal__cast media-modal__cast--carousel">
+                {creditsTab === "cast"
+                  ? details.cast.map((person) => (
+                      <button
+                        type="button"
+                        className="media-modal__cast-card media-modal__cast-card--interactive"
+                        key={person.id}
+                        onClick={() =>
+                          onOpenTalent?.({
+                            id: person.id,
+                            name: person.name,
+                            knownForDepartment: "Actor / Actriz",
+                            profileUrl: person.profileUrl,
+                            knownForTitles: []
+                          })
+                        }
+                      >
+                        <div className="media-modal__cast-avatar">
+                          {person.profileUrl ? (
+                            <img src={person.profileUrl} alt={person.name} />
+                          ) : (
+                            <span>🎭</span>
+                          )}
+                        </div>
+                        <strong>{person.name}</strong>
+                        {person.character ? <span>{person.character}</span> : null}
+                      </button>
+                    ))
+                  : crewList.map((person) => (
+                      <button
+                        type="button"
+                        className="media-modal__cast-card media-modal__cast-card--interactive"
+                        key={`crew-${person.id}`}
+                        onClick={() =>
+                          onOpenTalent?.({
+                            id: person.id,
+                            name: person.name,
+                            knownForDepartment: person.roleLabel ?? "Talento",
+                            profileUrl: person.profileUrl,
+                            knownForTitles: []
+                          })
+                        }
+                      >
+                        <div className="media-modal__cast-avatar">
+                          {person.profileUrl ? (
+                            <img src={person.profileUrl} alt={person.name} />
+                          ) : (
+                            <span>🎬</span>
+                          )}
+                        </div>
+                        <strong>{person.name}</strong>
+                        {person.roleLabel ? <span>{person.roleLabel}</span> : null}
+                      </button>
+                    ))}
               </div>
             </section>
           ) : null}
@@ -486,6 +568,7 @@ function MediaDetailsModal({
   const [isReviewSaving, setIsReviewSaving] = useState(false);
   const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
   const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
+  const [activeEpisode, setActiveEpisode] = useState<EpisodeReference | null>(null);
 
   useEffect(() => {
     setShareLabel("Compartir");
@@ -734,8 +817,15 @@ function MediaDetailsModal({
             canSave={Boolean(userId)}
             canMarkWatched={Boolean(userId)}
             onOpenTalent={setActiveTalent}
+            onOpenEpisode={setActiveEpisode}
+            userId={userId}
           />
         </div>
+        <EpisodeDetailsModal
+          reference={activeEpisode}
+          userId={userId ?? null}
+          onClose={() => setActiveEpisode(null)}
+        />
         <WatchReviewModal
           item={reviewItem}
           isSaving={isReviewSaving}
@@ -790,6 +880,7 @@ export function SharedMediaLanding({ item }: { item: MediaReference }) {
   const { details, feedPosts, isLoading, hasFailed } = useMediaDetailsData(item);
   const [shareLabel, setShareLabel] = useState("Compartir");
   const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
+  const [activeEpisode, setActiveEpisode] = useState<EpisodeReference | null>(null);
 
   async function handleShare() {
     const result = await shareMediaLink(details ? { ...item, title: details.title } : item);
@@ -828,9 +919,15 @@ export function SharedMediaLanding({ item }: { item: MediaReference }) {
             publicCta={publicCta}
             publicMode
             onOpenTalent={setActiveTalent}
+            onOpenEpisode={setActiveEpisode}
           />
         </div>
       </div>
+      <EpisodeDetailsModal
+        reference={activeEpisode}
+        userId={null}
+        onClose={() => setActiveEpisode(null)}
+      />
       <TalentDetailsModal
         item={activeTalent}
         onClose={() => setActiveTalent(null)}

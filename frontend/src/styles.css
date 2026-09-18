@@ -3012,7 +3012,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 6px 12px 6px 7px;
+  padding: 6px 5px 6px 7px;
   border-radius: 999px;
   border: 1px solid rgba(252, 195, 95, 0.4);
   background: rgba(252, 195, 95, 0.09);
@@ -3022,11 +3022,52 @@ textarea {
 }
 
 .discover-chip--plain {
-  padding: 6px 13px;
+  padding: 6px 5px 6px 13px;
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
   color: var(--muted);
   font-weight: 500;
+}
+
+/*
+  X para sacar rapido un filtro sin abrir el modal. Va como boton adentro de
+  cada chip y de cada item del dropdown de plataformas; el chip conserva su
+  propio comportamiento cuando lo tiene (el summary abre/cierra la lista).
+*/
+.discover-chip__remove {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity 140ms ease, background 140ms ease;
+}
+
+.discover-chip__remove:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.discover-chip__remove:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.discover-chip__remove svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.1;
+  stroke-linecap: round;
 }
 
 .discover-chip__logo {
@@ -3091,11 +3132,19 @@ textarea {
   align-items: center;
   gap: 10px;
   min-height: 40px;
-  padding: 6px 8px;
+  padding: 6px 6px 6px 8px;
   border-radius: 10px;
   color: var(--text);
   font-size: 0.86rem;
   font-weight: 600;
+}
+
+.discover-provider-summary__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .discover-provider-summary__item img {
@@ -7006,11 +7055,28 @@ textarea {
   width: 52px;
   height: 52px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 187, 54, 0.28);
-  background: rgba(10, 14, 20, 0.78);
-  color: #ffe08a;
-  font-size: 1.6rem;
-  backdrop-filter: blur(8px);
+  border: 0;
+  padding: 0;
+  background: rgba(20, 26, 36, 0.5);
+  color: #ffffff;
+  line-height: 1;
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 140ms ease;
+}
+
+.media-modal__back:hover {
+  background: rgba(20, 26, 36, 0.72);
+}
+
+.media-modal__back svg {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 
 .media-modal__share {
@@ -7062,12 +7128,15 @@ textarea {
   margin: 0;
   font-size: clamp(2.1rem, 4vw, 3.2rem);
   line-height: 0.96;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
 }
 
 .media-modal__meta {
   margin: 0;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.92);
   font-size: 1.06rem;
+  font-weight: 500;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.65);
 }
 
 .media-modal__score-row {
@@ -7080,24 +7149,28 @@ textarea {
   display: grid;
   justify-items: start;
   gap: 6px;
-  padding: 18px 20px;
+  padding: 16px 18px;
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 15, 20, 0.68);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .media-modal__score-card strong {
   font-family: var(--font-display);
   font-size: 2.25rem;
-  color: var(--muted-strong);
+  color: #ffffff;
 }
 
 .media-modal__score-card span {
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 500;
 }
 
 .media-modal__score-card.is-accent {
-  border-color: rgba(255, 187, 54, 0.42);
+  border-color: rgba(255, 187, 54, 0.6);
+  background: rgba(28, 20, 6, 0.7);
 }
 
 .media-modal__score-card.is-accent strong {
@@ -7108,6 +7181,14 @@ textarea {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.media-modal__providers-label {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.98rem;
+  font-weight: 600;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.6);
 }
 
 .media-modal__providers a {
@@ -7116,9 +7197,12 @@ textarea {
   gap: 8px;
   padding: 10px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(12, 15, 20, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #ffffff;
+  font-weight: 500;
   text-decoration: none;
 }
 
@@ -7291,7 +7375,7 @@ textarea {
 /* El elenco se recorre como una sola tira; no compite con el resto de la ficha. */
 .media-modal__cast--carousel {
   display: flex;
-  gap: 16px;
+  gap: 6px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   padding: 4px 2px 12px;
@@ -7301,13 +7385,41 @@ textarea {
 }
 
 .media-modal__cast--carousel .media-modal__cast-card {
-  width: 152px;
-  flex: 0 0 152px;
+  width: 124px;
+  flex: 0 0 124px;
   scroll-snap-align: start;
 }
 
 .media-modal__cast--carousel .media-modal__cast-avatar {
   width: 112px;
+}
+
+.media-modal__credits-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.media-modal__credits-tab {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  padding: 8px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.media-modal__credits-tab.is-active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.media-modal__credits-tab:hover:not(.is-active) {
+  color: var(--text);
 }
 
 .media-modal__cast-card {
@@ -9416,9 +9528,13 @@ textarea {
   }
 
   .media-modal__back {
-    width: 42px;
-    height: 42px;
-    font-size: 1.3rem;
+    width: 44px;
+    height: 44px;
+  }
+
+  .media-modal__back svg {
+    width: 20px;
+    height: 20px;
   }
 
   .media-modal__share {
@@ -9558,17 +9674,22 @@ textarea {
   }
 
   .media-modal__cast--carousel {
-    gap: 14px;
+    gap: 4px;
     padding-bottom: 10px;
   }
 
   .media-modal__cast--carousel .media-modal__cast-card {
-    width: 128px;
-    flex-basis: 128px;
+    width: 104px;
+    flex-basis: 104px;
   }
 
   .media-modal__cast--carousel .media-modal__cast-avatar {
     width: 92px;
+  }
+
+  .media-modal__credits-tab {
+    font-size: 1rem;
+    padding: 6px 12px;
   }
 
   .media-modal__cast-avatar {
@@ -10000,4 +10121,481 @@ textarea {
 .media-poster,
 .talent-modal__credit img {
   border-radius: var(--poster-radius);
+}
+
+/* ---- Temporadas y episodios en la ficha de la serie ---- */
+
+.media-modal__seasons-title {
+  font-size: 1.25rem;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: -0.01em;
+  margin-bottom: 14px;
+}
+
+.media-modal__seasons {
+  display: grid;
+  gap: 12px;
+}
+
+.media-modal__season {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
+  overflow: hidden;
+  transition: background 140ms ease;
+}
+
+.media-modal__season.is-expanded {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.media-modal__season-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.media-modal__season-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px 10px 10px;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.media-modal__season-poster {
+  width: 96px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 14px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.media-modal__season-poster--empty {
+  display: grid;
+  place-items: center;
+  font-size: 1.6rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.media-modal__season-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.media-modal__season-name {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.media-modal__season-chevron {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.85rem;
+}
+
+.media-modal__season-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.media-modal__season-watched {
+  align-self: center;
+  margin-right: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  font-size: 0.95rem;
+  display: grid;
+  place-items: center;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.media-modal__season-watched.is-active {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+
+.media-modal__episodes {
+  display: grid;
+  gap: 4px;
+  padding: 4px 8px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.media-modal__episodes-loading {
+  padding: 16px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.media-modal__episode {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 16px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.media-modal__episode:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.media-modal__episode-still {
+  width: 108px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.media-modal__episode-still--empty {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+}
+
+.media-modal__episode-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.media-modal__episode-copy strong {
+  font-size: 0.98rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.media-modal__episode-score-badge {
+  justify-self: start;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(255, 187, 54, 0.16);
+  color: var(--accent);
+  border: 1px solid rgba(255, 187, 54, 0.32);
+}
+
+.media-modal__episode-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.media-modal__episode-watched {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.6);
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.media-modal__episode-watched.is-active {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+
+.media-modal__seasons-more {
+  margin-top: 14px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.media-modal__seasons-more:hover {
+  color: var(--text);
+}
+
+/* ---- Modal de detalle de episodio ---- */
+
+.episode-modal__backdrop {
+  z-index: 60;
+}
+
+.episode-modal__panel {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+.episode-modal__close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.episode-modal__hero {
+  height: 240px;
+  background-color: #111;
+  background-size: cover;
+  background-position: center;
+}
+
+.episode-modal__body {
+  padding: 20px 22px 28px;
+  display: grid;
+  gap: 14px;
+}
+
+.episode-modal__breadcrumb {
+  justify-self: start;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.episode-modal__title {
+  font-size: 1.6rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.episode-modal__meta {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.episode-modal__overview {
+  color: var(--text);
+  font-size: 0.98rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.episode-modal__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.episode-modal__action {
+  flex: 1;
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.episode-modal__action.is-primary {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+
+.episode-modal__action.is-outline {
+  background: transparent;
+}
+
+.episode-modal__action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.episode-modal__placeholder {
+  margin-top: 8px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: grid;
+  gap: 4px;
+}
+
+.episode-modal__placeholder strong {
+  font-size: 1rem;
+}
+
+.episode-modal__placeholder p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 680px) {
+  .media-modal__season-poster {
+    width: 88px;
+    height: 64px;
+  }
+
+  .media-modal__episode {
+    grid-template-columns: 92px minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .media-modal__episode-still {
+    width: 92px;
+    height: 58px;
+  }
+
+  .episode-modal__hero {
+    height: 200px;
+  }
+
+  .episode-modal__title {
+    font-size: 1.4rem;
+  }
+}
+
+/* ---- Siguiente episodio ---- */
+.media-modal__next-episode {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  margin-bottom: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 187, 54, 0.32);
+  background: linear-gradient(135deg, rgba(255, 187, 54, 0.08), rgba(255, 187, 54, 0.02));
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.media-modal__next-episode:hover {
+  background: linear-gradient(135deg, rgba(255, 187, 54, 0.14), rgba(255, 187, 54, 0.04));
+  border-color: rgba(255, 187, 54, 0.5);
+}
+
+.media-modal__next-episode--done {
+  cursor: default;
+  grid-template-columns: 1fr;
+  padding: 16px 20px;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.media-modal__next-episode--done:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.media-modal__next-episode-still {
+  width: 128px;
+  height: 76px;
+  object-fit: cover;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.media-modal__next-episode-still--empty {
+  display: grid;
+  place-items: center;
+  font-size: 1.8rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.media-modal__next-episode-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.media-modal__next-episode-eyebrow {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.media-modal__next-episode-copy strong {
+  font-size: 1rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.media-modal__next-episode-meta {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.media-modal__next-episode-action {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 187, 54, 0.5);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.media-modal__next-episode-action:hover {
+  background: var(--accent);
+  color: #1a1200;
+}
+
+@media (max-width: 680px) {
+  .media-modal__next-episode {
+    grid-template-columns: 104px minmax(0, 1fr) auto;
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .media-modal__next-episode-still {
+    width: 104px;
+    height: 64px;
+  }
 }

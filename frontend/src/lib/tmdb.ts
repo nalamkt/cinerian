@@ -1,7 +1,9 @@
 import type {
   DiscoveryItem,
+  EpisodeSummary,
   MediaDetails,
   MediaType,
+  SeasonSummary,
   SeriesAiringInfo,
   StreamingProvider,
   TalentCredit,
@@ -200,6 +202,128 @@ function getDirectorLabel(payload: Record<string, unknown>, mediaType: MediaType
 
   const creators = payload.created_by as Array<{ name?: string }> | undefined;
   return creators?.map((person) => person.name).filter(Boolean).join(", ") || null;
+}
+
+const CREW_JOB_TRANSLATIONS: Record<string, string> = {
+  Director: "Director",
+  "Co-Director": "Co-Director",
+  Screenplay: "Guion",
+  Writer: "Guion",
+  Story: "Historia",
+  "Original Story": "Historia",
+  Novel: "Novela",
+  Producer: "Productor",
+  "Executive Producer": "Productor ejecutivo",
+  "Director of Photography": "Direccion de fotografia",
+  Cinematography: "Direccion de fotografia",
+  Editor: "Montaje",
+  "Original Music Composer": "Musica",
+  Music: "Musica",
+  "Production Design": "Diseño de produccion",
+  "Production Designer": "Diseño de produccion",
+  "Costume Design": "Vestuario",
+  "Costume Designer": "Vestuario"
+};
+
+const MOVIE_CREW_JOB_ORDER = [
+  "Director",
+  "Co-Director",
+  "Screenplay",
+  "Writer",
+  "Story",
+  "Original Story",
+  "Novel",
+  "Producer",
+  "Executive Producer",
+  "Director of Photography",
+  "Cinematography",
+  "Original Music Composer",
+  "Music",
+  "Editor",
+  "Production Design",
+  "Production Designer",
+  "Costume Design",
+  "Costume Designer"
+];
+
+const TV_CREW_JOB_ORDER = [
+  "Executive Producer",
+  "Producer",
+  "Writer",
+  "Screenplay",
+  "Director of Photography",
+  "Original Music Composer",
+  "Editor"
+];
+
+function buildCrewList(
+  rawCrew: Array<Record<string, unknown>>,
+  mediaType: MediaType,
+  seededCreators: Array<{ id: number; name: string; roleLabel: string | null; profileUrl: string | null }>
+) {
+  const priorityJobs = mediaType === "movie" ? MOVIE_CREW_JOB_ORDER : TV_CREW_JOB_ORDER;
+  const priorityIndex = new Map(priorityJobs.map((job, index) => [job, index]));
+  const grouped = new Map<
+    number,
+    { id: number; name: string; profileUrl: string | null; jobs: string[]; bestPriority: number }
+  >();
+
+  for (const person of rawCrew) {
+    const job = typeof person.job === "string" ? person.job : "";
+    if (!priorityIndex.has(job)) {
+      continue;
+    }
+    const id = Number(person.id);
+    if (!Number.isFinite(id)) {
+      continue;
+    }
+    const name = typeof person.name === "string" ? person.name : "Sin nombre";
+    const profileUrl =
+      typeof person.profile_path === "string" ? `${imageBase}${person.profile_path}` : null;
+    const localized = CREW_JOB_TRANSLATIONS[job] ?? job;
+    const rank = priorityIndex.get(job) ?? 999;
+    const existing = grouped.get(id);
+    if (existing) {
+      if (!existing.jobs.includes(localized)) {
+        existing.jobs.push(localized);
+      }
+      if (rank < existing.bestPriority) {
+        existing.bestPriority = rank;
+      }
+    } else {
+      grouped.set(id, {
+        id,
+        name,
+        profileUrl,
+        jobs: [localized],
+        bestPriority: rank
+      });
+    }
+  }
+
+  if (mediaType !== "movie") {
+    for (const creator of seededCreators) {
+      if (!grouped.has(creator.id)) {
+        grouped.set(creator.id, {
+          id: creator.id,
+          name: creator.name,
+          profileUrl: creator.profileUrl,
+          jobs: [creator.roleLabel ?? "Creador / Creadora"],
+          bestPriority: -1
+        });
+      }
+    }
+  }
+
+  return Array.from(grouped.values())
+    .sort((left, right) => left.bestPriority - right.bestPriority)
+    .slice(0, 20)
+    .map(({ id, name, profileUrl, jobs }) => ({
+      id,
+      name,
+      roleLabel: jobs.join(" · "),
+      profileUrl
+    }));
 }
 
 function getCountryLabel(payload: Record<string, unknown>, mediaType: MediaType) {
@@ -1212,7 +1336,9 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
       budgetLabel: null,
       trailerUrl: null,
       creators: [],
-      cast: []
+      cast: [],
+      crew: [],
+      seasons: []
     };
   }
 
@@ -1273,6 +1399,11 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
           profileUrl:
             typeof person.profile_path === "string" ? `${imageBase}${person.profile_path}` : null
         }));
+  const crew = buildCrewList(
+    (payload.credits as { crew?: Array<Record<string, unknown>> } | undefined)?.crew ?? [],
+    mediaType,
+    creators
+  );
 
   const runtime =
     mediaType === "movie"
@@ -1307,8 +1438,92 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
     budgetLabel: mediaType === "movie" ? formatBudget(typeof payload.budget === "number" ? payload.budget : null) : null,
     trailerUrl: getTrailerUrl(payload),
     creators,
-    cast
+    cast,
+    crew,
+    seasons: mediaType === "tv" ? parseSeasons(payload) : []
   };
+}
+
+function parseSeasons(payload: Record<string, unknown>): SeasonSummary[] {
+  const rawSeasons = Array.isArray(payload.seasons)
+    ? (payload.seasons as Array<Record<string, unknown>>)
+    : [];
+
+  return rawSeasons
+    .filter((season) => typeof season.season_number === "number")
+    .map((season) => {
+      const seasonNumber = Number(season.season_number);
+      const rawName = typeof season.name === "string" ? season.name : "";
+      const name = seasonNumber === 0
+        ? "Especiales"
+        : rawName && !/^Season\s+\d+/i.test(rawName)
+          ? rawName
+          : `Temporada ${seasonNumber}`;
+      const airDate = typeof season.air_date === "string" && season.air_date ? season.air_date : null;
+      return {
+        id: Number(season.id ?? seasonNumber),
+        seasonNumber,
+        name,
+        overview: typeof season.overview === "string" ? season.overview : "",
+        posterUrl:
+          typeof season.poster_path === "string" ? `${imageBase}${season.poster_path}` : null,
+        airDate,
+        airDateLabel: formatDate(airDate),
+        episodeCount: typeof season.episode_count === "number" ? Number(season.episode_count) : 0
+      };
+    })
+    .sort((left, right) => {
+      // Especiales (0) al principio para replicar el orden que muestran Sofa Time / TMDB.
+      if (left.seasonNumber === 0) return -1;
+      if (right.seasonNumber === 0) return 1;
+      return left.seasonNumber - right.seasonNumber;
+    });
+}
+
+export async function getSeasonEpisodes(
+  showId: number,
+  seasonNumber: number
+): Promise<EpisodeSummary[]> {
+  if (!apiKey) {
+    return [];
+  }
+
+  const url = new URL(`${baseUrl}/tv/${showId}/season/${seasonNumber}`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("language", "es-MX");
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    return [];
+  }
+
+  const payload = (await response.json()) as Record<string, unknown>;
+  const rawEpisodes = Array.isArray(payload.episodes)
+    ? (payload.episodes as Array<Record<string, unknown>>)
+    : [];
+
+  return rawEpisodes
+    .filter((episode) => typeof episode.episode_number === "number")
+    .map((episode) => {
+      const airDate = typeof episode.air_date === "string" && episode.air_date ? episode.air_date : null;
+      const runtime = typeof episode.runtime === "number" ? Number(episode.runtime) : null;
+      return {
+        id: Number(episode.id ?? episode.episode_number),
+        seasonNumber:
+          typeof episode.season_number === "number" ? Number(episode.season_number) : seasonNumber,
+        episodeNumber: Number(episode.episode_number),
+        name: typeof episode.name === "string" ? episode.name : `Episodio ${Number(episode.episode_number)}`,
+        overview: typeof episode.overview === "string" ? episode.overview : "",
+        stillUrl:
+          typeof episode.still_path === "string" ? `${imageBase}${episode.still_path}` : null,
+        airDate,
+        airDateLabel: formatDate(airDate),
+        runtime,
+        runtimeLabel: formatRuntime(runtime),
+        score:
+          typeof episode.vote_average === "number" ? Number(episode.vote_average) : 0
+      };
+    });
 }
 
 export async function getSeriesAiringInfo(tmdbId: number): Promise<SeriesAiringInfo | null> {
