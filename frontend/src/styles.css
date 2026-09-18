@@ -3227,13 +3227,20 @@ textarea {
 .filters-modal {
   position: relative;
   width: min(100%, 520px);
+  /*
+    Flex column con max-height fijo al viewport: la lista de plataformas es la
+    que se estira o achica (flex: 1 + overflow), y el resto (titulo, buscador,
+    footer) conserva su alto natural. Asi el "Aplicar" siempre queda a la vista
+    sin importar el tamaño de la pantalla.
+  */
+  display: flex;
+  flex-direction: column;
   max-height: min(calc(100dvh - 48px), 720px);
-  overflow-y: auto;
   border-radius: 24px;
   border: 1px solid var(--panel-edge);
   background: rgba(28, 22, 17, 0.98);
   box-shadow: var(--shadow);
-  padding: 26px;
+  padding: 22px;
 }
 
 .filters-modal__close {
@@ -3258,20 +3265,32 @@ textarea {
 
 .filters-modal__title {
   font-family: var(--font-display);
-  font-size: 1.35rem;
+  font-size: 1.2rem;
   font-weight: 400;
-  margin: 0 0 3px;
+  margin: 0 0 2px;
   padding-right: 44px;
 }
 
 .filters-modal__sub {
-  margin: 0 0 20px;
-  font-size: 0.86rem;
+  margin: 0 0 14px;
+  font-size: 0.82rem;
   color: var(--muted);
 }
 
 .filters-group + .filters-group {
-  margin-top: 24px;
+  margin-top: 14px;
+}
+
+/*
+  El group que contiene la lista larga se estira: es el unico candidato a
+  ganarse el alto sobrante, y sus hijos usan flex column asi la lista scrollea
+  adentro y el label + buscador quedan pegados arriba.
+*/
+.filters-group:has(.filters-platforms) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .filters-group__label {
@@ -3284,8 +3303,8 @@ textarea {
 }
 
 .filters-group__help {
-  margin: 0 0 12px;
-  font-size: 0.8rem;
+  margin: 0 0 8px;
+  font-size: 0.78rem;
   color: var(--muted-strong);
 }
 
@@ -3327,11 +3346,11 @@ textarea {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 9px 13px;
-  border-radius: 11px;
+  padding: 6px 12px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.03);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .filters-search:focus-within {
@@ -3339,8 +3358,8 @@ textarea {
 }
 
 .filters-search svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   flex: none;
   stroke: var(--muted);
   fill: none;
@@ -3356,16 +3375,22 @@ textarea {
   outline: none;
   color: var(--text);
   font: inherit;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
+  padding: 3px 0;
 }
 
-/* Con las 57 plataformas detras del buscador, la lista scrollea en vez de
-   estirar el panel hasta que no entre en pantalla. */
+/*
+  La lista es lo unico que scrollea del modal. El max-height fijo se fue: como
+  el group se estira con flex: 1, la lista toma todo el alto sobrante y no
+  aparecen barras cuando hay lugar de sobra ni el modal se sale del viewport
+  cuando hay poco.
+*/
 .filters-platforms {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  max-height: 232px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -3380,7 +3405,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px 9px 9px;
+  padding: 7px 12px 7px 9px;
   border-radius: 11px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.03);
@@ -3429,7 +3454,8 @@ textarea {
 }
 
 .filters-modal__foot {
-  margin-top: 24px;
+  flex: none;
+  margin-top: 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -3575,17 +3601,20 @@ textarea {
      pantalla, llevandose los botones con ella. */
   min-height: 0;
   display: grid;
-  /* El poster se mide contra el alto de la ventana: con relacion 2/3 su altura
-     es 1.5x el ancho, asi que topearlo en 38vh lo deja en ~57vh y la tarjeta
-     entra entera. */
-  grid-template-columns: min(340px, 38vh) minmax(0, 1fr);
+  /*
+    El poster se mide contra el alto de la ventana: con relacion 2/3 su altura
+    es 1.5x el ancho, asi que topearlo en 32vh lo deja en ~48vh y le queda
+    mas alto disponible a la columna de texto — la sinopsis tiene que entrar
+    sin scrollear en una laptop chica.
+  */
+  grid-template-columns: min(280px, 32vh) minmax(0, 1fr);
   /* Dos filas: contenido (se encoge y scrollea) y acciones (alto propio, fijas
      abajo). El minmax(0, ...) es lo que permite que la primera fila se achique
      en vez de empujar a las acciones fuera de la tarjeta. */
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 46px;
+  gap: 34px;
   align-items: start;
-  padding: 44px;
+  padding: 30px;
   overflow: hidden;
 }
 
@@ -3691,7 +3720,7 @@ textarea {
 }
 
 .discover-rank {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -3711,7 +3740,13 @@ textarea {
 
 .discover-title {
   font-family: var(--font-display);
-  font-size: 2.7rem;
+  /*
+    El limite superior era 2.7rem (43px), que a dos lineas se llevaba ~94px de
+    la columna. Con la sinopsis metida abajo era demasiado. clamp() lo baja en
+    laptops (crece con la altura de la ventana) y lo mantiene en pantallas
+    grandes.
+  */
+  font-size: clamp(1.85rem, 1.2rem + 1.6vh, 2.35rem);
   font-weight: 400;
   line-height: 1.08;
   margin: 0;
@@ -3719,7 +3754,7 @@ textarea {
 }
 
 .discover-social {
-  margin-top: 16px;
+  margin-top: 12px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -3766,48 +3801,61 @@ textarea {
 }
 
 .discover-facts {
-  margin: 18px 0 0;
+  margin: 12px 0 0;
   font-size: 1rem;
   font-weight: 600;
   color: var(--text);
 }
 
 .discover-facts--quiet {
-  margin-top: 4px;
+  margin-top: 3px;
   font-weight: 500;
   font-size: 0.92rem;
   color: var(--muted);
 }
 
 .discover-watch {
-  margin-top: 20px;
+  /*
+    Fila unica: "Ver en:" queda pegado a las pastillas en vez de sobre ellas.
+    Ahorra la fila del label y aprieta la vertical.
+  */
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .discover-watch__label {
-  margin: 0 0 9px;
+  flex: none;
+  margin: 0;
   font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.discover-watch__label::after {
+  content: ":";
 }
 
 .discover-watch__row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .discover-platform {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 18px 9px 10px;
+  gap: 7px;
+  padding: 5px 12px 5px 6px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text);
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 600;
   text-decoration: none;
   transition: border-color 140ms ease, background 140ms ease;
@@ -3824,24 +3872,24 @@ textarea {
 }
 
 .discover-platform__logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   object-fit: cover;
   flex: none;
 }
 
 .discover-platform--rent {
-  padding-left: 18px;
+  padding-left: 12px;
   font-weight: 500;
   color: var(--muted);
 }
 
 .discover-overview {
-  margin: 18px 0 0;
-  font-size: 1rem;
+  margin: 14px 0 0;
+  font-size: 0.95rem;
   color: var(--muted);
-  line-height: 1.65;
+  line-height: 1.55;
   max-width: 64ch;
 }
 
@@ -3985,14 +4033,14 @@ textarea {
 }
 
 @media (max-width: 1180px) {
+  /*
+    El breakpoint aca aprieta poster y padding — el titulo lo maneja el clamp
+    base, que ya se achica con la altura de la ventana.
+  */
   .discover-card {
-    grid-template-columns: 260px minmax(0, 1fr);
-    gap: 34px;
-    padding: 34px;
-  }
-
-  .discover-title {
-    font-size: 2.1rem;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 28px;
+    padding: 26px;
   }
 }
 

@@ -740,7 +740,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
 
               {watchOptions.flatrate.length || watchOptions.hasRentOrBuy ? (
                 <div className="discover-watch">
-                  <p className="discover-watch__label">Ver ahora en</p>
+                  <p className="discover-watch__label">Ver en</p>
                   <div className="discover-watch__row">
                     {watchOptions.flatrate.map((provider) => (
                       <a
