@@ -439,6 +439,115 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
   };
 }
 
+function collectionReleaseTimestamp(item: DiscoveryItem) {
+  if (!item.releaseDate) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  const timestamp = new Date(`${item.releaseDate}T12:00:00`).getTime();
+  return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
+}
+
+function parsePreviousInstallments(rawParts: Array<Record<string, unknown>>, currentMovieId: number) {
+  const parts = rawParts
+    .filter((part) => Number.isFinite(Number(part.id)))
+    .map((part) => normalizeItem({ ...part, media_type: "movie" }))
+    .sort((left, right) => {
+      const dateDifference = collectionReleaseTimestamp(left) - collectionReleaseTimestamp(right);
+      return dateDifference || left.id - right.id;
+    });
+  const currentIndex = parts.findIndex((part) => part.id === currentMovieId);
+
+  // Si TMDB no incluyó el título actual dentro de su colección, no suponemos
+  // cuál es la parte anterior: es preferible ocultar el carrusel a inventarlo.
+  // La entrega inmediatamente anterior es la mas util al abrir una secuela,
+  // asi que aparece primero aunque TMDB devuelva la coleccion por cronologia.
+  return currentIndex > 0 ? parts.slice(0, currentIndex).reverse() : [];
+}
+
+async function getPreviousCollectionInstallments(collectionId: number, currentMovieId: number) {
+  if (!apiKey) {
+    return [];
+  }
+
+  try {
+    const collectionUrl = new URL(`${baseUrl}/collection/${collectionId}`);
+    collectionUrl.searchParams.set("api_key", apiKey);
+    collectionUrl.searchParams.set("language", "es-MX");
+
+    const response = await fetch(collectionUrl.toString());
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = (await response.json()) as { parts?: Array<Record<string, unknown>> };
+    return parsePreviousInstallments(payload.parts ?? [], currentMovieId);
+  } catch {
+    // Una colección es información complementaria: la ficha principal sigue
+    // siendo útil aunque ese endpoint puntual no responda.
+    return [];
+  }
+}
+
+function getCastCharacter(person: Record<string, unknown>) {
+  const aggregateRoles = Array.isArray(person.roles)
+    ? person.roles
+        .map((role) =>
+          typeof role === "object" &&
+          role !== null &&
+          "character" in role &&
+          typeof role.character === "string"
+            ? role.character.trim()
+            : ""
+        )
+        .filter(Boolean)
+    : [];
+  const characters = [...new Set(aggregateRoles)];
+
+  if (characters.length) {
+    return characters.join(" · ");
+  }
+
+  return typeof person.character === "string" && person.character.trim()
+    ? person.character.trim()
+    : null;
+}
+
+function buildCastList(rawCast: Array<Record<string, unknown>>, isAggregate = false): MediaDetails["cast"] {
+  const seenIds = new Set<number>();
+  const orderedCast = [...rawCast].sort((left, right) => {
+    if (isAggregate) {
+      const episodeDifference =
+        (typeof right.total_episode_count === "number" ? right.total_episode_count : 0) -
+        (typeof left.total_episode_count === "number" ? left.total_episode_count : 0);
+      if (episodeDifference) {
+        return episodeDifference;
+      }
+    }
+
+    const leftOrder = typeof left.order === "number" ? left.order : Number.MAX_SAFE_INTEGER;
+    const rightOrder = typeof right.order === "number" ? right.order : Number.MAX_SAFE_INTEGER;
+    return leftOrder - rightOrder;
+  });
+
+  return orderedCast.reduce<MediaDetails["cast"]>((cast, person) => {
+    const id = Number(person.id);
+    const name = typeof person.name === "string" ? person.name.trim() : "";
+    if (!Number.isFinite(id) || !name || seenIds.has(id)) {
+      return cast;
+    }
+
+    seenIds.add(id);
+    cast.push({
+      id,
+      name,
+      character: getCastCharacter(person),
+      profileUrl: typeof person.profile_path === "string" ? `${imageBase}${person.profile_path}` : null
+    });
+    return cast;
+  }, []);
+}
+
 function isUpcomingThisWeek(dateString: string | null | undefined) {
   if (!dateString) {
     return false;
@@ -1367,6 +1476,7 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
       budgetLabel: null,
       trailerUrl: null,
       creators: [],
+      previousInstallments: [],
       cast: [],
       crew: [],
       seasons: []
@@ -1401,16 +1511,19 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
   const providersPayload = providersResponse.ok ? ((await providersResponse.json()) as Record<string, unknown>) : {};
   const item = normalizeItem({ ...payload, media_type: mediaType });
   const watchOptions = getWatchOptions(providersPayload, item.title);
-  const cast =
-    ((payload.credits as { cast?: Array<Record<string, unknown>> } | undefined)?.cast ?? [])
-      .slice(0, 40)
-      .map((person) => ({
-        id: Number(person.id),
-        name: typeof person.name === "string" ? person.name : "Sin nombre",
-        character: typeof person.character === "string" ? person.character : null,
-        profileUrl:
-          typeof person.profile_path === "string" ? `${imageBase}${person.profile_path}` : null
-      })) ?? [];
+  const standardCast =
+    (payload.credits as { cast?: Array<Record<string, unknown>> } | undefined)?.cast ?? [];
+  const cast = buildCastList(mediaType === "movie" ? standardCast.slice(0, 40) : standardCast);
+  const collectionId =
+    mediaType === "movie" &&
+    typeof payload.belongs_to_collection === "object" &&
+    payload.belongs_to_collection !== null &&
+    "id" in payload.belongs_to_collection
+      ? Number(payload.belongs_to_collection.id)
+      : null;
+  const previousInstallmentsPromise = collectionId !== null && Number.isFinite(collectionId)
+    ? getPreviousCollectionInstallments(collectionId, tmdbId)
+    : Promise.resolve<DiscoveryItem[]>([]);
   const creators =
     mediaType === "movie"
       ? (((payload.credits as { crew?: Array<Record<string, unknown>> } | undefined)?.crew ?? [])
@@ -1469,10 +1582,33 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
     budgetLabel: mediaType === "movie" ? formatBudget(typeof payload.budget === "number" ? payload.budget : null) : null,
     trailerUrl: getTrailerUrl(payload),
     creators,
+    previousInstallments: await previousInstallmentsPromise,
     cast,
     crew,
     seasons: mediaType === "tv" ? parseSeasons(payload) : []
   };
+}
+
+/** Reparto acumulado de los episodios de una temporada puntual de una serie. */
+export async function getSeasonCast(
+  showId: number,
+  seasonNumber: number
+): Promise<MediaDetails["cast"]> {
+  if (!apiKey) {
+    return [];
+  }
+
+  const url = new URL(`${baseUrl}/tv/${showId}/season/${seasonNumber}/aggregate_credits`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("language", "es-MX");
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`No se pudo cargar el reparto de la temporada ${seasonNumber}.`);
+  }
+
+  const payload = (await response.json()) as { cast?: Array<Record<string, unknown>> };
+  return buildCastList(payload.cast ?? [], true);
 }
 
 function parseSeasons(payload: Record<string, unknown>): SeasonSummary[] {

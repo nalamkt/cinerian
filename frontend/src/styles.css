@@ -7417,6 +7417,62 @@ textarea {
   display: block;
 }
 
+.media-modal__related-carousel {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 4px 2px 12px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.media-modal__related-card {
+  width: 142px;
+  flex: 0 0 142px;
+  display: grid;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  scroll-snap-align: start;
+}
+
+.media-modal__related-card:disabled {
+  cursor: default;
+}
+
+.media-modal__related-card img {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  display: block;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.media-modal__related-card strong {
+  font-size: 0.92rem;
+  line-height: 1.28;
+}
+
+.media-modal__related-card span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.media-modal__related-card:hover:not(:disabled) img,
+.media-modal__related-card:focus-visible img {
+  border-color: rgba(255, 194, 84, 0.7);
+  transform: translateY(-2px);
+}
+
 .media-modal__reviews {
   display: grid;
   gap: 14px;
@@ -7485,10 +7541,53 @@ textarea {
   width: 112px;
 }
 
+.media-modal__cast-empty {
+  width: 100%;
+  min-height: 104px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
 .media-modal__credits-tabs {
   display: flex;
   gap: 6px;
+}
+
+.media-modal__credits-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 14px;
+}
+
+.media-modal__season-cast-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.media-modal__season-cast-filter select {
+  min-width: 132px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.84rem;
+  padding: 8px 11px;
+  cursor: pointer;
+}
+
+.media-modal__season-cast-filter select:focus-visible {
+  outline: 2px solid rgba(255, 194, 84, 0.75);
+  outline-offset: 2px;
 }
 
 .media-modal__credits-tab {
@@ -8245,6 +8344,80 @@ textarea {
 .search-browse__talent:focus-visible img {
   border-color: rgba(252, 195, 95, 0.78);
   transform: scale(1.04);
+}
+
+/* Carriles horizontales: el indicador se revela al recorrerlos y se retira solo. */
+.timeline-editorial__grid,
+.search-browse__rail,
+.search-browse__talent-rail,
+.media-modal__cast--carousel,
+.inbox-subtabs {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.timeline-editorial__grid.is-scrollbar-visible,
+.search-browse__rail.is-scrollbar-visible,
+.search-browse__talent-rail.is-scrollbar-visible,
+.media-modal__cast--carousel.is-scrollbar-visible,
+.inbox-subtabs.is-scrollbar-visible,
+.timeline-editorial__grid:hover,
+.search-browse__rail:hover,
+.search-browse__talent-rail:hover,
+.media-modal__cast--carousel:hover,
+.inbox-subtabs:hover,
+.timeline-editorial__grid:focus-within,
+.search-browse__rail:focus-within,
+.search-browse__talent-rail:focus-within,
+.media-modal__cast--carousel:focus-within,
+.inbox-subtabs:focus-within {
+  scrollbar-color: rgba(252, 195, 95, 0.7) transparent;
+}
+
+.timeline-editorial__grid::-webkit-scrollbar,
+.search-browse__rail::-webkit-scrollbar,
+.search-browse__talent-rail::-webkit-scrollbar,
+.media-modal__cast--carousel::-webkit-scrollbar,
+.inbox-subtabs::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.timeline-editorial__grid::-webkit-scrollbar-track,
+.search-browse__rail::-webkit-scrollbar-track,
+.search-browse__talent-rail::-webkit-scrollbar-track,
+.media-modal__cast--carousel::-webkit-scrollbar-track,
+.inbox-subtabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.timeline-editorial__grid::-webkit-scrollbar-thumb,
+.search-browse__rail::-webkit-scrollbar-thumb,
+.search-browse__talent-rail::-webkit-scrollbar-thumb,
+.media-modal__cast--carousel::-webkit-scrollbar-thumb,
+.inbox-subtabs::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+}
+
+.timeline-editorial__grid.is-scrollbar-visible::-webkit-scrollbar-thumb,
+.search-browse__rail.is-scrollbar-visible::-webkit-scrollbar-thumb,
+.search-browse__talent-rail.is-scrollbar-visible::-webkit-scrollbar-thumb,
+.media-modal__cast--carousel.is-scrollbar-visible::-webkit-scrollbar-thumb,
+.inbox-subtabs.is-scrollbar-visible::-webkit-scrollbar-thumb,
+.timeline-editorial__grid:hover::-webkit-scrollbar-thumb,
+.search-browse__rail:hover::-webkit-scrollbar-thumb,
+.search-browse__talent-rail:hover::-webkit-scrollbar-thumb,
+.media-modal__cast--carousel:hover::-webkit-scrollbar-thumb,
+.inbox-subtabs:hover::-webkit-scrollbar-thumb,
+.timeline-editorial__grid:focus-within::-webkit-scrollbar-thumb,
+.search-browse__rail:focus-within::-webkit-scrollbar-thumb,
+.search-browse__talent-rail:focus-within::-webkit-scrollbar-thumb,
+.media-modal__cast--carousel:focus-within::-webkit-scrollbar-thumb,
+.inbox-subtabs:focus-within::-webkit-scrollbar-thumb {
+  background: rgba(252, 195, 95, 0.72);
 }
 
 .search-highlights__label {
@@ -9310,6 +9483,60 @@ textarea {
     width: min(218px, 62vw);
   }
 
+  /* Al buscar una serie para "Viendo", el resultado conserva la accion pero
+     deja de ocupar una tarjeta editorial completa: sigue el mismo ritmo de
+     afiches que Vistas, Watchlist y En comun. */
+  .profile-watching-search-results--compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .profile-watching-search-results--compact .liked-card {
+    position: relative;
+    display: block;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: var(--poster-radius);
+    background: transparent;
+  }
+
+  .profile-watching-search-results--compact .liked-card__poster {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 3;
+  }
+
+  .profile-watching-search-results--compact .liked-card__copy {
+    display: contents;
+  }
+
+  .profile-watching-search-results--compact .liked-card__copy > strong,
+  .profile-watching-search-results--compact .liked-card__copy > span,
+  .profile-watching-search-results--compact .liked-card__copy > p {
+    display: none;
+  }
+
+  .profile-watching-search-results--compact .liked-card__actions {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    z-index: 1;
+    display: grid;
+    margin: 0;
+  }
+
+  .profile-watching-search-results--compact .profile-follow-button {
+    min-height: 34px;
+    padding: 0 10px;
+    border-color: rgba(252, 195, 95, 0.5);
+    background: rgba(8, 9, 12, 0.82);
+    color: var(--text);
+    font-size: 0.76rem;
+    backdrop-filter: blur(6px);
+  }
+
   .recommendation-shell {
     gap: 12px;
   }
@@ -9918,6 +10145,31 @@ textarea {
     border-radius: 16px;
   }
 
+  .media-modal__related-carousel {
+    gap: 8px;
+    padding-bottom: 10px;
+  }
+
+  .media-modal__related-card {
+    width: 112px;
+    flex-basis: 112px;
+    gap: 6px;
+  }
+
+  .media-modal__related-card img {
+    border-radius: 13px;
+  }
+
+  .media-modal__related-card strong {
+    font-size: 0.8rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .media-modal__related-card span {
+    font-size: 0.72rem;
+  }
+
   .media-modal__review-card {
     gap: 6px;
     padding: 14px;
@@ -9959,6 +10211,19 @@ textarea {
   .media-modal__credits-tab {
     font-size: 1rem;
     padding: 6px 12px;
+  }
+
+  .media-modal__credits-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .media-modal__season-cast-filter {
+    justify-content: space-between;
+  }
+
+  .media-modal__season-cast-filter select {
+    min-width: 0;
   }
 
   .media-modal__cast-avatar {

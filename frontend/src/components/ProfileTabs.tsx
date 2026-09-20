@@ -640,7 +640,7 @@ export function ProfileTabs({
               {isWatchingSearchLoading ? (
                 <div className="profile-grid__empty">Buscando series...</div>
               ) : watchingQuery.trim() && watchingResults.length ? (
-                <div className="profile-watching-search-results">
+                <div className="profile-watching-search-results profile-watching-search-results--compact">
                   {watchingResults.map((item) => {
                     const isAdded = watchingEntries.some((entry) => entry.tmdbId === item.id);
 
@@ -942,7 +942,11 @@ export function ProfileTabs({
 
           {tabItems.length ? (
             <div
-              className={`profile-grid ${activeTab === "watched" || activeTab === "watchlist" ? "profile-grid--library" : ""}`}
+              className={`profile-grid ${
+                activeTab === "watched" || activeTab === "watchlist" || activeTab === "mutual-likes"
+                  ? "profile-grid--library"
+                  : ""
+              }`}
             >
               {tabItems.map((item) => (
                 <TitleCard

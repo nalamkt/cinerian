@@ -31,6 +31,13 @@ import type { Profile } from "./lib/auth";
 export const FEED_SCROLL_TO_TOP_EVENT = "cinerian:feed-scroll-to-top";
 export const FEED_REFRESH_EDITORIAL_EVENT = "cinerian:feed-refresh-editorial";
 const ACTIVE_VIEW_STORAGE_KEY = "cinerian:active-view";
+const SCROLLBAR_REVEAL_SELECTOR = [
+  ".timeline-editorial__grid",
+  ".search-browse__rail",
+  ".search-browse__talent-rail",
+  ".media-modal__cast--carousel",
+  ".inbox-subtabs"
+].join(", ");
 
 function getStoredActiveView(userId: string) {
   try {
@@ -183,6 +190,31 @@ export default function App() {
 
     window.addEventListener("keydown", dismissTopmostPopup, true);
     return () => window.removeEventListener("keydown", dismissTopmostPopup, true);
+  }, []);
+
+  useEffect(() => {
+    const hideTimers = new WeakMap<HTMLElement, number>();
+
+    function revealScrollbar(event: Event) {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !target.matches(SCROLLBAR_REVEAL_SELECTOR)) {
+        return;
+      }
+
+      const previousTimer = hideTimers.get(target);
+      if (previousTimer) {
+        window.clearTimeout(previousTimer);
+      }
+
+      target.classList.add("is-scrollbar-visible");
+      hideTimers.set(
+        target,
+        window.setTimeout(() => target.classList.remove("is-scrollbar-visible"), 760)
+      );
+    }
+
+    document.addEventListener("scroll", revealScrollbar, true);
+    return () => document.removeEventListener("scroll", revealScrollbar, true);
   }, []);
 
   useEffect(() => {

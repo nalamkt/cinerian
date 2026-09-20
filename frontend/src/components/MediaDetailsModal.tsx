@@ -17,7 +17,7 @@ import {
 } from "../lib/reactions";
 import { buildWatchedPostBody } from "../lib/reviews";
 import { buildSharedMediaUrl, shareMediaLink } from "../lib/share";
-import { getTitleById, getTitleDetails } from "../lib/tmdb";
+import { getSeasonCast, getTitleById, getTitleDetails } from "../lib/tmdb";
 import type { EpisodeReference, FeedEntry, MediaDetails, DiscoveryItem, TalentSearchItem } from "../types";
 
 export type MediaReference = Pick<DiscoveryItem, "id" | "mediaType" | "title">;
@@ -92,6 +92,7 @@ function useMediaDetailsData(item: MediaReference | null) {
               budgetLabel: null,
               trailerUrl: null,
               creators: [],
+              previousInstallments: [],
               cast: [],
               crew: [],
               seasons: []
@@ -162,6 +163,7 @@ type MediaDetailsSheetProps = {
   publicMode?: boolean;
   onOpenTalent?: (talent: TalentSearchItem) => void;
   onOpenEpisode?: (reference: EpisodeReference) => void;
+  onOpenMedia?: (item: MediaReference) => void;
   userId?: string;
 };
 
@@ -185,10 +187,10 @@ export function MediaDetailsSheet({
   publicMode = false,
   onOpenTalent,
   onOpenEpisode,
+  onOpenMedia,
   userId
 }: MediaDetailsSheetProps) {
-  // El elenco llega completo desde TMDB; mostramos una tanda y el resto queda
-  // detras de "Ver todo" para que la ficha no arranque desbordada.
+  // En series, el reparto se consulta por temporada para no cargar el historial completo.
   const crewList = useMemo(() => {
     if (!details) {
       return [];
@@ -208,7 +210,9 @@ export function MediaDetailsSheet({
     if (!details) {
       return;
     }
-    if (!details.cast.length && crewList.length) {
+    const hasSeasonalCast =
+      details.mediaType === "tv" && details.seasons.some((season) => season.seasonNumber > 0);
+    if (!details.cast.length && !hasSeasonalCast && crewList.length) {
       setCreditsTab("crew");
     } else {
       setCreditsTab("cast");
@@ -229,6 +233,92 @@ export function MediaDetailsSheet({
     ].filter((itemData) => Boolean(itemData.value));
   }, [details]);
   const isUpcoming = Boolean(details?.releaseDate && new Date(`${details.releaseDate}T12:00:00`).getTime() > Date.now());
+  const tvCastSeasons = useMemo(() => {
+    if (!details || details.mediaType !== "tv") {
+      return [];
+    }
+
+    return details.seasons
+      .filter((season) => season.seasonNumber > 0)
+      .sort((left, right) => right.seasonNumber - left.seasonNumber);
+  }, [details]);
+  const [castSeasonNumber, setCastSeasonNumber] = useState<number | null>(null);
+  const [castSeasonShowId, setCastSeasonShowId] = useState<number | null>(null);
+  const [seasonCast, setSeasonCast] = useState<MediaDetails["cast"] | null>(null);
+  const [isSeasonCastLoading, setIsSeasonCastLoading] = useState(false);
+  const [hasSeasonCastFailed, setHasSeasonCastFailed] = useState(false);
+
+  useEffect(() => {
+    if (!details || details.mediaType !== "tv") {
+      setCastSeasonNumber(null);
+      setCastSeasonShowId(null);
+      setSeasonCast(null);
+      setIsSeasonCastLoading(false);
+      setHasSeasonCastFailed(false);
+      return;
+    }
+
+    const today = Date.now();
+    const latestReleasedSeason = tvCastSeasons.find((season) => {
+      if (!season.airDate) {
+        return true;
+      }
+
+      const timestamp = new Date(`${season.airDate}T12:00:00`).getTime();
+      return !Number.isFinite(timestamp) || timestamp <= today;
+    });
+    const selectedSeason = latestReleasedSeason ?? tvCastSeasons[0] ?? null;
+
+    setCastSeasonNumber(selectedSeason?.seasonNumber ?? null);
+    setCastSeasonShowId(selectedSeason ? details.id : null);
+    setSeasonCast(null);
+    setHasSeasonCastFailed(false);
+  }, [details?.id, details?.mediaType, tvCastSeasons]);
+
+  useEffect(() => {
+    if (
+      !details ||
+      details.mediaType !== "tv" ||
+      castSeasonNumber === null ||
+      castSeasonShowId !== details.id
+    ) {
+      return;
+    }
+
+    let isMounted = true;
+    setIsSeasonCastLoading(true);
+    setSeasonCast(null);
+    setHasSeasonCastFailed(false);
+
+    void getSeasonCast(details.id, castSeasonNumber)
+      .then((cast) => {
+        if (isMounted) {
+          setSeasonCast(cast);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSeasonCast([]);
+          setHasSeasonCastFailed(true);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsSeasonCastLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [castSeasonNumber, castSeasonShowId, details?.id, details?.mediaType]);
+  const visibleCast =
+    details?.mediaType === "tv" && castSeasonShowId === details.id && castSeasonNumber !== null
+      ? seasonCast ?? []
+      : details?.cast ?? [];
+  const hasCast = Boolean(
+    details && (details.mediaType === "tv" ? tvCastSeasons.length || details.cast.length : details.cast.length)
+  );
 
   if (!item) {
     return null;
@@ -406,6 +496,38 @@ export function MediaDetailsSheet({
             ) : null}
           </section>
 
+          {details.previousInstallments.length ? (
+            <section className="media-modal__section">
+              <p className="section-eyebrow">Peliculas anteriores</p>
+              <div className="media-modal__related-carousel" aria-label="Peliculas anteriores de la coleccion">
+                {details.previousInstallments.map((previous) => (
+                  <button
+                    type="button"
+                    className="media-modal__related-card"
+                    key={previous.id}
+                    onClick={() =>
+                      onOpenMedia?.({
+                        id: previous.id,
+                        mediaType: previous.mediaType,
+                        title: previous.title
+                      })
+                    }
+                    disabled={!onOpenMedia}
+                    aria-label={`Ver ${previous.title}`}
+                  >
+                    <img
+                      src={previous.posterUrl || "/images/base.png"}
+                      alt=""
+                      loading="lazy"
+                    />
+                    <strong>{previous.title}</strong>
+                    <span>{previous.year}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           {details.mediaType === "tv" && details.seasons.length && onOpenEpisode ? (
             <SeasonsSection
               showId={details.id}
@@ -416,9 +538,9 @@ export function MediaDetailsSheet({
             />
           ) : null}
 
-          <section className="media-modal__section">
-            <p className="section-eyebrow">Reseñas de cinerianos</p>
-            {feedPosts.length ? (
+          {feedPosts.length ? (
+            <section className="media-modal__section">
+              <p className="section-eyebrow">Reseñas de cinerianos</p>
               <div className="media-modal__reviews">
                 {feedPosts.map((post) => {
                   const review = parseFeedReview(post.body);
@@ -438,44 +560,63 @@ export function MediaDetailsSheet({
                   );
                 })}
               </div>
-            ) : (
-              <div className="media-modal__empty">Todavia nadie reseño este titulo en Cinerian.</div>
-            )}
-          </section>
+            </section>
+          ) : null}
 
-          {details.cast.length || crewList.length ? (
+          {hasCast || crewList.length ? (
             <section className="media-modal__section">
-              <div className="media-modal__credits-tabs" role="tablist">
-                {details.cast.length ? (
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={creditsTab === "cast"}
-                    className={`media-modal__credits-tab ${
-                      creditsTab === "cast" ? "is-active" : ""
-                    }`}
-                    onClick={() => setCreditsTab("cast")}
-                  >
-                    Reparto
-                  </button>
-                ) : null}
-                {crewList.length ? (
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={creditsTab === "crew"}
-                    className={`media-modal__credits-tab ${
-                      creditsTab === "crew" ? "is-active" : ""
-                    }`}
-                    onClick={() => setCreditsTab("crew")}
-                  >
-                    Equipo
-                  </button>
+              <div className="media-modal__credits-heading">
+                <div className="media-modal__credits-tabs" role="tablist">
+                  {hasCast ? (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={creditsTab === "cast"}
+                      className={`media-modal__credits-tab ${
+                        creditsTab === "cast" ? "is-active" : ""
+                      }`}
+                      onClick={() => setCreditsTab("cast")}
+                    >
+                      Reparto
+                    </button>
+                  ) : null}
+                  {crewList.length ? (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={creditsTab === "crew"}
+                      className={`media-modal__credits-tab ${
+                        creditsTab === "crew" ? "is-active" : ""
+                      }`}
+                      onClick={() => setCreditsTab("crew")}
+                    >
+                      Equipo
+                    </button>
+                  ) : null}
+                </div>
+                {creditsTab === "cast" && details.mediaType === "tv" && tvCastSeasons.length > 1 ? (
+                  <label className="media-modal__season-cast-filter">
+                    <span>Temporada</span>
+                    <select
+                      value={castSeasonNumber ?? ""}
+                      onChange={(event) => setCastSeasonNumber(Number(event.target.value))}
+                      aria-label="Elegir temporada para ver su reparto"
+                    >
+                      {tvCastSeasons.map((season) => (
+                        <option key={season.id} value={season.seasonNumber}>
+                          {season.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 ) : null}
               </div>
               <div className="media-modal__cast media-modal__cast--carousel">
-                {creditsTab === "cast"
-                  ? details.cast.map((person) => (
+                {creditsTab === "cast" ? (
+                  isSeasonCastLoading ? (
+                    <div className="media-modal__cast-empty">Cargando reparto...</div>
+                  ) : visibleCast.length ? (
+                    visibleCast.map((person) => (
                       <button
                         type="button"
                         className="media-modal__cast-card media-modal__cast-card--interactive"
@@ -492,7 +633,7 @@ export function MediaDetailsSheet({
                       >
                         <div className="media-modal__cast-avatar">
                           {person.profileUrl ? (
-                            <img src={person.profileUrl} alt={person.name} />
+                            <img src={person.profileUrl} alt={person.name} loading="lazy" />
                           ) : (
                             <span>🎭</span>
                           )}
@@ -501,7 +642,15 @@ export function MediaDetailsSheet({
                         {person.character ? <span>{person.character}</span> : null}
                       </button>
                     ))
-                  : crewList.map((person) => (
+                  ) : (
+                    <div className="media-modal__cast-empty">
+                      {hasSeasonCastFailed
+                        ? "No pudimos cargar el reparto de esta temporada."
+                        : "No hay reparto cargado para esta temporada."}
+                    </div>
+                  )
+                ) : (
+                  crewList.map((person) => (
                       <button
                         type="button"
                         className="media-modal__cast-card media-modal__cast-card--interactive"
@@ -518,7 +667,7 @@ export function MediaDetailsSheet({
                       >
                         <div className="media-modal__cast-avatar">
                           {person.profileUrl ? (
-                            <img src={person.profileUrl} alt={person.name} />
+                            <img src={person.profileUrl} alt={person.name} loading="lazy" />
                           ) : (
                             <span>🎬</span>
                           )}
@@ -526,7 +675,8 @@ export function MediaDetailsSheet({
                         <strong>{person.name}</strong>
                         {person.roleLabel ? <span>{person.roleLabel}</span> : null}
                       </button>
-                    ))}
+                    ))
+                )}
               </div>
             </section>
           ) : null}
@@ -553,11 +703,13 @@ export function MediaDetailsSheet({
 function MediaDetailsModal({
   userId,
   item,
-  onClose
+  onClose,
+  onOpenRelatedItem
 }: {
   userId?: string;
   item: MediaReference | null;
   onClose: () => void;
+  onOpenRelatedItem: (item: MediaReference) => void;
 }) {
   const { details, feedPosts, isLoading, hasFailed } = useMediaDetailsData(item);
   const [shareLabel, setShareLabel] = useState("Compartir");
@@ -818,6 +970,7 @@ function MediaDetailsModal({
             canMarkWatched={Boolean(userId)}
             onOpenTalent={setActiveTalent}
             onOpenEpisode={setActiveEpisode}
+            onOpenMedia={onOpenRelatedItem}
             userId={userId}
           />
         </div>
@@ -862,16 +1015,34 @@ export function MediaDetailsProvider({
   userId?: string;
   children: ReactNode;
 }) {
-  const [activeItem, setActiveItem] = useState<MediaReference | null>(null);
+  const [activeItems, setActiveItems] = useState<MediaReference[]>([]);
+  const activeItem = activeItems[activeItems.length - 1] ?? null;
+
+  function openMediaDetails(item: MediaReference) {
+    setActiveItems([item]);
+  }
+
+  function closeMediaDetails() {
+    setActiveItems((items) => items.slice(0, -1));
+  }
+
+  function openRelatedMedia(item: MediaReference) {
+    setActiveItems((items) => [...items, item]);
+  }
 
   return (
     <MediaDetailsContext.Provider
       value={{
-        openMediaDetails: (item) => setActiveItem(item)
+        openMediaDetails
       }}
     >
       {children}
-      <MediaDetailsModal userId={userId} item={activeItem} onClose={() => setActiveItem(null)} />
+      <MediaDetailsModal
+        userId={userId}
+        item={activeItem}
+        onClose={closeMediaDetails}
+        onOpenRelatedItem={openRelatedMedia}
+      />
     </MediaDetailsContext.Provider>
   );
 }
@@ -920,6 +1091,9 @@ export function SharedMediaLanding({ item }: { item: MediaReference }) {
             publicMode
             onOpenTalent={setActiveTalent}
             onOpenEpisode={setActiveEpisode}
+            onOpenMedia={(related) => {
+              window.location.assign(buildSharedMediaUrl(related));
+            }}
           />
         </div>
       </div>

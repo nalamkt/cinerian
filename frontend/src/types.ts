@@ -103,6 +103,8 @@ export type MediaDetails = {
     roleLabel: string | null;
     profileUrl: string | null;
   }>;
+  /** Entregas de la misma colección estrenadas antes de esta película. */
+  previousInstallments: DiscoveryItem[];
   cast: Array<{
     id: number;
     name: string;
