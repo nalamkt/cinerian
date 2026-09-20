@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { SendRecommendationModal } from "./SendRecommendationModal";
 import { TalentDetailsModal } from "./TalentDetailsModal";
@@ -9,15 +9,21 @@ import { createFeedPost, removeFeedEvent } from "../lib/feed";
 import { listProfiles, type Profile } from "../lib/auth";
 import {
   fetchStoredReactions,
+  getReactionSaveErrorMessage,
   REACTIONS_UPDATED_EVENT,
-  removeStoredRatedReaction,
   saveStoredReaction,
   type RatedReaction,
   type RecommendationReaction,
   type StoredReaction
 } from "../lib/reactions";
 import { buildWatchedPostBody } from "../lib/reviews";
-import { getFeaturedTalent, getTrendingTitles, searchTalent } from "../lib/tmdb";
+import {
+  getFeaturedTalent,
+  getTitlesByGenre,
+  getTrendingTitles,
+  getUpcomingTitles,
+  searchTalent
+} from "../lib/tmdb";
 import type { DiscoveryItem, TalentSearchItem } from "../types";
 
 type SearchPanelProps = {
@@ -25,7 +31,12 @@ type SearchPanelProps = {
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
 };
 
-type SearchMode = "titles" | "people" | "talent";
+type BrowseRail = {
+  id: string;
+  title: string;
+  description: string;
+  items: DiscoveryItem[];
+};
 
 /** Vista = marcada con pulgar arriba o abajo (ya no existe un estado 'watched' aparte). */
 function isWatchedReaction(reaction: RecommendationReaction | undefined): reaction is RatedReaction {
@@ -35,29 +46,38 @@ function isWatchedReaction(reaction: RecommendationReaction | undefined): reacti
 export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [query, setQuery] = useState("");
-  const [searchMode, setSearchMode] = useState<SearchMode>("titles");
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
+  const [reviewInitialReaction, setReviewInitialReaction] = useState<RatedReaction | null>(null);
   const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [talentResults, setTalentResults] = useState<TalentSearchItem[]>([]);
-  const [weeklyTitles, setWeeklyTitles] = useState<DiscoveryItem[]>([]);
-  const [weeklyTalent, setWeeklyTalent] = useState<TalentSearchItem[]>([]);
-  const [isWeeklyLoading, setIsWeeklyLoading] = useState(true);
+  const [trendingTitles, setTrendingTitles] = useState<DiscoveryItem[]>([]);
+  const [upcomingTitles, setUpcomingTitles] = useState<DiscoveryItem[]>([]);
+  const [genreRails, setGenreRails] = useState<BrowseRail[]>([]);
+  const [featuredTalent, setFeaturedTalent] = useState<TalentSearchItem[]>([]);
+  const [isBrowseLoading, setIsBrowseLoading] = useState(true);
   const [isTalentLoading, setIsTalentLoading] = useState(false);
   const [talentError, setTalentError] = useState<string | null>(null);
   const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
+  const reactionsRequestRef = useRef(0);
   const { results, isLoading, error } = useDiscovery(query);
 
   useEffect(() => {
     async function loadStoredReactions() {
+      const requestId = ++reactionsRequestRef.current;
+
       try {
         const response = await fetchStoredReactions(userId);
-        setStoredReactions(response);
+        if (requestId === reactionsRequestRef.current) {
+          setStoredReactions(response);
+        }
       } catch {
-        setSyncMessage("No pude sincronizar tus acciones guardadas.");
+        if (requestId === reactionsRequestRef.current) {
+          setSyncMessage("No pude sincronizar tus acciones guardadas.");
+        }
       }
     }
 
@@ -87,15 +107,59 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   useEffect(() => {
     let isMounted = true;
 
-    void Promise.allSettled([getTrendingTitles(), getFeaturedTalent()]).then(
-      ([titlesResult, talentResult]) => {
+    void Promise.allSettled([
+      getTrendingTitles(),
+      getUpcomingTitles(),
+      getFeaturedTalent(),
+      getTitlesByGenre(28),
+      getTitlesByGenre(18),
+      getTitlesByGenre(35),
+      getTitlesByGenre(878),
+      getTitlesByGenre(53),
+      getTitlesByGenre(27),
+      getTitlesByGenre(10749),
+      getTitlesByGenre(16),
+      getTitlesByGenre(10751)
+    ]).then(
+      ([
+        trendingResult,
+        upcomingResult,
+        talentResult,
+        actionResult,
+        dramaResult,
+        comedyResult,
+        sciFiResult,
+        thrillerResult,
+        horrorResult,
+        romanceResult,
+        animationResult,
+        familyResult
+      ]) => {
         if (!isMounted) {
           return;
         }
 
-        setWeeklyTitles(titlesResult.status === "fulfilled" ? titlesResult.value.slice(0, 4) : []);
-        setWeeklyTalent(talentResult.status === "fulfilled" ? talentResult.value.slice(0, 4) : []);
-        setIsWeeklyLoading(false);
+        setTrendingTitles(trendingResult.status === "fulfilled" ? trendingResult.value : []);
+        setUpcomingTitles(upcomingResult.status === "fulfilled" ? upcomingResult.value : []);
+        setFeaturedTalent(talentResult.status === "fulfilled" ? talentResult.value : []);
+        setGenreRails(
+          [
+            { id: "action", title: "Accion y aventura", description: "Ritmo, adrenalina y grandes mundos", result: actionResult },
+            { id: "drama", title: "Drama", description: "Historias que quedan dando vueltas", result: dramaResult },
+            { id: "comedy", title: "Comedia", description: "Para desconectar y pasarla bien", result: comedyResult },
+            { id: "sci-fi", title: "Ciencia ficcion", description: "Ideas grandes y futuros posibles", result: sciFiResult },
+            { id: "thriller", title: "Suspenso", description: "Tension hasta el ultimo minuto", result: thrillerResult },
+            { id: "horror", title: "Terror", description: "Para mirar con las luces prendidas", result: horrorResult },
+            { id: "romance", title: "Romance", description: "Historias para sentir", result: romanceResult },
+            { id: "animation", title: "Animacion", description: "Mundos que cobran vida", result: animationResult },
+            { id: "family", title: "Para ver en familia", description: "Planes para compartir", result: familyResult }
+          ].flatMap(({ id, title, description, result }) =>
+            result.status === "fulfilled" && result.value.length
+              ? [{ id, title, description, items: result.value }]
+              : []
+          )
+        );
+        setIsBrowseLoading(false);
       }
     );
 
@@ -105,10 +169,6 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   }, []);
 
   useEffect(() => {
-    if (searchMode !== "talent") {
-      return;
-    }
-
     const trimmed = query.trim();
     if (!trimmed) {
       setTalentResults([]);
@@ -130,7 +190,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
     }, 250);
 
     return () => window.clearTimeout(timeoutId);
-  }, [query, searchMode]);
+  }, [query]);
 
   const reactionMap = useMemo(
     () =>
@@ -141,7 +201,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   );
 
   const profileResults = useMemo(() => {
-    const trimmed = query.trim().toLowerCase();
+    const trimmed = query.trim().toLowerCase().replace(/^@/, "");
     if (!trimmed) {
       return [];
     }
@@ -156,10 +216,8 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
       .slice(0, 8);
   }, [profiles, query, userId]);
 
-  const isShowingWeeklyTitles = searchMode === "titles" && !query.trim();
-  const isShowingWeeklyTalent = searchMode === "talent" && !query.trim();
-  const displayedTitles = isShowingWeeklyTitles ? weeklyTitles : results;
-  const displayedTalent = isShowingWeeklyTalent ? weeklyTalent : talentResults;
+  const hasQuery = Boolean(query.trim());
+  const isSearching = isLoading || isTalentLoading;
 
   function replaceStoredReaction(item: DiscoveryItem, reaction: StoredReaction["reaction"]) {
     setStoredReactions((current) => [
@@ -191,41 +249,21 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
       }
 
       replaceStoredReaction(item, reaction);
-    } catch {
-      setSyncMessage("No pude guardar esta accion.");
+    } catch (error) {
+      setSyncMessage(getReactionSaveErrorMessage(error));
     } finally {
       setIsSyncing(false);
     }
   }
 
-  async function handleWatchedToggle(item: DiscoveryItem) {
+  function handleWatchedToggle(item: DiscoveryItem) {
     const key = `${item.mediaType}-${item.id}`;
-    const isWatched = isWatchedReaction(reactionMap[key]);
+    const currentReaction = reactionMap[key];
 
-    try {
-      setIsSyncing(true);
-      setSyncMessage(null);
-
-      if (isWatched) {
-        await removeStoredRatedReaction(userId, item);
-        setStoredReactions((current) =>
-          current.filter(
-            (entry) =>
-              !(
-                entry.tmdbId === item.id &&
-                entry.mediaType === item.mediaType &&
-                isWatchedReaction(entry.reaction)
-              )
-          )
-        );
-        setSyncMessage("La saque de vistas.");
-        return;
-      }
-
-      setReviewItem(item);
-    } finally {
-      setIsSyncing(false);
-    }
+    // Una calificacion anterior se puede reemplazar directamente: no hace
+    // falta borrarla para volver a elegir entre "me gustó" y "me encantó".
+    setReviewInitialReaction(isWatchedReaction(currentReaction) ? currentReaction : null);
+    setReviewItem(item);
   }
 
   async function handleReviewSubmit(input: { reaction: RatedReaction; comment: string }) {
@@ -264,8 +302,8 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
 
       replaceStoredReaction(reviewItem, input.reaction);
       setReviewItem(null);
-    } catch {
-      setSyncMessage("No pude guardar tu reseña.");
+    } catch (error) {
+      setSyncMessage(getReactionSaveErrorMessage(error));
     } finally {
       setIsSyncing(false);
     }
@@ -275,96 +313,33 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
     setSendItem(item);
   }
 
-  function handleSearchModeChange(nextMode: SearchMode) {
-    if (nextMode === searchMode) {
-      return;
-    }
-
-    setSearchMode(nextMode);
-    setQuery("");
-    setTalentResults([]);
-    setTalentError(null);
-  }
-
   return (
     <section className="panel search-panel">
-      <header className="feed-header feed-header--search">
-        <button
-          type="button"
-          className={`feed-header__tab ${searchMode === "titles" ? "is-active" : ""}`}
-          onClick={() => handleSearchModeChange("titles")}
-        >
-          Titulos
-        </button>
-        <button
-          type="button"
-          className={`feed-header__tab ${searchMode === "people" ? "is-active" : ""}`}
-          onClick={() => handleSearchModeChange("people")}
-        >
-          Personas
-        </button>
-        <button
-          type="button"
-          className={`feed-header__tab ${searchMode === "talent" ? "is-active" : ""}`}
-          onClick={() => handleSearchModeChange("talent")}
-        >
-          Talento
-        </button>
-      </header>
-
-      <label className="input-stack">
-        <span>
-          {searchMode === "titles"
-            ? "Busca una pelicula o serie"
-            : searchMode === "people"
-              ? "Busca cinerianos"
-              : "Busca actores y directores"}
-        </span>
+      <label className="input-stack search-panel__input search-panel__input--glass">
         <input
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder={
-            searchMode === "titles"
-              ? "Ej: Interstellar, The Bear, Parasite"
-              : searchMode === "people"
-                ? "Ej: elchoks, Isidoro"
-                : "Ej: Cillian Murphy, Christopher Nolan"
-          }
+          placeholder="Ej: Interstellar, @elchoks, Christopher Nolan"
         />
       </label>
 
       <div className="inline-status">
-        {searchMode === "titles"
-          ? isLoading
-            ? "Buscando..."
-            : isShowingWeeklyTitles && isWeeklyLoading
-              ? "Cargando destacados de la semana..."
-            : syncMessage
-              ? syncMessage
-              : error
-                ? error
-                : isShowingWeeklyTitles
-                ? null
-                : `${results.length} resultados listos`
-          : searchMode === "people"
-            ? query.trim()
-              ? `${profileResults.length} perfiles encontrados`
-              : "Busca un cineriano por nombre o username."
-            : isTalentLoading
-              ? "Buscando talento..."
-              : isShowingWeeklyTalent && isWeeklyLoading
-                ? "Cargando talentos destacados..."
-              : talentError
-                ? talentError
-                : query.trim()
-                  ? `${talentResults.length} talentos encontrados`
-                  : null}
+        {syncMessage ?? (hasQuery && isSearching ? "Buscando en titulos, personas y talentos..." : null)}
       </div>
 
-      {searchMode === "titles" ? (
-        <div className="card-list">
-          {displayedTitles.map((item) => {
+      {hasQuery ? (
+        <div className="search-result-sections">
+          {error ? <p className="inline-status">{error}</p> : null}
+          {talentError ? <p className="inline-status">{talentError}</p> : null}
+          {results.length ? (
+            <section className="search-result-section">
+              <div className="search-result-section__heading">
+                <p className="section-eyebrow">Titulos</p>
+                <h2>Peliculas y series</h2>
+              </div>
+              <div className="card-list">
+                {results.slice(0, 8).map((item) => {
             const reaction = reactionMap[`${item.mediaType}-${item.id}`];
             const watchedReaction = isWatchedReaction(reaction) ? reaction : null;
 
@@ -451,13 +426,19 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
               </div>
             </article>
             );
-          })}
-        </div>
-      ) : null}
+                })}
+              </div>
+            </section>
+          ) : null}
 
-      {searchMode === "people" ? (
-        <div className="card-list">
-          {profileResults.map((profile) => (
+          {profileResults.length ? (
+            <section className="search-result-section">
+              <div className="search-result-section__heading">
+                <p className="section-eyebrow">Cinerianos</p>
+                <h2>Personas de la comunidad</h2>
+              </div>
+              <div className="card-list">
+                {profileResults.map((profile) => (
             <button
               key={profile.id}
               type="button"
@@ -477,13 +458,19 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
                 {profile.bio ? <p>{profile.bio}</p> : null}
               </span>
             </button>
-          ))}
-        </div>
-      ) : null}
+                ))}
+              </div>
+            </section>
+          ) : null}
 
-      {searchMode === "talent" ? (
-        <div className="card-list">
-          {displayedTalent.map((talent) => (
+          {talentResults.length ? (
+            <section className="search-result-section">
+              <div className="search-result-section__heading">
+                <p className="section-eyebrow">Talentos</p>
+                <h2>Actores y directores</h2>
+              </div>
+              <div className="card-list">
+                {talentResults.slice(0, 8).map((talent) => (
             <button
               key={talent.id}
               type="button"
@@ -499,14 +486,79 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
                 ) : null}
               </span>
             </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {!isSearching && !results.length && !profileResults.length && !talentResults.length ? (
+            <p className="search-empty">No encontramos coincidencias. Proba con otro nombre o titulo.</p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="search-browse" aria-busy={isBrowseLoading}>
+          {isBrowseLoading ? <p className="inline-status">Cargando para explorar...</p> : null}
+          {trendingTitles.length ? (
+            <BrowseTitleRail
+              title="En tendencia"
+              description="Lo que esta dando que hablar esta semana"
+              items={trendingTitles}
+              onOpen={openMediaDetails}
+            />
+          ) : null}
+          {upcomingTitles.length ? (
+            <BrowseTitleRail
+              title="Proximos estrenos"
+              description="Novedades que llegan muy pronto"
+              items={upcomingTitles}
+              onOpen={openMediaDetails}
+            />
+          ) : null}
+          {featuredTalent.length ? (
+            <section className="search-browse__section">
+              <div className="search-browse__heading">
+                <div>
+                  <p className="section-eyebrow">Talentos</p>
+                  <h2>Personas destacadas</h2>
+                  <p>Actores y directores para seguir explorando</p>
+                </div>
+              </div>
+              <div className="search-browse__talent-rail">
+                {featuredTalent.map((talent) => (
+                  <button
+                    className="search-browse__talent"
+                    key={talent.id}
+                    type="button"
+                    onClick={() => setActiveTalent(talent)}
+                  >
+                    <img src={talent.profileUrl ?? "/images/base.png"} alt={talent.name} />
+                    <strong>{talent.name}</strong>
+                    <span>{talent.knownForTitles[0] ?? talent.knownForDepartment}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+          {genreRails.map((rail) => (
+            <BrowseTitleRail
+              key={rail.id}
+              title={rail.title}
+              description={rail.description}
+              items={rail.items}
+              onOpen={openMediaDetails}
+            />
           ))}
         </div>
-      ) : null}
+      )}
 
       <WatchReviewModal
         item={reviewItem}
         isSaving={isSyncing}
-        onClose={() => setReviewItem(null)}
+        initialReaction={reviewInitialReaction}
+        onClose={() => {
+          setReviewItem(null);
+          setReviewInitialReaction(null);
+        }}
         onSubmit={(input) => void handleReviewSubmit(input)}
       />
       <SendRecommendationModal
@@ -515,6 +567,44 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         onClose={() => setSendItem(null)}
       />
       <TalentDetailsModal item={activeTalent} userId={userId} onClose={() => setActiveTalent(null)} />
+    </section>
+  );
+}
+
+function BrowseTitleRail({
+  title,
+  description,
+  items,
+  onOpen
+}: {
+  title: string;
+  description: string;
+  items: DiscoveryItem[];
+  onOpen: (item: DiscoveryItem) => void;
+}) {
+  return (
+    <section className="search-browse__section">
+      <div className="search-browse__heading">
+        <div>
+          <p className="section-eyebrow">Para explorar</p>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+      </div>
+      <div className="search-browse__rail">
+        {items.map((item) => (
+          <button
+            className="search-browse__title"
+            key={`${item.mediaType}-${item.id}`}
+            type="button"
+            onClick={() => onOpen(item)}
+          >
+            <img src={item.posterUrl} alt={item.title} />
+            <strong>{item.title}</strong>
+            <span>{item.year}</span>
+          </button>
+        ))}
+      </div>
     </section>
   );
 }

@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { LoadingState } from "./LoadingState";
-import { demoDiscovery } from "../data/demoData";
 import { createFeedPost, removeFeedEvent } from "../lib/feed";
 import {
   fetchStoredReactions,
+  getReactionSaveErrorMessage,
   REACTIONS_UPDATED_EVENT,
   saveStoredReaction,
   type RatedReaction,
@@ -85,10 +85,15 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const [providerCatalog, setProviderCatalog] = useState<ProviderOption[]>([]);
   const [entries, setEntries] = useState<RankedRecommendation[]>([]);
   const [isLoadingDeck, setIsLoadingDeck] = useState(true);
+  const [deckLoadError, setDeckLoadError] = useState(false);
+  const [deckReloadKey, setDeckReloadKey] = useState(0);
   const [isInitialCardReady, setIsInitialCardReady] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [page, setPage] = useState(1);
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
+  const [areReactionsReady, setAreReactionsReady] = useState(false);
+  const [reactionSyncError, setReactionSyncError] = useState(false);
+  const [reactionReloadKey, setReactionReloadKey] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
@@ -100,6 +105,8 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const overviewRef = useRef<HTMLParagraphElement | null>(null);
   const providerSummaryRef = useRef<HTMLDivElement | null>(null);
+  const reactionsRequestRef = useRef(0);
+  const hasReactionSnapshotRef = useRef(false);
 
   useEffect(() => {
     if (!isProviderSummaryOpen) {
@@ -192,13 +199,14 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   }, [filters.providerIds.length, providerCatalog.length]);
 
   useEffect(() => {
-    if (!areFiltersReady) {
+    if (!areFiltersReady || !areReactionsReady) {
       return;
     }
 
     let isMounted = true;
     setIsLoadingDeck(true);
     setIsInitialCardReady(false);
+    setDeckLoadError(false);
     setEntries([]);
     setCurrentIndex(0);
 
@@ -210,7 +218,13 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       // (por ejemplo, si toda la primera ya fue reaccionada). No mostramos el
       // estado vacio hasta recorrer el mazo disponible.
       for (let candidatePage = 1; candidatePage <= MAX_DECK_PAGES; candidatePage += 1) {
-        results = await fetchSocialRecommendations(userId, candidatePage, 12, filters);
+        results = await fetchSocialRecommendations(
+          userId,
+          candidatePage,
+          12,
+          filters,
+          storedReactions
+        );
         resolvedPage = candidatePage;
         if (results.length) {
           break;
@@ -226,8 +240,12 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     })()
       .catch(() => {
         if (isMounted) {
-          setEntries(demoDiscovery.map((item) => ({ item, rank: null, watchers: [] })));
+          // Nunca mostramos el fallback a ciegas: si no pudimos armar el mazo
+          // respetando reacciones, seria posible volver a ofrecer un titulo
+          // que la persona acaba de pasar de largo.
+          setEntries([]);
           setPage(1);
+          setDeckLoadError(true);
         }
       })
       .finally(() => {
@@ -239,7 +257,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     return () => {
       isMounted = false;
     };
-  }, [userId, filters, areFiltersReady]);
+  }, [userId, filters, areFiltersReady, areReactionsReady, deckReloadKey]);
 
   useEffect(() => {
     // El guard va por isLoadingDeck y no por entries.length: si la primera
@@ -249,7 +267,7 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     }
 
     const nextPage = page + 1;
-    void fetchSocialRecommendations(userId, nextPage, 12, filters)
+    void fetchSocialRecommendations(userId, nextPage, 12, filters, storedReactions)
       .then((results) => {
         // La pagina avanza siempre, incluso si esta vino vacia: si no, el mazo
         // queda trabado pidiendo eternamente la misma tanda ya reaccionada.
@@ -274,14 +292,45 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       .catch(() => {
         // Si falla una pagina, seguimos con el mazo que ya tenemos.
       });
-  }, [availableEntries.length, isLoadingDeck, page, userId, filters]);
+  }, [availableEntries.length, isLoadingDeck, page, userId, filters, storedReactions]);
 
   useEffect(() => {
+    let isMounted = true;
+    hasReactionSnapshotRef.current = false;
+    setAreReactionsReady(false);
+    setReactionSyncError(false);
+    setSyncMessage(null);
+    setEntries([]);
+    setCurrentIndex(0);
+    setIsLoadingDeck(true);
+    setIsInitialCardReady(false);
+    setDeckLoadError(false);
+
     async function loadStoredReactions() {
+      const requestId = ++reactionsRequestRef.current;
+
       try {
-        setStoredReactions(await fetchStoredReactions(userId));
+        const reactions = await fetchStoredReactions(userId);
+        if (isMounted && requestId === reactionsRequestRef.current) {
+          hasReactionSnapshotRef.current = true;
+          setStoredReactions(reactions);
+          setAreReactionsReady(true);
+          setReactionSyncError(false);
+        }
       } catch {
-        setSyncMessage("No pude sincronizar tus reacciones guardadas.");
+        if (isMounted && requestId === reactionsRequestRef.current) {
+          if (hasReactionSnapshotRef.current) {
+            setSyncMessage("No pude actualizar tus reacciones guardadas.");
+            return;
+          }
+
+          // Sin un snapshot completo no sabemos qué títulos ya marcó la
+          // persona. Mostrar el mazo en este punto puede repetirle una serie.
+          setEntries([]);
+          setIsLoadingDeck(false);
+          setIsInitialCardReady(true);
+          setReactionSyncError(true);
+        }
       }
     }
 
@@ -298,15 +347,20 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     window.addEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
 
     return () => {
+      isMounted = false;
       window.removeEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
     };
-  }, [userId]);
+  }, [userId, reactionReloadKey]);
 
   useEffect(() => {
     setCurrentIndex(0);
   }, [reactedKeys, entries]);
 
   function replaceStoredReaction(item: DiscoveryItem, reaction: StoredReaction["reaction"]) {
+    // Invalida una lectura iniciada antes del upsert para que no pise el
+    // estado optimista con una respuesta vieja.
+    reactionsRequestRef.current += 1;
+    hasReactionSnapshotRef.current = true;
     setStoredReactions((currentReactions) => [
       { tmdbId: item.id, mediaType: item.mediaType, reaction, createdAt: new Date().toISOString() },
       ...currentReactions.filter(
@@ -459,8 +513,8 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       }
 
       replaceStoredReaction(target, reaction);
-    } catch {
-      setSyncMessage("No pude guardar esta reaccion.");
+    } catch (error) {
+      setSyncMessage(getReactionSaveErrorMessage(error));
       return;
     } finally {
       setIsSyncing(false);
@@ -553,8 +607,8 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       if (spotlight && spotlight.id === reviewItem.id) {
         goNext();
       }
-    } catch {
-      setSyncMessage("No pude guardar tu reseña.");
+    } catch (error) {
+      setSyncMessage(getReactionSaveErrorMessage(error));
     } finally {
       setIsSyncing(false);
     }
@@ -572,16 +626,39 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   );
   const primaryProvider = selectedProviders[0] ?? null;
   const additionalProviderCount = Math.max(0, selectedProviders.length - 1);
-  const isDiscoverBooting = !areFiltersReady || isLoadingDeck || !isInitialCardReady;
+  const isDiscoverBooting =
+    !areFiltersReady || (!areReactionsReady && !reactionSyncError) || isLoadingDeck || !isInitialCardReady;
 
   return (
     <section className={`discover ${activeFilterCount ? "is-filtered" : ""}`}>
-      {isDiscoverBooting ? (
+      {reactionSyncError ? (
+        <div className="discover-empty-state">
+          <p className="section-eyebrow">Descubrí</p>
+          <h2>No pudimos revisar tus reacciones</h2>
+          <p>Para no mostrarte un título que ya marcaste, esperamos a recuperar tu historial.</p>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => setReactionReloadKey((value) => value + 1)}
+          >
+            Reintentar
+          </button>
+        </div>
+      ) : isDiscoverBooting ? (
         <div className="discover-loading-gate" role="status" aria-live="polite">
           <div className="discover-loading-gate__card">
             <p className="section-eyebrow">Descubrí</p>
             <LoadingState label="Armando tu ranking..." />
           </div>
+        </div>
+      ) : deckLoadError ? (
+        <div className="discover-empty-state">
+          <p className="section-eyebrow">Descubrí</p>
+          <h2>No pudimos actualizar el catálogo ahora</h2>
+          <p>Tus filtros siguen guardados. Volvé a intentarlo en un momento.</p>
+          <button type="button" className="primary-button" onClick={() => setDeckReloadKey((value) => value + 1)}>
+            Reintentar
+          </button>
         </div>
       ) : (
         <>

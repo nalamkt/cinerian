@@ -30,6 +30,15 @@ const ALL_REACTIONS: RecommendationReaction[] = [
   "ignored"
 ];
 
+// Protege el estado inmediato frente a lecturas que llegan tarde despues de un
+// upsert. Es un espejo breve: Supabase sigue siendo la fuente persistente y la
+// cache vence sola para no tapar cambios hechos desde otro dispositivo.
+const REACTION_CACHE_TTL_MS = 5 * 60 * 1000;
+const REACTION_CACHE_KEY_PREFIX = "cinerian.reactions.recent.";
+// PostgREST puede limitar una respuesta a 1.000 filas. Paginar evita que un
+// historial grande haga reaparecer reacciones antiguas como si no existieran.
+const REACTION_PAGE_SIZE = 1_000;
+
 export type StoredReaction = {
   tmdbId: number;
   mediaType: MediaType;
@@ -37,6 +46,110 @@ export type StoredReaction = {
   /** Cuando se guardo. Lo usa el recomendador para comparar contra tu circulo. */
   createdAt: string | null;
 };
+
+function reactionKey(entry: Pick<StoredReaction, "tmdbId" | "mediaType">) {
+  return `${entry.mediaType}-${entry.tmdbId}`;
+}
+
+function reactionTimestamp(value: string | null) {
+  const timestamp = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function readRecentReactionCache(userId: string): StoredReaction[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const stored = window.localStorage.getItem(`${REACTION_CACHE_KEY_PREFIX}${userId}`);
+    const parsed = stored ? (JSON.parse(stored) as unknown) : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const minimumTimestamp = Date.now() - REACTION_CACHE_TTL_MS;
+    return parsed.filter(
+      (entry): entry is StoredReaction =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as StoredReaction).tmdbId === "number" &&
+        ((entry as StoredReaction).mediaType === "movie" || (entry as StoredReaction).mediaType === "tv") &&
+        ALL_REACTIONS.includes((entry as StoredReaction).reaction) &&
+        reactionTimestamp((entry as StoredReaction).createdAt) >= minimumTimestamp
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentReactionCache(userId: string, reactions: StoredReaction[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      `${REACTION_CACHE_KEY_PREFIX}${userId}`,
+      JSON.stringify(reactions.slice(0, 100))
+    );
+  } catch {
+    // Un navegador en modo privado puede no permitir storage; Supabase sigue funcionando igual.
+  }
+}
+
+function mergeStoredReactions(...lists: StoredReaction[][]) {
+  const latestByTitle = new Map<string, StoredReaction>();
+
+  lists.flat().forEach((entry) => {
+    const key = reactionKey(entry);
+    const current = latestByTitle.get(key);
+    if (!current || reactionTimestamp(entry.createdAt) >= reactionTimestamp(current.createdAt)) {
+      latestByTitle.set(key, entry);
+    }
+  });
+
+  return [...latestByTitle.values()];
+}
+
+function cacheStoredReaction(userId: string, reaction: StoredReaction) {
+  writeRecentReactionCache(
+    userId,
+    mergeStoredReactions(readRecentReactionCache(userId), [reaction])
+  );
+}
+
+function removeCachedReaction(
+  userId: string,
+  item: DiscoveryItem,
+  predicate: (reaction: RecommendationReaction) => boolean
+) {
+  writeRecentReactionCache(
+    userId,
+    readRecentReactionCache(userId).filter(
+      (entry) =>
+        !(
+          entry.tmdbId === item.id &&
+          entry.mediaType === item.mediaType &&
+          predicate(entry.reaction)
+        )
+    )
+  );
+}
+
+export function getReactionSaveErrorMessage(error: unknown) {
+  const details = error as { code?: string; message?: string } | null;
+
+  if (details?.code === "23514") {
+    return "No pude guardar tu reacción porque falta actualizar la base de Cinerian.";
+  }
+
+  if (details?.code === "42501") {
+    return "No pude guardar tu reacción. Volvé a iniciar sesión e intentá otra vez.";
+  }
+
+  return "No pude guardar tu reacción. Intentá otra vez.";
+}
 
 function notifyReactionsUpdated(userId: string) {
   if (typeof window === "undefined") {
@@ -52,25 +165,44 @@ function notifyReactionsUpdated(userId: string) {
 
 export async function fetchStoredReactions(userId: string): Promise<StoredReaction[]> {
   if (!supabase) {
-    return [];
+    throw new Error("Supabase no está configurado.");
   }
 
-  const { data, error } = await supabase
-    .from("media_reactions")
-    .select("tmdb_id, media_type, reaction, created_at")
-    .eq("user_id", userId)
-    .in("reaction", ALL_REACTIONS);
+  const remoteReactions: StoredReaction[] = [];
+  let from = 0;
 
-  if (error) {
-    throw error;
+  while (true) {
+    const { data, error } = await supabase
+      .from("media_reactions")
+      .select("tmdb_id, media_type, reaction, created_at")
+      .eq("user_id", userId)
+      .in("reaction", ALL_REACTIONS)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + REACTION_PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    const page = data ?? [];
+    remoteReactions.push(
+      ...page.map((entry) => ({
+        tmdbId: Number(entry.tmdb_id),
+        mediaType: entry.media_type as MediaType,
+        reaction: entry.reaction as RecommendationReaction,
+        createdAt: (entry.created_at as string | null) ?? null
+      }))
+    );
+
+    if (page.length < REACTION_PAGE_SIZE) {
+      break;
+    }
+
+    from += page.length;
   }
 
-  return (data ?? []).map((entry) => ({
-    tmdbId: Number(entry.tmdb_id),
-    mediaType: entry.media_type as MediaType,
-    reaction: entry.reaction as RecommendationReaction,
-    createdAt: (entry.created_at as string | null) ?? null
-  }));
+  return mergeStoredReactions(remoteReactions, readRecentReactionCache(userId));
 }
 
 export async function saveStoredReaction(input: {
@@ -79,35 +211,55 @@ export async function saveStoredReaction(input: {
   reaction: RecommendationReaction;
 }) {
   if (!supabase) {
-    return;
+    throw new Error("Supabase no está configurado.");
   }
 
-  let deleteQuery = supabase
-    .from("media_reactions")
-    .delete()
-    .eq("user_id", input.userId)
-    .eq("tmdb_id", input.item.id)
-    .eq("media_type", input.item.mediaType);
-
-  deleteQuery = deleteQuery.in("reaction", ALL_REACTIONS);
-
-  const { error: deleteError } = await deleteQuery;
-  if (deleteError) {
-    throw deleteError;
-  }
-
-  const { error: insertError } = await supabase.from("media_reactions").insert({
+  const payload = {
     user_id: input.userId,
     tmdb_id: input.item.id,
     media_type: input.item.mediaType,
-    reaction: input.reaction
-  });
+    reaction: input.reaction,
+    created_at: new Date().toISOString()
+  };
 
-  if (insertError) {
-    throw insertError;
+  const { error: upsertError } = await supabase
+    .from("media_reactions")
+    .upsert(payload, { onConflict: "user_id,tmdb_id,media_type" });
+
+  // Compatibilidad temporal para instalaciones que todavia no aplicaron el
+  // indice unico. La migracion reactions_state_repair.sql vuelve el upsert
+  // atomico y elimina este camino alternativo en la practica.
+  if (upsertError?.code === "42P10") {
+    const { error: deleteError } = await supabase
+      .from("media_reactions")
+      .delete()
+      .eq("user_id", input.userId)
+      .eq("tmdb_id", input.item.id)
+      .eq("media_type", input.item.mediaType);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    const { error: insertError } = await supabase.from("media_reactions").insert(payload);
+    if (insertError) {
+      throw insertError;
+    }
+  } else if (upsertError) {
+    throw upsertError;
   }
 
-  await trackProductEvent({
+  cacheStoredReaction(input.userId, {
+    tmdbId: input.item.id,
+    mediaType: input.item.mediaType,
+    reaction: input.reaction,
+    createdAt: payload.created_at
+  });
+
+  // La telemetria no es parte de la transaccion de usuario. Si la tabla de
+  // eventos tiene RLS pendiente o esta deshabilitada, la reaccion ya guardada
+  // debe actualizar la UI y sacar el titulo del mazo igual.
+  void trackProductEvent({
     eventName: "reaction_saved",
     userId: input.userId,
     featureKey: "recommendations",
@@ -116,7 +268,7 @@ export async function saveStoredReaction(input: {
       mediaType: input.item.mediaType,
       reaction: input.reaction
     }
-  });
+  }).catch(() => undefined);
 
   notifyReactionsUpdated(input.userId);
 }
@@ -178,6 +330,7 @@ export async function removeStoredRatedReaction(userId: string, item: DiscoveryI
     throw error;
   }
 
+  removeCachedReaction(userId, item, isRatedReaction);
   notifyReactionsUpdated(userId);
 }
 
@@ -202,5 +355,6 @@ export async function removeStoredReaction(
     throw error;
   }
 
+  removeCachedReaction(userId, item, (currentReaction) => currentReaction === reaction);
   notifyReactionsUpdated(userId);
 }

@@ -760,11 +760,17 @@ export async function getRecommendationTitlesByPage(
     applyCommon(movieUrl);
     requests.push(
       fetch(movieUrl.toString())
-        .then((response) => (response.ok ? response.json() : { results: [] }))
-        .then((payload) => ({
-          mediaType: "movie" as MediaType,
-          results: (payload as { results?: Record<string, unknown>[] }).results ?? []
-        }))
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(`TMDB respondio ${response.status} para peliculas.`);
+          }
+
+          const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+          return {
+            mediaType: "movie" as MediaType,
+            results: payload.results ?? []
+          };
+        })
     );
   }
 
@@ -776,15 +782,30 @@ export async function getRecommendationTitlesByPage(
     }
     requests.push(
       fetch(tvUrl.toString())
-        .then((response) => (response.ok ? response.json() : { results: [] }))
-        .then((payload) => ({
-          mediaType: "tv" as MediaType,
-          results: (payload as { results?: Record<string, unknown>[] }).results ?? []
-        }))
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(`TMDB respondio ${response.status} para series.`);
+          }
+
+          const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+          return {
+            mediaType: "tv" as MediaType,
+            results: payload.results ?? []
+          };
+        })
     );
   }
 
-  const responses = await Promise.all(requests);
+  // Si falla una de las dos colecciones, seguimos con la otra. Pero si TMDB
+  // no devolvio ninguna, no disfrazamos una caida temporal como "no hay
+  // titulos": el panel puede ofrecer reintentar y conservar el mazo actual.
+  const settledResponses = await Promise.allSettled(requests);
+  const responses = settledResponses.flatMap((result) =>
+    result.status === "fulfilled" ? [result.value] : []
+  );
+  if (!responses.length) {
+    throw new Error("TMDB no pudo cargar el catalogo en este momento.");
+  }
 
   // Con un solo tipo pedido, esa lista se lleva todos los lugares del mazo.
   const perList = responses.length > 1 ? 8 : 16;
@@ -831,7 +852,17 @@ async function fetchCatalogCollection(
 
 export async function getTrendingTitles(): Promise<DiscoveryItem[]> {
   const items = await fetchCatalogCollection("/trending/all/week");
-  return items.slice(0, 6);
+  return items.slice(0, 10);
+}
+
+export async function getTitlesByGenre(genreId: number): Promise<DiscoveryItem[]> {
+  const items = await fetchDiscoveredCatalog("movie", {
+    with_genres: String(genreId),
+    sort_by: "popularity.desc",
+    "vote_count.gte": "80"
+  });
+
+  return items.slice(0, 10);
 }
 
 export async function getFeaturedTalent(): Promise<TalentSearchItem[]> {

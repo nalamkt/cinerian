@@ -296,6 +296,7 @@ export function ProfileTabs({
   }, [activeTab, visibleTabs]);
 
   const [typeFilter, setTypeFilter] = useState<"all" | "movie" | "tv">("all");
+  const [mutualFilter, setMutualFilter] = useState<"watched" | "watchlist">("watched");
   const [circleScores, setCircleScores] = useState<Map<string, CircleScore>>(new Map());
 
   // El puntaje del circulo solo se usa para ordenar la Watchlist: lo pedimos
@@ -324,8 +325,8 @@ export function ProfileTabs({
     };
   }, [activeTab, userId]);
 
-  const mutualLikedItems = useMemo(() => {
-    const viewerLikedKeys = new Set(
+  const mutualWatchedItems = useMemo(() => {
+    const viewerWatchedKeys = new Set(
       viewerReactions
         .filter((entry) => entry.reaction === "liked" || entry.reaction === "superliked")
         .map((entry) => `${entry.mediaType}-${entry.tmdbId}`)
@@ -333,15 +334,30 @@ export function ProfileTabs({
 
     return reactions
       .filter((entry) => entry.reaction === "liked" || entry.reaction === "superliked")
-      .filter((entry) => viewerLikedKeys.has(`${entry.mediaType}-${entry.tmdbId}`))
+      .filter((entry) => viewerWatchedKeys.has(`${entry.mediaType}-${entry.tmdbId}`))
       .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
-      .filter((item): item is DiscoveryItem => Boolean(item))
-      .filter((item) => typeFilter === "all" || item.mediaType === typeFilter);
-  }, [reactions, titles, typeFilter, viewerReactions]);
+      .filter((item): item is DiscoveryItem => Boolean(item));
+  }, [reactions, titles, viewerReactions]);
+
+  const mutualWatchlistItems = useMemo(() => {
+    const viewerWatchlistKeys = new Set(
+      viewerReactions
+        .filter((entry) => entry.reaction === "watchlist")
+        .map((entry) => `${entry.mediaType}-${entry.tmdbId}`)
+    );
+
+    return reactions
+      .filter((entry) => entry.reaction === "watchlist")
+      .filter((entry) => viewerWatchlistKeys.has(`${entry.mediaType}-${entry.tmdbId}`))
+      .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
+      .filter((item): item is DiscoveryItem => Boolean(item));
+  }, [reactions, titles, viewerReactions]);
+
+  const mutualItems = mutualFilter === "watched" ? mutualWatchedItems : mutualWatchlistItems;
 
   const tabItems = useMemo(() => {
     if (activeTab === "mutual-likes") {
-      return mutualLikedItems;
+      return mutualItems;
     }
 
     const tabReactions = TAB_REACTIONS[activeTab] ?? [];
@@ -382,7 +398,7 @@ export function ProfileTabs({
     }
 
     return items;
-  }, [activeTab, circleScores, mutualLikedItems, reactions, titles, typeFilter]);
+  }, [activeTab, circleScores, mutualItems, reactions, titles, typeFilter]);
 
   const reactionByTitle = useMemo(
     () => new Map(reactions.map((entry) => [`${entry.mediaType}-${entry.tmdbId}`, entry.reaction])),
@@ -394,7 +410,7 @@ export function ProfileTabs({
       (entry) => isRatedReaction(entry.reaction)
     ).length,
     watchlist: reactions.filter((entry) => entry.reaction === "watchlist").length,
-    "mutual-likes": mutualLikedItems.length,
+    "mutual-likes": mutualWatchedItems.length + mutualWatchlistItems.length,
     watching: watchingEntries.length,
     posts: posts.length
   };
@@ -860,34 +876,57 @@ export function ProfileTabs({
             <div className="profile-mutual-likes__intro">
               <p className="section-eyebrow">Punto en común</p>
               <h3>En común</h3>
-              <p>Películas y series que ambos vieron y marcaron como favoritas.</p>
+              <p>
+                {mutualFilter === "watched"
+                  ? "Películas y series que ambos vieron y marcaron como favoritas."
+                  : "Títulos que ambos guardaron para ver más adelante."}
+              </p>
             </div>
           ) : null}
 
           <div className="profile-list-toolbar">
-            <div className="profile-type-filter">
-              <button
-                type="button"
-                className={typeFilter === "all" ? "is-active" : ""}
-                onClick={() => setTypeFilter("all")}
-              >
-                Todo
-              </button>
-              <button
-                type="button"
-                className={typeFilter === "movie" ? "is-active" : ""}
-                onClick={() => setTypeFilter("movie")}
-              >
-                Peliculas
-              </button>
-              <button
-                type="button"
-                className={typeFilter === "tv" ? "is-active" : ""}
-                onClick={() => setTypeFilter("tv")}
-              >
-                Series
-              </button>
-            </div>
+            {activeTab === "mutual-likes" ? (
+              <div className="profile-type-filter">
+                <button
+                  type="button"
+                  className={mutualFilter === "watched" ? "is-active" : ""}
+                  onClick={() => setMutualFilter("watched")}
+                >
+                  Vistas
+                </button>
+                <button
+                  type="button"
+                  className={mutualFilter === "watchlist" ? "is-active" : ""}
+                  onClick={() => setMutualFilter("watchlist")}
+                >
+                  Watchlist
+                </button>
+              </div>
+            ) : (
+              <div className="profile-type-filter">
+                <button
+                  type="button"
+                  className={typeFilter === "all" ? "is-active" : ""}
+                  onClick={() => setTypeFilter("all")}
+                >
+                  Todo
+                </button>
+                <button
+                  type="button"
+                  className={typeFilter === "movie" ? "is-active" : ""}
+                  onClick={() => setTypeFilter("movie")}
+                >
+                  Peliculas
+                </button>
+                <button
+                  type="button"
+                  className={typeFilter === "tv" ? "is-active" : ""}
+                  onClick={() => setTypeFilter("tv")}
+                >
+                  Series
+                </button>
+              </div>
+            )}
 
             {activeTab === "watchlist" ? (
               <p className="profile-list-order">
@@ -927,7 +966,9 @@ export function ProfileTabs({
           ) : (
             <div className="profile-grid__empty">
               {activeTab === "mutual-likes"
-                ? "Todavía no tienen títulos que les hayan gustado a los dos."
+                ? mutualFilter === "watched"
+                  ? "Todavía no tienen títulos que les hayan gustado a los dos."
+                  : "Todavía no tienen títulos en Watchlist en común."
                 : activeTab === "watched"
                 ? isOwnProfile
                   ? "Todavia no marcaste titulos como vistos."

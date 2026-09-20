@@ -4,6 +4,7 @@ import type { DiscoveryItem } from "../types";
 
 type WatchReviewModalProps = {
   item: DiscoveryItem | null;
+  initialReaction?: RatedReaction | null;
   isSaving?: boolean;
   onClose: () => void;
   onSubmit: (input: { reaction: RatedReaction; comment: string }) => void;
@@ -31,7 +32,13 @@ function ThumbIcon({ down = false }: { down?: boolean }) {
   );
 }
 
-export function WatchReviewModal({ item, isSaving = false, onClose, onSubmit }: WatchReviewModalProps) {
+export function WatchReviewModal({
+  item,
+  initialReaction = null,
+  isSaving = false,
+  onClose,
+  onSubmit
+}: WatchReviewModalProps) {
   const [reaction, setReaction] = useState<RatedReaction | null>(null);
   const [comment, setComment] = useState("");
   const [isCommentOpen, setIsCommentOpen] = useState(false);
@@ -41,10 +48,10 @@ export function WatchReviewModal({ item, isSaving = false, onClose, onSubmit }: 
       return;
     }
 
-    setReaction(null);
+    setReaction(initialReaction);
     setComment("");
     setIsCommentOpen(false);
-  }, [item]);
+  }, [item, initialReaction]);
 
   if (!item) {
     return null;
@@ -65,7 +72,9 @@ export function WatchReviewModal({ item, isSaving = false, onClose, onSubmit }: 
           ×
         </button>
 
-        <p className="review-modal__kicker">Ya la viste · ¿Qué te pareció?</p>
+        <p className="review-modal__kicker">
+          {initialReaction ? "Cambiá tu puntuación" : "Ya la viste · ¿Qué te pareció?"}
+        </p>
 
         <div className="review-modal__head">
           {item.posterUrl ? (

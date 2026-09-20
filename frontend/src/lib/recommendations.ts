@@ -3,7 +3,8 @@ import { fetchFollowingUserIds } from "./follows";
 import {
   fetchRatedReactionsForUserIds,
   fetchStoredReactions,
-  type RatedReaction
+  type RatedReaction,
+  type StoredReaction
 } from "./reactions";
 import {
   getRecommendationTitlesByPage,
@@ -145,6 +146,18 @@ async function buildOwnGenreAffinity(userId: string): Promise<Set<string>> {
  */
 const MAX_BACKFILL_PAGES = 8;
 
+/**
+ * Cada "pagina" del mazo escanea MAX_BACKFILL_PAGES paginas reales de TMDB.
+ * Si el siguiente intento arrancara en `page + 1`, volveria a mirar casi todo
+ * el bloque anterior y podria declarar vacio el catalogo despues de revisar
+ * solo los primeros populares. Los bloques contiguos permiten seguir buscando
+ * aunque el usuario ya haya reaccionado cientos de titulos.
+ */
+function catalogPageForDeckPage(page: number) {
+  const deckPage = Math.max(1, Math.floor(page));
+  return 1 + (deckPage - 1) * MAX_BACKFILL_PAGES;
+}
+
 async function collectFillerTitles(
   startPage: number,
   needed: number,
@@ -154,6 +167,9 @@ async function collectFillerTitles(
 ): Promise<DiscoveryItem[]> {
   const picked: DiscoveryItem[] = [];
   const seen = new Set(alreadyPicked);
+  const tmdbFilteredFallback: DiscoveryItem[] = [];
+  let successfulCatalogPages = 0;
+  let failedCatalogPages = 0;
 
   // El buscador de TMDB acota pero no garantiza: aplica proveedor y tipo de
   // monetizacion por separado, asi que cuela titulos que en esa plataforma solo
@@ -161,7 +177,15 @@ async function collectFillerTitles(
   const needsVerification = filters.providerIds.length > 0 || filters.contentType !== "all";
 
   for (let offset = 0; offset < MAX_BACKFILL_PAGES && picked.length < needed; offset += 1) {
-    const batch = await getRecommendationTitlesByPage(startPage + offset, filters);
+    let batch: DiscoveryItem[];
+    try {
+      batch = await getRecommendationTitlesByPage(startPage + offset, filters);
+      successfulCatalogPages += 1;
+    } catch {
+      // Una pagina puntual de TMDB no debe cancelar el resto del catalogo.
+      failedCatalogPages += 1;
+      continue;
+    }
     if (!batch.length) {
       break;
     }
@@ -175,6 +199,12 @@ async function collectFillerTitles(
       seen.add(key);
       return true;
     });
+
+    // Esta lista ya viene de `discover` con región, plataforma y flatrate.
+    // Solo se usa si la verificación detallada no pudo validar NI una carta:
+    // así una respuesta incompleta/rate-limit de fichas no convierte miles de
+    // resultados válidos de TMDB en un mazo vacío.
+    tmdbFilteredFallback.push(...fresh);
 
     if (!needsVerification) {
       picked.push(...fresh.slice(0, needed - picked.length));
@@ -200,6 +230,14 @@ async function collectFillerTitles(
     }
   }
 
+  if (successfulCatalogPages === 0 && failedCatalogPages > 0) {
+    throw new Error("TMDB no pudo cargar paginas del catalogo.");
+  }
+
+  if (picked.length === 0 && tmdbFilteredFallback.length) {
+    return tmdbFilteredFallback.slice(0, needed);
+  }
+
   return picked;
 }
 
@@ -209,8 +247,6 @@ type ScoredCandidate = {
   /** Suma cruda de pesos. El puntaje final la promedia (ver SCORE_SMOOTHING). */
   weightSum: number;
   watcherIds: Array<{ userId: string; reaction: RatedReaction }>;
-  /** Alguien del circulo lo marco como gustado despues de que vos lo ignoraras. */
-  hasLikeAfterIgnore: boolean;
 };
 
 function socialScoreOf(candidate: ScoredCandidate) {
@@ -270,41 +306,51 @@ export async function fetchSocialRecommendations(
   userId: string,
   page: number,
   limit = 12,
-  filters: DiscoverFilters = NO_FILTERS
+  filters: DiscoverFilters = NO_FILTERS,
+  knownReactions: StoredReaction[] = []
 ): Promise<RankedRecommendation[]> {
-  const [followingIds, ownReactions] = await Promise.all([
-    fetchFollowingUserIds(userId),
-    fetchStoredReactions(userId)
-  ]);
+  const [followingResult] = await Promise.allSettled([fetchFollowingUserIds(userId)]);
+  const followingIds = followingResult.status === "fulfilled" ? followingResult.value : [];
 
-  // Lo que ya viste o guardaste no vuelve nunca. Los que ignoraste van aparte:
-  // pueden reaparecer si tu circulo los recomienda despues (ver mas abajo).
+  // El panel valida este snapshot antes de pedir el mazo. Consultarlo de nuevo
+  // acá podía devolver una lectura vieja y pisar una reacción que ya se había
+  // confirmado, ofreciendo otra vez la misma tarjeta.
+  const reactionsByTitle = new Map<string, StoredReaction>();
+  knownReactions.forEach((reaction) => {
+    const key = candidateKey(reaction.mediaType, reaction.tmdbId);
+    const current = reactionsByTitle.get(key);
+    const currentTime = current?.createdAt ? new Date(current.createdAt).getTime() : 0;
+    const reactionTime = reaction.createdAt ? new Date(reaction.createdAt).getTime() : 0;
+    if (!current || reactionTime >= currentTime) {
+      reactionsByTitle.set(key, reaction);
+    }
+  });
+  const resolvedOwnReactions = [...reactionsByTitle.values()];
+
+  // Cualquier reacción saca el título del mazo. "No me interesa" es una
+  // decisión explícita de la persona y no debe volver, ni siquiera por una
+  // recomendación nueva de su círculo.
   const excludedKeys = new Set(
-    ownReactions
-      .filter((reaction) => reaction.reaction !== "ignored")
+    resolvedOwnReactions
       .map((reaction) => candidateKey(reaction.mediaType, reaction.tmdbId))
   );
 
-  const ignoredAt = new Map<string, number>(
-    ownReactions
-      .filter((reaction) => reaction.reaction === "ignored")
-      .map((reaction) => [
-        candidateKey(reaction.mediaType, reaction.tmdbId),
-        reaction.createdAt ? new Date(reaction.createdAt).getTime() : 0
-      ])
-  );
-
   if (followingIds.length === 0) {
-    // Sin circulo no hay señal que pueda pisar un skip: se excluyen todos.
-    const allSeen = new Set([...excludedKeys, ...ignoredAt.keys()]);
-    const filler = await collectFillerTitles(page, limit, allSeen, filters);
+    const filler = await collectFillerTitles(
+      catalogPageForDeckPage(page),
+      limit,
+      excludedKeys,
+      filters
+    );
     return filler.map((item) => ({ item, rank: null, watchers: [] }));
   }
 
-  const [followedRated, genreAffinity] = await Promise.all([
+  const [followedRatedResult, genreAffinityResult] = await Promise.allSettled([
     fetchRatedReactionsForUserIds(followingIds),
     buildOwnGenreAffinity(userId)
   ]);
+  const followedRated = followedRatedResult.status === "fulfilled" ? followedRatedResult.value : [];
+  const genreAffinity = genreAffinityResult.status === "fulfilled" ? genreAffinityResult.value : new Set<string>();
 
   // 1) Puntaje social, agrupando por titulo.
   const candidates = new Map<string, ScoredCandidate>();
@@ -319,23 +365,11 @@ export async function fetchSocialRecommendations(
       tmdbId: reaction.tmdbId,
       mediaType: reaction.mediaType,
       weightSum: 0,
-      watcherIds: [],
-      hasLikeAfterIgnore: false
+      watcherIds: []
     };
 
-    const positive = reaction.reaction !== "disliked";
     entry.weightSum += REACTION_WEIGHT[reaction.reaction];
     entry.watcherIds.push({ userId: reaction.userId, reaction: reaction.reaction });
-
-    // La señal social pisa tu skip, pero solo si es NUEVA: un "me gusto"
-    // anterior a tu skip ya estaba en la tarjeta cuando la pasaste de largo,
-    // asi que insistir seria ignorar una decision que tomaste informado.
-    if (positive && ignoredAt.has(key)) {
-      const likedAt = reaction.createdAt ? new Date(reaction.createdAt).getTime() : 0;
-      if (likedAt > (ignoredAt.get(key) ?? 0)) {
-        entry.hasLikeAfterIgnore = true;
-      }
-    }
 
     candidates.set(key, entry);
   });
@@ -352,8 +386,7 @@ export async function fetchSocialRecommendations(
         return false;
       }
 
-      const key = candidateKey(candidate.mediaType, candidate.tmdbId);
-      return ignoredAt.has(key) ? candidate.hasLikeAfterIgnore : true;
+      return true;
     })
     .sort((left, right) => {
       const diff = socialScoreOf(right) - socialScoreOf(left);
@@ -400,7 +433,12 @@ export async function fetchSocialRecommendations(
   const neededProfileIds = [
     ...new Set(detailed.flatMap((entry) => entry.watcherIds.map((watcher) => watcher.userId)))
   ];
-  const profiles = await fetchProfileSummaries(neededProfileIds);
+  let profiles: ProfileSummary[] = [];
+  try {
+    profiles = await fetchProfileSummaries(neededProfileIds);
+  } catch {
+    // La ficha de perfil es decorativa; sin ella el catalogo igual se muestra.
+  }
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
 
   const ranked: RankedRecommendation[] = detailed.map((entry) => ({
@@ -420,13 +458,16 @@ export async function fetchSocialRecommendations(
     return ranked;
   }
 
-  // 5) Relleno: populares de TMDB, sin puesto ni prueba social. Aca los
-  //    ignorados si quedan afuera: sin señal social nueva no hay motivo para
-  //    volver a mostrar algo que ya pasaste de largo.
+  // 5) Relleno: populares de TMDB, sin puesto ni prueba social.
   const seenKeys = new Set(ranked.map((entry) => candidateKey(entry.item.mediaType, entry.item.id)));
-  const fillerExcluded = new Set([...excludedKeys, ...ignoredAt.keys()]);
   const filler = (
-    await collectFillerTitles(page, limit - ranked.length, fillerExcluded, filters, seenKeys)
+    await collectFillerTitles(
+      catalogPageForDeckPage(page),
+      limit - ranked.length,
+      excludedKeys,
+      filters,
+      seenKeys
+    )
   ).map((item) => ({ item, rank: null, watchers: [] as Watcher[] }));
 
   return [...ranked, ...filler];

@@ -14,7 +14,7 @@ import { VisualReadyGate } from "./components/VisualReadyGate";
 import { WelcomeOnboarding } from "./components/WelcomeOnboarding";
 import { useAuth } from "./hooks/useAuth";
 import { usePublicFeatureFlags } from "./hooks/usePublicFeatureFlags";
-import { getAccessControl, type AppView } from "./lib/access";
+import { getAccessControl, isAppView, type AppView } from "./lib/access";
 import { trackProductEvent } from "./lib/analytics";
 import { signOut } from "./lib/auth";
 import { fetchDiscoverFilters } from "./lib/discoverFilters";
@@ -30,6 +30,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "./lib/auth";
 export const FEED_SCROLL_TO_TOP_EVENT = "cinerian:feed-scroll-to-top";
 export const FEED_REFRESH_EDITORIAL_EVENT = "cinerian:feed-refresh-editorial";
+const ACTIVE_VIEW_STORAGE_KEY = "cinerian:active-view";
+
+function getStoredActiveView(userId: string) {
+  try {
+    const storedView = window.localStorage.getItem(`${ACTIVE_VIEW_STORAGE_KEY}:${userId}`);
+    return isAppView(storedView) ? storedView : null;
+  } catch {
+    return null;
+  }
+}
 
 function DockIcon({ id, badgeCount = 0 }: { id: AppView; badgeCount?: number }) {
   if (id === "feed") {
@@ -107,6 +117,7 @@ export default function App() {
   const sessionUserId = session?.user.id ?? null;
   const [localProfile, setLocalProfile] = useState<Profile | null>(profile);
   const [activeView, setActiveView] = useState<AppView>("feed");
+  const [isActiveViewRestored, setIsActiveViewRestored] = useState(false);
   const [unreadInboxCount, setUnreadInboxCount] = useState(0);
   const [highlightedFeedPost, setHighlightedFeedPost] = useState<{
     postId: string;
@@ -124,6 +135,8 @@ export default function App() {
   const viewSessionRef = useRef<ViewSessionRef | null>(null);
   const followSuggestionsLoginRef = useRef<string | null>(null);
   const hasAppliedDefaultViewRef = useRef(false);
+  const restoredActiveViewUserRef = useRef<string | null>(null);
+  const persistedActiveViewUserRef = useRef<string | null>(null);
   const accessControl = useMemo(
     () =>
       getAccessControl({
@@ -181,6 +194,9 @@ export default function App() {
 
     if (!sessionUserId) {
       followSuggestionsLoginRef.current = null;
+      restoredActiveViewUserRef.current = null;
+      persistedActiveViewUserRef.current = null;
+      setIsActiveViewRestored(false);
       setShowWelcomeOnboarding(false);
       setShowFollowSuggestions(false);
       return () => {
@@ -197,11 +213,15 @@ export default function App() {
     const userId = sessionUserId;
     const profileForOnboarding = localProfile;
     followSuggestionsLoginRef.current = userId;
-    setSelectedProfileRoute(null);
     hasAppliedDefaultViewRef.current = false;
-    setActiveView(defaultView);
-    if (window.location.pathname !== "/") {
-      window.history.replaceState({}, "", "/");
+
+    if (!selectedProfileRoute) {
+      setActiveView(getStoredActiveView(userId) ?? defaultView);
+      restoredActiveViewUserRef.current = userId;
+      setIsActiveViewRestored(true);
+      if (window.location.pathname !== "/") {
+        window.history.replaceState({}, "", "/");
+      }
     }
 
     async function checkOnboarding() {
@@ -222,7 +242,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, [defaultView, localProfile, sessionUserId]);
+  }, [defaultView, localProfile, selectedProfileRoute, sessionUserId]);
 
   useEffect(() => {
     const inviteCode = new URLSearchParams(window.location.search).get("invite");
@@ -245,16 +265,45 @@ export default function App() {
   }, [accessControl, activeView, defaultView, selectedProfileRoute, visibleDockItems]);
 
   useEffect(() => {
-    if (hasAppliedDefaultViewRef.current || isLoadingPublicConfiguration || selectedProfileRoute) {
+    if (hasAppliedDefaultViewRef.current || isLoadingPublicConfiguration || selectedProfileRoute || !sessionUserId) {
       return;
     }
 
-    const initialView = accessControl.canAccessView(defaultView)
-      ? defaultView
+    const storedView = sessionUserId ? getStoredActiveView(sessionUserId) : null;
+    const initialView = storedView && accessControl.canAccessView(storedView)
+      ? storedView
+      : accessControl.canAccessView(defaultView)
+        ? defaultView
       : visibleDockItems[0]?.id ?? "user";
     setActiveView(initialView);
     hasAppliedDefaultViewRef.current = true;
-  }, [accessControl, defaultView, isLoadingPublicConfiguration, selectedProfileRoute, visibleDockItems]);
+    restoredActiveViewUserRef.current = sessionUserId;
+    setIsActiveViewRestored(true);
+  }, [accessControl, defaultView, isLoadingPublicConfiguration, selectedProfileRoute, sessionUserId, visibleDockItems]);
+
+  useEffect(() => {
+    if (sessionUserId && persistedActiveViewUserRef.current !== sessionUserId) {
+      // Nunca persistas durante el primer render de una sesión: todavía puede
+      // estar aplicándose la vista que quedó guardada para esa persona.
+      persistedActiveViewUserRef.current = sessionUserId;
+      return;
+    }
+
+    if (
+      !sessionUserId ||
+      selectedProfileRoute ||
+      !isActiveViewRestored ||
+      restoredActiveViewUserRef.current !== sessionUserId
+    ) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(`${ACTIVE_VIEW_STORAGE_KEY}:${sessionUserId}`, activeView);
+    } catch {
+      // La navegacion sigue funcionando aunque el navegador bloquee el almacenamiento local.
+    }
+  }, [activeView, isActiveViewRestored, selectedProfileRoute, sessionUserId]);
 
   const ownProfileAction = useMemo(() => {
     return (
@@ -582,7 +631,7 @@ export default function App() {
 
         <div className="auth-shell__form">
           {error ? <div className="app-alert">{error}</div> : null}
-          {isLoading ? <div className="app-alert">Cargando sesión...</div> : null}
+          {isLoading ? <div className="app-alert app-alert--session-status">Cargando sesión...</div> : null}
           <AuthPanel isSupabaseReady={hasSupabaseEnv} />
         </div>
       </div>
@@ -608,7 +657,7 @@ export default function App() {
 
       <div className="app-shell app-shell--immersive">
         {error ? <div className="app-alert app-alert--floating">{error}</div> : null}
-        {isLoading ? <div className="app-alert app-alert--floating">Cargando sesion...</div> : null}
+        {isLoading ? <div className="app-alert app-alert--session-status">Cargando sesión...</div> : null}
 
         <main className="workspace-grid workspace-grid--immersive">
           <nav className="dock">
