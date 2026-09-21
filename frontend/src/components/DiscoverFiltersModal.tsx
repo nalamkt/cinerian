@@ -116,8 +116,8 @@ export function DiscoverFiltersModal({
         <div className="filters-group">
           <p className="filters-group__label">Tus plataformas</p>
           <p className="filters-group__help">
-            Solo te vamos a recomendar cosas que puedas ver acá. Sin ninguna marcada, te mostramos
-            todo.
+            Solo te vamos a recomendar títulos incluidos con suscripción en Argentina. Sin ninguna
+            marcada, te mostramos los disponibles en cualquier plataforma.
           </p>
 
           <div className="filters-search">

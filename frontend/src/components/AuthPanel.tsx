@@ -211,19 +211,35 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
           <>
             <label className="auth-field" htmlFor="auth-code">
               <span className="sr-only">Código del email</span>
+              <span className="auth-code-boxes" aria-hidden="true">
+                {Array.from({ length: 8 }, (_, index) => (
+                  <span
+                    key={index}
+                    className={`auth-code-box ${otpCode.length === index ? "is-active" : ""}`}
+                  >
+                    {otpCode[index] ?? ""}
+                  </span>
+                ))}
+              </span>
               <input
                 id="auth-code"
                 ref={codeInputRef}
                 type="text"
-                inputMode="text"
+                inputMode="numeric"
+                pattern="[0-9]{8}"
+                maxLength={8}
                 autoComplete="one-time-code"
+                enterKeyHint="done"
+                autoCapitalize="none"
+                spellCheck={false}
                 className="auth-code-input"
                 value={otpCode}
                 onChange={(event) =>
-                  setOtpCode(event.target.value.replace(/\s/g, "").slice(0, 12))
+                  // Keep this as text so a valid code can start with zero.
+                  setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 8))
                 }
-                placeholder="Pegá el código del email"
                 required
+                disabled={isSubmitting}
               />
             </label>
 

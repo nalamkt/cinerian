@@ -339,7 +339,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
                 <h2>Peliculas y series</h2>
               </div>
               <div className="card-list">
-                {results.slice(0, 8).map((item) => {
+                {results.map((item) => {
             const reaction = reactionMap[`${item.mediaType}-${item.id}`];
             const watchedReaction = isWatchedReaction(reaction) ? reaction : null;
 

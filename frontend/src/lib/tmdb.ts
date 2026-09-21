@@ -17,6 +17,7 @@ const baseUrl = "https://api.themoviedb.org/3";
 const imageBase = "https://image.tmdb.org/t/p/w500";
 const backdropBase = "https://image.tmdb.org/t/p/original";
 const profileBase = "https://image.tmdb.org/t/p/w300";
+const WATCH_REGION = "AR";
 
 const MOVIE_GENRE_LABELS: Record<number, string> = {
   12: "Aventura",
@@ -88,6 +89,47 @@ function isSupportedCatalogResult(item: Record<string, unknown>) {
     hasUsefulOverview(item) &&
     isAllowedOriginalLanguage(item.original_language)
   );
+}
+
+// Descubri ya valida que el titulo este incluido con una suscripcion en AR.
+// No usamos el idioma original como proxy de relevancia: una serie alemana,
+// coreana o japonesa disponible localmente tambien es una recomendacion valida.
+function isSupportedDiscoverResult(item: Record<string, unknown>) {
+  return hasDisplayTitle(item) && hasUsefulArtwork(item) && hasUsefulOverview(item);
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es-AR")
+    .trim();
+}
+
+function searchMatchRank(item: Record<string, unknown>, normalizedQuery: string) {
+  const names = [item.title, item.name, item.original_title, item.original_name]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map(normalizeSearchText);
+
+  if (names.some((name) => name === normalizedQuery)) {
+    return 0;
+  }
+
+  if (names.some((name) => name.startsWith(normalizedQuery))) {
+    return 1;
+  }
+
+  if (names.some((name) => name.includes(normalizedQuery))) {
+    return 2;
+  }
+
+  return 3;
+}
+
+function popularityOf(item: Record<string, unknown>) {
+  return typeof item.popularity === "number" && Number.isFinite(item.popularity)
+    ? item.popularity
+    : 0;
 }
 
 function normalizeLanguage(code: string | null) {
@@ -805,11 +847,23 @@ export async function searchTitles(query: string): Promise<DiscoveryItem[]> {
     throw new Error(`TMDB respondio ${response.status}`);
   }
 
+  const normalizedQuery = normalizeSearchText(query);
   const payload = (await response.json()) as { results?: Record<string, unknown>[] };
   return (payload.results ?? [])
     .filter((item) => item.media_type === "movie" || item.media_type === "tv")
-    .filter(isSupportedCatalogResult)
-    .slice(0, 8)
+    // Buscar es una intencion explicita: nunca descartamos un titulo porque
+    // no tenga sinopsis, poster, idioma ingles/español o disponibilidad que
+    // TMDB todavia no haya actualizado para Argentina.
+    .filter(hasDisplayTitle)
+    .sort((left, right) => {
+      const matchDifference = searchMatchRank(left, normalizedQuery) - searchMatchRank(right, normalizedQuery);
+      if (matchDifference !== 0) {
+        return matchDifference;
+      }
+
+      return popularityOf(right) - popularityOf(left);
+    })
+    .slice(0, 20)
     .map(normalizeItem);
 }
 
@@ -819,7 +873,7 @@ export async function getRecommendationTitles(): Promise<DiscoveryItem[]> {
 
 /** Filtros que el usuario elige en Descubri. */
 export type DiscoverFilters = {
-  /** provider_id de TMDB. Vacio = sin filtrar por plataforma. */
+  /** provider_id de TMDB. Vacio = cualquier suscripcion disponible en AR. */
   providerIds: number[];
   contentType: "all" | "movie" | "series" | "mini";
 };
@@ -850,15 +904,18 @@ export async function getRecommendationTitlesByPage(
     url.searchParams.set("sort_by", "popularity.desc");
     url.searchParams.set("page", String(page));
 
-    // Acota del lado de TMDB, pero NO alcanza para garantizar: TMDB aplica
-    // proveedor y tipo de monetizacion como condiciones separadas, asi que
-    // devuelve titulos que estan en esa plataforma para comprar y tienen
-    // suscripcion en otra. Por eso quien consuma esto tiene que verificar
-    // cada titulo contra los proveedores reales antes de mostrarlo.
+    // Descubri es regional: solo parte de titulos incluidos con suscripcion
+    // en Argentina. Con proveedores seleccionados, "|" significa cualquiera
+    // de ellos, no todos a la vez.
+    url.searchParams.set("watch_region", WATCH_REGION);
+    url.searchParams.set("with_watch_monetization_types", "flatrate");
+
+    // Esto acota del lado de TMDB, pero NO alcanza para garantizar: TMDB
+    // aplica proveedor y tipo de monetizacion como condiciones separadas.
+    // Quien consuma estos resultados vuelve a verificar los proveedores
+    // reales antes de mostrar cada tarjeta.
     if (filters.providerIds.length) {
       url.searchParams.set("with_watch_providers", filters.providerIds.join("|"));
-      url.searchParams.set("watch_region", WATCH_REGION);
-      url.searchParams.set("with_watch_monetization_types", "flatrate");
     }
   }
 
@@ -921,7 +978,7 @@ export async function getRecommendationTitlesByPage(
 
   return responses.flatMap((response) =>
     response.results
-      .filter(isSupportedCatalogResult)
+      .filter(isSupportedDiscoverResult)
       .slice(0, perList)
       .map((item) => normalizeItem({ ...item, media_type: response.mediaType }))
   );
@@ -1229,7 +1286,6 @@ export type WatchOptions = {
 };
 
 const PROVIDER_LOGO_BASE = "https://image.tmdb.org/t/p/w92";
-const WATCH_REGION = "AR";
 
 function mapProviders(list: unknown, title: string, fallback: string | null): WatchProvider[] {
   if (!Array.isArray(list)) {
@@ -1255,7 +1311,7 @@ function mapProviders(list: unknown, title: string, fallback: string | null): Wa
 
 function getWatchOptions(payload: Record<string, unknown>, title: string): WatchOptions {
   const results = payload.results as Record<string, Record<string, unknown>> | undefined;
-  const regional = results?.AR ?? results?.US;
+  const regional = results?.[WATCH_REGION];
 
   if (!regional) {
     return { flatrate: [], hasRentOrBuy: false, link: null };

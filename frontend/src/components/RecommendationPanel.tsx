@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { LoadingState } from "./LoadingState";
+import { RatedReactionIcon } from "./RatedReactionIcon";
 import { createFeedPost, removeFeedEvent } from "../lib/feed";
 import {
   fetchStoredReactions,
@@ -42,6 +43,125 @@ type RecommendationPanelProps = {
  */
 const MAX_DECK_PAGES = 20;
 const EMPTY_WATCH: WatchOptions = { flatrate: [], hasRentOrBuy: false, link: null };
+const LONG_PRESS_MS = 420;
+const QUICK_RATE_DISTANCE_PX = 34;
+const SWIPE_EXIT_DURATION_MS = 280;
+
+type SwipeDirection = "left" | "right" | "up";
+
+type QuickRateChoice = {
+  reaction: RatedReaction;
+  direction: SwipeDirection;
+  label: string;
+};
+
+type RecommendationPayload = {
+  details: MediaDetails | null;
+  watchOptions: WatchOptions;
+};
+
+const QUICK_RATE_CHOICES: QuickRateChoice[] = [
+  { reaction: "disliked", direction: "left", label: "No me gustó" },
+  { reaction: "superliked", direction: "up", label: "Me encantó" },
+  { reaction: "liked", direction: "right", label: "Me gustó" }
+];
+
+const recommendationPayloadCache = new Map<string, Promise<RecommendationPayload>>();
+
+function itemKey(item: Pick<DiscoveryItem, "id" | "mediaType">) {
+  return `${item.mediaType}-${item.id}`;
+}
+
+function preloadPoster(posterUrl: string) {
+  if (!posterUrl || typeof Image === "undefined") {
+    return Promise.resolve();
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.src = posterUrl;
+  if (typeof image.decode === "function") {
+    return image.decode().catch(() => undefined);
+  }
+
+  return new Promise<void>((resolve) => {
+    image.addEventListener("load", () => resolve(), { once: true });
+    image.addEventListener("error", () => resolve(), { once: true });
+  });
+}
+
+function loadRecommendationPayload(item: DiscoveryItem) {
+  const key = itemKey(item);
+  const cached = recommendationPayloadCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const request = Promise.all([
+    getTitleDetails(item.id, item.mediaType),
+    getWatchOptionsFor(item.id, item.mediaType, item.title)
+  ])
+    .then(([details, watchOptions]) => ({ details, watchOptions }))
+    .catch(() => {
+      // Una falla transitoria no merece dejar la ficha inutilizable durante
+      // toda la sesion: el proximo intento vuelve a pedir sus datos.
+      recommendationPayloadCache.delete(key);
+      return { details: null, watchOptions: EMPTY_WATCH };
+    });
+
+  recommendationPayloadCache.set(key, request);
+  return request;
+}
+
+function getQuickRateChoice(deltaX: number, deltaY: number) {
+  const horizontalDistance = Math.abs(deltaX);
+  const verticalDistance = Math.abs(deltaY);
+
+  if (Math.max(horizontalDistance, verticalDistance) < QUICK_RATE_DISTANCE_PX) {
+    return null;
+  }
+
+  if (deltaY < 0 && verticalDistance > horizontalDistance) {
+    return QUICK_RATE_CHOICES[1];
+  }
+
+  if (horizontalDistance >= verticalDistance && deltaX < 0) {
+    return QUICK_RATE_CHOICES[0];
+  }
+
+  return horizontalDistance >= verticalDistance && deltaX > 0 ? QUICK_RATE_CHOICES[2] : null;
+}
+
+function waitForSwipeExit() {
+  if (
+    typeof window === "undefined" ||
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  ) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, SWIPE_EXIT_DURATION_MS);
+  });
+}
+
+function waitForNextPaint() {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+
+  // Dos frames garantizan que React llegue a montar la tarjeta de respaldo
+  // antes de empezar a mover la tarjeta que el usuario esta viendo.
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+function isMobileDiscoverView() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 680px)").matches;
+}
 
 /**
  * "A Isidoro y 2 mas les gusto" — solo cuenta a quienes les gusto o les encanto.
@@ -99,14 +219,30 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
   const [spotlightDetails, setSpotlightDetails] = useState<MediaDetails | null>(null);
   const [watchOptions, setWatchOptions] = useState<WatchOptions>(EMPTY_WATCH);
+  const [nextPayload, setNextPayload] = useState<{
+    key: string;
+    payload: RecommendationPayload;
+  } | null>(null);
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
   const [isOverviewClamped, setIsOverviewClamped] = useState(false);
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
+  const [isQuickRateActive, setIsQuickRateActive] = useState(false);
+  const [quickRateChoice, setQuickRateChoice] = useState<QuickRateChoice | null>(null);
+  const [cardExitDirection, setCardExitDirection] = useState<SwipeDirection | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const overviewRef = useRef<HTMLParagraphElement | null>(null);
   const providerSummaryRef = useRef<HTMLDivElement | null>(null);
   const reactionsRequestRef = useRef(0);
   const hasReactionSnapshotRef = useRef(false);
+  const quickRateGestureRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    timer: number | null;
+    isActive: boolean;
+    wasDragged: boolean;
+  } | null>(null);
+  const suppressWatchedClickRef = useRef(false);
 
   useEffect(() => {
     if (!isProviderSummaryOpen) {
@@ -148,11 +284,54 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     ? availableEntries[currentIndex % availableEntries.length]
     : null;
   const spotlight = current?.item ?? null;
+  const nextEntry = useMemo(() => {
+    if (availableEntries.length < 2) {
+      return null;
+    }
+
+    return availableEntries[(currentIndex + 1) % availableEntries.length] ?? null;
+  }, [availableEntries, currentIndex]);
+  const nextSpotlight = nextEntry?.item ?? null;
+  const preparedNextPayload =
+    nextSpotlight && nextPayload?.key === itemKey(nextSpotlight) ? nextPayload.payload : null;
 
   const socialLine = useMemo(
     () => (current ? buildSocialLine(current.watchers) : null),
     [current]
   );
+
+  // La ficha siguiente se deja lista mientras la actual esta en pantalla. El
+  // cache comparte estos pedidos con el efecto que pinta sus datos al avanzar.
+  useEffect(() => {
+    if (!nextSpotlight) {
+      setNextPayload(null);
+      return;
+    }
+
+    let isMounted = true;
+    const key = itemKey(nextSpotlight);
+
+    void Promise.all([loadRecommendationPayload(nextSpotlight), preloadPoster(nextSpotlight.posterUrl)]).then(
+      ([payload]) => {
+        if (isMounted) {
+          setNextPayload({ key, payload });
+        }
+      }
+    );
+
+    return () => {
+      isMounted = false;
+    };
+  }, [nextSpotlight]);
+
+  useEffect(() => {
+    return () => {
+      const gesture = quickRateGestureRef.current;
+      if (gesture && gesture.timer !== null) {
+        window.clearTimeout(gesture.timer);
+      }
+    };
+  }, []);
 
   // Los filtros se cargan primero: armar el mazo sin ellos mostraria una tanda
   // que no los respeta y habria que descartarla al instante.
@@ -385,23 +564,14 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
 
     let isMounted = true;
 
-    void Promise.all([
-      getTitleDetails(spotlight.id, spotlight.mediaType),
-      getWatchOptionsFor(spotlight.id, spotlight.mediaType, spotlight.title)
-    ])
-      .then(([details, watch]) => {
+    void loadRecommendationPayload(spotlight)
+      .then(({ details, watchOptions: nextWatchOptions }) => {
         if (!isMounted) {
           return;
         }
 
         setSpotlightDetails(details);
-        setWatchOptions(watch);
-      })
-      .catch(() => {
-        if (isMounted) {
-          setSpotlightDetails(null);
-          setWatchOptions(EMPTY_WATCH);
-        }
+        setWatchOptions(nextWatchOptions);
       })
       .finally(() => {
         if (isMounted) {
@@ -480,12 +650,33 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
     // contenido sin que la caja cambie de tamaño, asi que hay que remedir.
   }, [spotlight, spotlightDetails, watchOptions, isOverviewOpen]);
 
-  function goNext() {
-    if (!availableEntries.length) {
+  async function animateCurrentCardOut(target: DiscoveryItem) {
+    const isCurrentCard =
+      spotlight?.id === target.id && spotlight.mediaType === target.mediaType;
+
+    // El mazo visual existe solo en mobile. En desktop mantenemos el cambio
+    // inmediato que ya tenia la vista, sin demorar la interaccion.
+    if (!isCurrentCard || !isMobileDiscoverView() || !nextSpotlight) {
       return;
     }
 
-    setCurrentIndex((value) => (value + 1) % availableEntries.length);
+    const [payload] = await Promise.all([
+      loadRecommendationPayload(nextSpotlight),
+      preloadPoster(nextSpotlight.posterUrl)
+    ]);
+
+    setNextPayload({ key: itemKey(nextSpotlight), payload });
+    await waitForNextPaint();
+
+    setCardExitDirection("up");
+    await waitForNextPaint();
+    await waitForSwipeExit();
+    setCardExitDirection(null);
+
+    // La ficha que aparece ya tiene sus datos locales. Asi no muestra por un
+    // instante el texto de la pelicula anterior mientras React cambia el mazo.
+    setSpotlightDetails(payload.details);
+    setWatchOptions(payload.watchOptions);
   }
 
   async function registerReaction(
@@ -512,15 +703,133 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
         });
       }
 
+      await animateCurrentCardOut(target);
+
       replaceStoredReaction(target, reaction);
     } catch (error) {
+      setCardExitDirection(null);
       setSyncMessage(getReactionSaveErrorMessage(error));
       return;
     } finally {
       setIsSyncing(false);
+      setCardExitDirection(null);
+    }
+  }
+
+  function clearQuickRateGesture() {
+    const gesture = quickRateGestureRef.current;
+    if (gesture && gesture.timer !== null) {
+      window.clearTimeout(gesture.timer);
     }
 
-    goNext();
+    quickRateGestureRef.current = null;
+    setIsQuickRateActive(false);
+    setQuickRateChoice(null);
+  }
+
+  function releaseWatchedPointer(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function handleWatchedPointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (
+      event.pointerType !== "touch" ||
+      isSyncing ||
+      !window.matchMedia("(max-width: 680px)").matches
+    ) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const gesture = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      timer: null as number | null,
+      isActive: false,
+      wasDragged: false
+    };
+
+    gesture.timer = window.setTimeout(() => {
+      if (quickRateGestureRef.current !== gesture) {
+        return;
+      }
+
+      gesture.timer = null;
+      gesture.isActive = true;
+      setIsQuickRateActive(true);
+      setQuickRateChoice(null);
+    }, LONG_PRESS_MS);
+
+    quickRateGestureRef.current = gesture;
+  }
+
+  function handleWatchedPointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+    const gesture = quickRateGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - gesture.startX;
+    const deltaY = event.clientY - gesture.startY;
+
+    if (!gesture.isActive) {
+      // Un arrastre comun no debe terminar abriendo el popup como si fuera un tap.
+      if (Math.hypot(deltaX, deltaY) > 12) {
+        if (gesture.timer !== null) {
+          window.clearTimeout(gesture.timer);
+          gesture.timer = null;
+        }
+        gesture.wasDragged = true;
+      }
+      return;
+    }
+
+    event.preventDefault();
+    setQuickRateChoice(getQuickRateChoice(deltaX, deltaY));
+  }
+
+  function handleWatchedPointerUp(event: ReactPointerEvent<HTMLButtonElement>) {
+    const gesture = quickRateGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const choice = gesture.isActive
+      ? getQuickRateChoice(event.clientX - gesture.startX, event.clientY - gesture.startY)
+      : null;
+    const wasQuickRate = gesture.isActive;
+    const wasDragged = gesture.wasDragged;
+
+    releaseWatchedPointer(event);
+    clearQuickRateGesture();
+
+    if (!wasQuickRate && !wasDragged) {
+      return;
+    }
+
+    event.preventDefault();
+    // El click sintetico llega despues de pointerup: lo consumimos para que un
+    // gesto largo no abra el popup normal por accidente.
+    suppressWatchedClickRef.current = true;
+    window.setTimeout(() => {
+      suppressWatchedClickRef.current = false;
+    }, 0);
+    if (choice) {
+      void registerReaction(choice.reaction);
+    }
+  }
+
+  function handleWatchedPointerCancel(event: ReactPointerEvent<HTMLButtonElement>) {
+    const gesture = quickRateGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    releaseWatchedPointer(event);
+    clearQuickRateGesture();
   }
 
   /*
@@ -564,6 +873,11 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   }
 
   function handleWatched() {
+    if (suppressWatchedClickRef.current) {
+      suppressWatchedClickRef.current = false;
+      return;
+    }
+
     setReviewItem(spotlight);
   }
 
@@ -602,11 +916,9 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
           mediaType: reviewItem.mediaType
         });
       }
-      replaceStoredReaction(reviewItem, watchedReaction);
       setReviewItem(null);
-      if (spotlight && spotlight.id === reviewItem.id) {
-        goNext();
-      }
+      await animateCurrentCardOut(reviewItem);
+      replaceStoredReaction(reviewItem, watchedReaction);
     } catch (error) {
       setSyncMessage(getReactionSaveErrorMessage(error));
     } finally {
@@ -615,6 +927,9 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   }
 
   const genres = spotlightDetails?.genres.length ? spotlightDetails.genres : spotlight?.genres ?? [];
+  const nextGenres = preparedNextPayload?.details?.genres.length
+    ? preparedNextPayload.details.genres
+    : nextSpotlight?.genres ?? [];
   const secondaryFacts = [
     spotlightDetails?.runtimeLabel,
     spotlight?.score ? `TMDB ${spotlight.score}` : null
@@ -751,7 +1066,62 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
       </div>
 
       {spotlight && current ? (
-        <article className="discover-card panel">
+        <div className={`discover-card-stack${cardExitDirection ? " is-revealing-next" : ""}`}>
+          {nextSpotlight && nextEntry && preparedNextPayload ? (
+            <article className="discover-card panel discover-card--preview" aria-hidden="true">
+              <div className="discover-card__stage">
+                <div className="discover-card__poster">
+                  <img src={nextSpotlight.posterUrl} alt="" />
+                </div>
+
+                <div className="discover-card__body">
+                  <p className={`discover-rank ${nextEntry.rank === null ? "is-filler" : ""}`}>
+                    {nextEntry.rank === null ? "Popular ahora" : `${nextEntry.rank}° en tu ranking`}
+                    <span>
+                      {" · "}
+                      {nextSpotlight.mediaType === "tv" ? "Serie" : "Película"}
+                      {nextSpotlight.year ? ` · ${nextSpotlight.year}` : ""}
+                    </span>
+                  </p>
+
+                  <h2 className="discover-title">{nextSpotlight.title}</h2>
+                  {nextGenres.length ? <p className="discover-facts">{nextGenres.join(" · ")}</p> : null}
+
+                  {preparedNextPayload.watchOptions.flatrate.length ||
+                  preparedNextPayload.watchOptions.hasRentOrBuy ? (
+                    <div className="discover-watch">
+                      <p className="discover-watch__label">Ver en</p>
+                      <div className="discover-watch__row">
+                        {preparedNextPayload.watchOptions.flatrate.slice(0, 4).map((provider) => (
+                          <span className="discover-platform" key={provider.id}>
+                            {provider.logoUrl ? (
+                              <img src={provider.logoUrl} alt="" className="discover-platform__logo" />
+                            ) : null}
+                            <span className="discover-platform__name">{provider.name}</span>
+                          </span>
+                        ))}
+                        {preparedNextPayload.watchOptions.hasRentOrBuy ? (
+                          <span className="discover-platform discover-platform--rent">Alquilar</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Reserva la misma fila que ocupan los controles reales. Sin
+                  ella, el afiche previo se estiraba durante la transicion. */}
+              <div className="discover-actions discover-actions--placeholder" aria-hidden="true" />
+            </article>
+          ) : null}
+
+          <article
+            className={`discover-card panel${
+              cardExitDirection
+                ? ` is-swipe-exiting is-swipe-exiting--${cardExitDirection}`
+                : ""
+            }`}
+          >
           <div className="discover-card__stage">
             <div
               className="discover-card__poster"
@@ -888,11 +1258,19 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
               <span className="discover-action__label">No me interesa</span>
             </div>
 
-            <div className="discover-action discover-action--primary">
+            <div
+              className={`discover-action discover-action--primary${
+                isQuickRateActive ? " is-quick-rate-active" : ""
+              }`}
+            >
               <button
                 type="button"
                 className="discover-action__button discover-action__button--primary"
                 onClick={handleWatched}
+                onPointerDown={handleWatchedPointerDown}
+                onPointerMove={handleWatchedPointerMove}
+                onPointerUp={handleWatchedPointerUp}
+                onPointerCancel={handleWatchedPointerCancel}
                 disabled={isSyncing}
                 aria-label="Ya la vi"
               >
@@ -902,6 +1280,21 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                 </svg>
               </button>
               <span className="discover-action__label">Ya la vi</span>
+              {isQuickRateActive ? (
+                <div className="discover-quick-rate" aria-hidden="true">
+                  {QUICK_RATE_CHOICES.map((choice) => (
+                    <span
+                      className={`discover-quick-rate__target discover-quick-rate__target--${choice.direction}${
+                        quickRateChoice?.reaction === choice.reaction ? " is-selected" : ""
+                      }`}
+                      key={choice.reaction}
+                    >
+                      <RatedReactionIcon reaction={choice.reaction} />
+                      <strong>{choice.label}</strong>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div className="discover-action">
@@ -919,7 +1312,8 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
               <span className="discover-action__label">Me interesa</span>
             </div>
           </div>
-        </article>
+          </article>
+        </div>
       ) : (
         <div className="discover-empty-state">
           <p className="section-eyebrow">Descubrí</p>

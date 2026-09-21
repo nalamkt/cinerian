@@ -63,7 +63,7 @@ export type RankedRecommendation = {
 };
 
 /**
- * Decide si un titulo pasa los filtros, contra sus proveedores REALES.
+ * Decide si un titulo pasa los filtros, contra sus proveedores REALES en AR.
  *
  * Lo usan los dos caminos. El ranking social lo necesita porque un titulo que
  * vio tu amigo llega sin saber donde esta disponible. Y el relleno tambien,
@@ -86,6 +86,13 @@ function passesFilters(
   }
 
   if (filters.contentType === "mini" && (item.mediaType !== "tv" || seriesType !== "Miniseries")) {
+    return false;
+  }
+
+  // Descubri nunca ofrece un titulo que no este incluido con suscripcion en
+  // Argentina. Si se eligieron plataformas, alcanza con que este en una de
+  // ellas: pedir que este en todas vaciaria el catalogo artificialmente.
+  if (!providerIds.length) {
     return false;
   }
 
@@ -172,9 +179,9 @@ async function collectFillerTitles(
   let failedCatalogPages = 0;
 
   // El buscador de TMDB acota pero no garantiza: aplica proveedor y tipo de
-  // monetizacion por separado, asi que cuela titulos que en esa plataforma solo
-  // se compran. Con filtros activos verificamos cada uno antes de mostrarlo.
-  const needsVerification = filters.providerIds.length > 0 || filters.contentType !== "all";
+  // monetizacion por separado, asi que puede colar un titulo sin suscripcion
+  // real en Argentina. Verificamos siempre antes de mostrarlo.
+  const needsVerification = true;
 
   for (let offset = 0; offset < MAX_BACKFILL_PAGES && picked.length < needed; offset += 1) {
     let batch: DiscoveryItem[];
