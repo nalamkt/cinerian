@@ -477,7 +477,10 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
     posterUrl: posterPath ? `${imageBase}${posterPath}` : "/images/base.png",
     genres,
     providers: [],
-    score: typeof item.vote_average === "number" ? Number(item.vote_average.toFixed(1)) : 0
+    score: typeof item.vote_average === "number" ? Number(item.vote_average.toFixed(1)) : 0,
+    // Los listados de TMDB no mandan `type`: ahi queda null y el filtro de
+    // miniseries simplemente no matchea, que es lo correcto.
+    seriesType: typeof item.type === "string" ? item.type : null
   };
 }
 
@@ -1383,22 +1386,54 @@ export async function getWatchOptionsFor(
   }
 }
 
+/**
+ * Cache de fichas por sesion.
+ *
+ * Una ficha de TMDB no cambia entre dos clicks, y esta funcion se llama de a
+ * cientos: el perfil rehidrata TODA la videoteca cada vez que se guarda una
+ * reaccion, y el ranking escanea decenas de series buscando miniseries. Sin
+ * cache, cada una de esas pasadas es una tanda nueva de pedidos.
+ *
+ * Guarda tambien los null (un id que TMDB no resuelve no se vuelve a pedir) y
+ * guarda la PROMESA, no el resultado, para que N llamadas simultaneas al mismo
+ * titulo compartan un solo pedido en vez de dispararlo N veces.
+ */
+const titleCache = new Map<string, Promise<DiscoveryItem | null>>();
+
 export async function getTitleById(tmdbId: number, mediaType: MediaType): Promise<DiscoveryItem | null> {
   if (!apiKey) {
     return demoDiscovery.find((item) => item.id === tmdbId && item.mediaType === mediaType) ?? null;
   }
 
-  const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}`);
-  url.searchParams.set("api_key", apiKey);
-  url.searchParams.set("language", "es-MX");
-
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    return null;
+  const cacheKey = `${mediaType}-${tmdbId}`;
+  const cached = titleCache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
 
-  const payload = (await response.json()) as Record<string, unknown>;
-  return normalizeItem({ ...payload, media_type: mediaType });
+  const pending = (async () => {
+    const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}`);
+    url.searchParams.set("api_key", apiKey);
+    url.searchParams.set("language", "es-MX");
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    return normalizeItem({ ...payload, media_type: mediaType });
+  })();
+
+  titleCache.set(cacheKey, pending);
+
+  try {
+    return await pending;
+  } catch (error) {
+    // Un error de red no debe quedar cacheado: el proximo intento reintenta.
+    titleCache.delete(cacheKey);
+    throw error;
+  }
 }
 
 /** Lo que necesita el recomendador para filtrar sin pedir cada dato por separado. */

@@ -3847,8 +3847,24 @@ textarea {
   text-wrap: balance;
 }
 
+.discover-kind {
+  display: inline-flex;
+  margin: 8px 0 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .discover-social {
   margin-top: 12px;
+  /* Cuando viene despues del chip de tipo, el margen se apreta: el chip ya
+     hizo el trabajo de separar el titulo del resto. */
   display: flex;
   align-items: center;
   gap: 12px;
@@ -5081,6 +5097,148 @@ textarea {
 .profile-insights-tab {
   display: grid;
   gap: 20px;
+}
+
+/* ---------- Mi Ranking ---------- */
+
+.profile-ranking {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-ranking__intro {
+  display: grid;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.profile-ranking__intro h3,
+.profile-ranking__intro p {
+  margin: 0;
+}
+
+.profile-ranking__intro p:not(.section-eyebrow) {
+  color: var(--muted);
+}
+
+.profile-ranking__list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profile-ranking-item {
+  display: grid;
+  grid-template-columns: 34px 54px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.profile-ranking-item:last-child {
+  border-bottom: 0;
+}
+
+.profile-ranking-item__position {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: center;
+}
+
+.profile-ranking-item__poster {
+  width: 54px;
+  aspect-ratio: 2 / 3;
+  padding: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.profile-ranking-item__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-ranking-item__copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.profile-ranking-item__title {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-ranking-item__title:hover {
+  color: var(--accent);
+}
+
+.profile-ranking-item__meta,
+.profile-ranking-item__watchers {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.profile-ranking-item__watchers {
+  /* El circulo puede ser largo: una linea y listo. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-ranking-item__seen {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(252, 195, 95, 0.28);
+  background: rgba(252, 195, 95, 0.12);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.profile-ranking-item__score {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--muted-strong);
+}
+
+.profile-ranking__more {
+  justify-self: center;
+  min-height: 42px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.profile-ranking__more:hover:not(:disabled) {
+  border-color: rgba(252, 195, 95, 0.4);
+  background: rgba(252, 195, 95, 0.08);
 }
 
 .profile-mutual-likes__intro {
@@ -8458,17 +8616,147 @@ textarea {
   -webkit-backdrop-filter: blur(22px) saturate(145%);
 }
 
+.search-panel__input-icon {
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+  pointer-events: none;
+  z-index: 1;
+}
+
 .search-panel__input--glass input {
-  border-color: rgba(252, 195, 95, 0.35);
+  border-color: rgba(255, 255, 255, 0.12);
   background: rgba(7, 9, 13, 0.48);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  padding-left: 48px;
+}
+
+.search-panel__input--glass input:focus {
+  border-color: rgba(255, 255, 255, 0.22);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
 .search-panel__input--glass:focus-within {
-  border-color: rgba(252, 195, 95, 0.62);
-  background:
-    linear-gradient(135deg, rgba(252, 195, 95, 0.16), rgba(255, 255, 255, 0.05)),
-    rgba(11, 14, 20, 0.76);
+  background: transparent;
+}
+
+.search-panel__tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0;
+  margin: -8px 0 0;
+}
+
+.search-panel__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.search-panel__tab {
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.search-panel__tab:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.search-panel__tab--active {
+  background: var(--panel-edge-strong, rgba(252, 195, 95, 0.28));
+  border-color: rgba(252, 195, 95, 0.6);
+  color: #0b0e14;
+  background-color: rgba(252, 195, 95, 0.95);
+}
+
+.search-panel__recents {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.search-panel__recents-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px 4px;
+}
+
+.search-panel__recents-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.search-panel__recents-clear {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.search-panel__recents-clear:hover {
+  color: var(--text);
+}
+
+.search-panel__recent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  width: 100%;
+}
+
+.search-panel__recent:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.search-panel__recent-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.search-panel__recent-label {
+  flex: 1;
+  font-size: 1rem;
+}
+
+.search-panel__recent-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.search-panel__recent-remove:hover {
+  color: var(--text);
 }
 
 .search-result-sections,
@@ -8555,6 +8843,29 @@ textarea {
 .search-browse__title:focus-visible img {
   border-color: rgba(252, 195, 95, 0.78);
   transform: translateY(-4px);
+}
+
+.search-browse__poster-wrap {
+  position: relative;
+  overflow: visible;
+}
+
+
+.search-browse__title span.search-browse__rank {
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #fcc35f;
+  white-space: nowrap;
+}
+
+.search-browse__title span.search-browse__rank sup {
+  font-size: 0.7em;
+  vertical-align: super;
+  margin-left: 1px;
 }
 
 .search-browse__title strong,
@@ -9686,6 +9997,59 @@ textarea {
 
   .profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  /*
+    Con "Miniseries" son cuatro filtros y a 375px no entran a lo ancho: se
+    achican, y si aun asi no entran la fila se desplaza en horizontal en vez
+    de desbordar la pantalla.
+  */
+  .profile-type-filter {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .profile-type-filter::-webkit-scrollbar {
+    display: none;
+  }
+
+  .profile-type-filter button {
+    flex: 0 0 auto;
+    padding: 8px 11px;
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+
+  /* El ranking achica el puesto y el poster para dejarle ancho al titulo. */
+  .profile-ranking-item {
+    grid-template-columns: 24px 42px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 10px 0;
+  }
+
+  .profile-ranking-item__position {
+    font-size: 0.95rem;
+  }
+
+  .profile-ranking-item__poster {
+    width: 42px;
+    border-radius: 8px;
+  }
+
+  .profile-ranking-item__title {
+    font-size: 0.9rem;
+  }
+
+  .profile-ranking-item__meta,
+  .profile-ranking-item__watchers {
+    font-size: 0.74rem;
+  }
+
+  .profile-ranking-item__score {
+    font-size: 0.92rem;
   }
 
   /**

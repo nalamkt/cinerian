@@ -60,6 +60,12 @@ export type DiscoveryItem = {
   genres: string[];
   providers: string[];
   score: number;
+  /**
+   * El `type` de TMDB en series: "Miniseries", "Scripted", "Documentary"...
+   * Solo viene de los endpoints de detalle; en los listados (discover, search)
+   * queda null porque TMDB no lo manda ahi.
+   */
+  seriesType?: string | null;
 };
 
 export type SeriesAiringInfo = {

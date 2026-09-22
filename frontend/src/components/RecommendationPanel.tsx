@@ -930,7 +930,16 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
   const nextGenres = preparedNextPayload?.details?.genres.length
     ? preparedNextPayload.details.genres
     : nextSpotlight?.genres ?? [];
-  const secondaryFacts = [
+  /*
+    Primero "año · géneros" y despues, en su propia linea, TMDB. La duracion
+    (solo peliculas) se suma a la linea de TMDB — no la mostramos aparte
+    porque no aporta jerarquia propia, pero tampoco la queremos perder.
+  */
+  const primaryFacts = [
+    spotlight?.year || null,
+    ...(genres.length ? [genres.join(" · ")] : [])
+  ].filter((fact): fact is string => Boolean(fact));
+  const scoreFacts = [
     spotlightDetails?.runtimeLabel,
     spotlight?.score ? `TMDB ${spotlight.score}` : null
   ].filter((fact): fact is string => Boolean(fact));
@@ -1077,15 +1086,21 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                 <div className="discover-card__body">
                   <p className={`discover-rank ${nextEntry.rank === null ? "is-filler" : ""}`}>
                     {nextEntry.rank === null ? "Popular ahora" : `${nextEntry.rank}° en tu ranking`}
-                    <span>
-                      {" · "}
-                      {nextSpotlight.mediaType === "tv" ? "Serie" : "Película"}
-                      {nextSpotlight.year ? ` · ${nextSpotlight.year}` : ""}
-                    </span>
                   </p>
 
                   <h2 className="discover-title">{nextSpotlight.title}</h2>
-                  {nextGenres.length ? <p className="discover-facts">{nextGenres.join(" · ")}</p> : null}
+
+                  <p className="discover-kind">
+                    {nextSpotlight.mediaType === "tv" ? "Serie" : "Película"}
+                  </p>
+
+                  {(nextSpotlight.year || nextGenres.length) ? (
+                    <p className="discover-facts">
+                      {[nextSpotlight.year, ...(nextGenres.length ? [nextGenres.join(" · ")] : [])]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  ) : null}
 
                   {preparedNextPayload.watchOptions.flatrate.length ||
                   preparedNextPayload.watchOptions.hasRentOrBuy ? (
@@ -1147,14 +1162,13 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
             >
               <p className={`discover-rank ${current.rank === null ? "is-filler" : ""}`}>
                 {current.rank === null ? "Popular ahora" : `${current.rank}° en tu ranking`}
-                <span>
-                  {" · "}
-                  {spotlight.mediaType === "tv" ? "Serie" : "Película"}
-                  {spotlight.year ? ` · ${spotlight.year}` : ""}
-                </span>
               </p>
 
               <h2 className="discover-title">{spotlight.title}</h2>
+
+              <p className="discover-kind">
+                {spotlight.mediaType === "tv" ? "Serie" : "Película"}
+              </p>
 
               {socialLine ? (
                 <div className="discover-social">
@@ -1180,9 +1194,11 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                 </div>
               ) : null}
 
-              {genres.length ? <p className="discover-facts">{genres.join(" · ")}</p> : null}
-              {secondaryFacts.length ? (
-                <p className="discover-facts discover-facts--quiet">{secondaryFacts.join(" · ")}</p>
+              {primaryFacts.length ? (
+                <p className="discover-facts">{primaryFacts.join(" · ")}</p>
+              ) : null}
+              {scoreFacts.length ? (
+                <p className="discover-facts discover-facts--quiet">{scoreFacts.join(" · ")}</p>
               ) : null}
 
               {watchOptions.flatrate.length || watchOptions.hasRentOrBuy ? (

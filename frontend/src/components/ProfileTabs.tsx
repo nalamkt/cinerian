@@ -21,7 +21,12 @@ import {
   type RecommendationReaction,
   type StoredReaction
 } from "../lib/reactions";
-import { fetchCircleScores, type CircleScore } from "../lib/recommendations";
+import {
+  fetchCircleRanking,
+  fetchCircleScores,
+  type CircleRanking,
+  type CircleScore
+} from "../lib/recommendations";
 import { getSeriesAiringInfo, getTitleById, searchTitles } from "../lib/tmdb";
 import type { DiscoveryItem, FeedEntry, SeriesAiringInfo } from "../types";
 
@@ -46,7 +51,84 @@ type ProfileTabsProps = {
   };
 };
 
-type TabId = "watched" | "watchlist" | "mutual-likes" | "watching" | "posts" | "insights";
+type TabId =
+  | "watched"
+  | "watchlist"
+  | "mutual-likes"
+  | "watching"
+  | "posts"
+  | "insights"
+  | "ranking";
+
+/** Cuantos puestos del ranking traemos por tanda. */
+const RANKING_PAGE_SIZE = 20;
+
+/**
+ * El puntaje de 0 a 10 dice que tan bien le fue, pero no con cuanta gente: un
+ * unanime de 1 persona y uno de 20 muestran el mismo 10. Esta linea es la que
+ * los diferencia, asi que tiene que decir el total, no solo los nombres.
+ *
+ * Se arma con las etiquetas entre comillas en vez de conjugar ("3 lo amaron")
+ * porque la concordancia en español cambia con la cantidad y con el genero del
+ * titulo -- "la amaron" para una serie, "lo amaron" para una pelicula.
+ */
+/**
+ * "tv" incluye miniseries y "mini" es el subconjunto, igual que en Descubri:
+ * una miniserie es una serie, asi que filtrar "Series" y que no aparezcan
+ * seria raro. "Miniserie" es un refinamiento, no una categoria hermana.
+ */
+type TypeFilter = "all" | "movie" | "tv" | "mini";
+
+const TYPE_FILTER_OPTIONS: Array<{ id: TypeFilter; label: string }> = [
+  { id: "all", label: "Todo" },
+  { id: "movie", label: "Peliculas" },
+  { id: "tv", label: "Series" },
+  { id: "mini", label: "Miniseries" }
+];
+
+function matchesTypeFilter(item: DiscoveryItem, filter: TypeFilter) {
+  if (filter === "all") {
+    return true;
+  }
+
+  if (filter === "movie") {
+    return item.mediaType === "movie";
+  }
+
+  if (filter === "mini") {
+    return item.mediaType === "tv" && item.seriesType === "Miniseries";
+  }
+
+  return item.mediaType === "tv";
+}
+
+const RATED_REACTION_LABELS: Record<RatedReaction, string> = {
+  superliked: "Me encantó",
+  liked: "Me gustó",
+  disliked: "No me gustó"
+};
+
+function describeRankingWatchers(watchers: Array<{ reaction: RatedReaction }>) {
+  const total = watchers.length;
+  if (!total) {
+    return "Sin opiniones visibles de tu círculo";
+  }
+
+  const counted = (Object.keys(RATED_REACTION_LABELS) as RatedReaction[])
+    .map((reaction) => ({
+      label: RATED_REACTION_LABELS[reaction],
+      count: watchers.filter((watcher) => watcher.reaction === reaction).length
+    }))
+    .filter((bucket) => bucket.count > 0);
+
+  if (counted.length === 1) {
+    return `${total} de ${total} · ${counted[0].label}`;
+  }
+
+  return `${total} de tu círculo · ${counted
+    .map((bucket) => `${bucket.count} ${bucket.label}`)
+    .join(" · ")}`;
+}
 
 type WatchingItem = {
   entry: CurrentWatchingEntry;
@@ -72,7 +154,8 @@ const tabLabels: Record<TabId, string> = {
   "mutual-likes": "En común",
   watching: "Viendo",
   posts: "Posts",
-  insights: "Insights"
+  insights: "Insights",
+  ranking: "Mi Ranking"
 };
 
 export function ProfileTabs({
@@ -286,6 +369,12 @@ export function ProfileTabs({
       tabs.push("insights");
     }
 
+    // El ranking se arma con a quien seguis vos, asi que solo tiene sentido en
+    // tu propio perfil: en el de otro seria tu ranking con su cara.
+    if (isOwnProfile) {
+      tabs.push("ranking");
+    }
+
     return tabs;
   }, [isOwnProfile, viewerUserId, visibilitySettings?.showActivity, visibilitySettings?.showWatchlist]);
 
@@ -295,9 +384,78 @@ export function ProfileTabs({
     }
   }, [activeTab, visibleTabs]);
 
-  const [typeFilter, setTypeFilter] = useState<"all" | "movie" | "tv">("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [mutualFilter, setMutualFilter] = useState<"watched" | "watchlist">("watched");
   const [circleScores, setCircleScores] = useState<Map<string, CircleScore>>(new Map());
+  const [ranking, setRanking] = useState<CircleRanking>({
+    entries: [],
+    total: 0,
+    hasMore: false
+  });
+  const [isRankingLoading, setIsRankingLoading] = useState(false);
+  const [isRankingExpanding, setIsRankingExpanding] = useState(false);
+  const [rankingError, setRankingError] = useState<string | null>(null);
+
+  // El ranking es caro (una consulta al circulo mas una ficha de TMDB por
+  // puesto): se pide recien al abrir la pestaña. Cambiar el filtro lo rehace
+  // desde el puesto 1, porque el puesto se numera dentro de lo filtrado.
+  useEffect(() => {
+    if (activeTab !== "ranking") {
+      return;
+    }
+
+    let isMounted = true;
+    setIsRankingLoading(true);
+    setRanking({ entries: [], total: 0, hasMore: false });
+
+    void fetchCircleRanking(userId, { limit: RANKING_PAGE_SIZE, contentType: typeFilter })
+      .then((result) => {
+        if (isMounted) {
+          setRanking(result);
+          setRankingError(null);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setRankingError("No pudimos armar tu ranking ahora mismo. Probá de nuevo en un rato.");
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsRankingLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTab, typeFilter, userId]);
+
+  async function handleLoadMoreRanking() {
+    if (isRankingExpanding) {
+      return;
+    }
+
+    try {
+      setIsRankingExpanding(true);
+      const next = await fetchCircleRanking(userId, {
+        offset: ranking.entries.length,
+        limit: RANKING_PAGE_SIZE,
+        contentType: typeFilter
+      });
+
+      setRanking((current) => ({
+        total: next.total,
+        hasMore: next.hasMore,
+        entries: [...current.entries, ...next.entries]
+      }));
+      setRankingError(null);
+    } catch {
+      setRankingError("No pudimos traer mas puestos. Probá de nuevo en un rato.");
+    } finally {
+      setIsRankingExpanding(false);
+    }
+  }
 
   // El puntaje del circulo solo se usa para ordenar la Watchlist: lo pedimos
   // recien cuando se abre esa pestaña.
@@ -371,7 +529,7 @@ export function ProfileTabs({
     const items = entries
       .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
       .filter((item): item is DiscoveryItem => Boolean(item))
-      .filter((item) => typeFilter === "all" || item.mediaType === typeFilter);
+      .filter((item) => matchesTypeFilter(item, typeFilter));
 
     // La Watchlist es una lista para elegir que ver: arranca por lo mejor
     // puntuado por tu circulo. Lo que nadie de tu circulo vio queda al final
@@ -794,6 +952,131 @@ export function ProfileTabs({
             </div>
           ) : null}
         </div>
+      ) : activeTab === "ranking" ? (
+        <div className="profile-ranking">
+          <div className="profile-ranking__intro">
+            <p className="section-eyebrow">Tu ranking</p>
+            <h3>Lo mejor puntuado por tu círculo</h3>
+            <p>
+              Ordenado con el puntaje de Cinerian, contando solo a las personas que seguís. A
+              diferencia de Descubrí, acá entra todo: lo que ya viste y lo que todavía no.
+            </p>
+          </div>
+
+          <div className="profile-list-toolbar">
+            <div className="profile-type-filter">
+              {TYPE_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={typeFilter === option.id ? "is-active" : ""}
+                  onClick={() => setTypeFilter(option.id)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {rankingError ? <div className="inline-status">{rankingError}</div> : null}
+
+          {isRankingLoading && !ranking.entries.length ? (
+            <LoadingState label="Armando tu ranking..." />
+          ) : ranking.entries.length ? (
+            <>
+              <ol className="profile-ranking__list">
+                {ranking.entries.map((entry) => {
+                  const key = `${entry.item.mediaType}-${entry.item.id}`;
+                  const ownReaction = reactionByTitle.get(key);
+                  // El puntaje es el del circulo y no incluye tu voto, asi que
+                  // el chip muestra QUE pusiste vos y no solo que la viste: si
+                  // no, un 10 arriba de "Ya la viste" parece un error cuando lo
+                  // tuyo fue "Me gusto".
+                  const seenLabel = !ownReaction
+                    ? null
+                    : isRatedReaction(ownReaction)
+                      ? `Vos: ${RATED_REACTION_LABELS[ownReaction]}`
+                      : ownReaction === "watchlist"
+                        ? "En tu Watchlist"
+                        : null;
+
+                  return (
+                    <li className="profile-ranking-item" key={key}>
+                      <span className="profile-ranking-item__position">{entry.rank}</span>
+
+                      <button
+                        type="button"
+                        className="profile-ranking-item__poster"
+                        onClick={() => openMediaDetails(entry.item)}
+                        aria-label={`Abrir ${entry.item.title}`}
+                      >
+                        {entry.item.posterUrl ? (
+                          <img src={entry.item.posterUrl} alt="" />
+                        ) : (
+                          <span aria-hidden="true">🎬</span>
+                        )}
+                      </button>
+
+                      <div className="profile-ranking-item__copy">
+                        <button
+                          type="button"
+                          className="profile-ranking-item__title"
+                          onClick={() => openMediaDetails(entry.item)}
+                        >
+                          {entry.item.title}
+                        </button>
+
+                        <p className="profile-ranking-item__meta">
+                          {entry.item.mediaType === "movie" ? "Pelicula" : "Serie"}
+                          {entry.item.year ? ` · ${entry.item.year}` : ""}
+                          {seenLabel ? (
+                            <span className="profile-ranking-item__seen">{seenLabel}</span>
+                          ) : null}
+                        </p>
+
+                        {/* Los nombres pasan al tooltip: la linea visible
+                            ahora carga el tamaño de la muestra. */}
+                        <p
+                          className="profile-ranking-item__watchers"
+                          title={entry.watchers.map((watcher) => watcher.displayName).join(", ")}
+                        >
+                          {describeRankingWatchers(entry.watchers)}
+                        </p>
+                      </div>
+
+                      <span
+                        className="profile-ranking-item__score"
+                        title="Puntaje de Cinerian segun tu circulo, de 0 a 10"
+                      >
+                        {entry.score >= 10 ? "10" : entry.score.toFixed(1)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              {ranking.hasMore ? (
+                <button
+                  type="button"
+                  className="profile-ranking__more"
+                  onClick={() => void handleLoadMoreRanking()}
+                  disabled={isRankingExpanding}
+                >
+                  {isRankingExpanding
+                    ? "Cargando..."
+                    : ranking.total === null
+                      ? "Ver mas"
+                      : `Ver mas (${ranking.entries.length} de ${ranking.total})`}
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <div className="profile-grid__empty">
+              Tu ranking se arma con lo que puntúan las personas que seguís. Seguí a alguien desde
+              el buscador y va a empezar a llenarse.
+            </div>
+          )}
+        </div>
       ) : activeTab === "posts" ? (
         posts.length ? (
           <div className="profile-posts">
@@ -904,27 +1187,16 @@ export function ProfileTabs({
               </div>
             ) : (
               <div className="profile-type-filter">
-                <button
-                  type="button"
-                  className={typeFilter === "all" ? "is-active" : ""}
-                  onClick={() => setTypeFilter("all")}
-                >
-                  Todo
-                </button>
-                <button
-                  type="button"
-                  className={typeFilter === "movie" ? "is-active" : ""}
-                  onClick={() => setTypeFilter("movie")}
-                >
-                  Peliculas
-                </button>
-                <button
-                  type="button"
-                  className={typeFilter === "tv" ? "is-active" : ""}
-                  onClick={() => setTypeFilter("tv")}
-                >
-                  Series
-                </button>
+                {TYPE_FILTER_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={typeFilter === option.id ? "is-active" : ""}
+                    onClick={() => setTypeFilter(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
             )}
 

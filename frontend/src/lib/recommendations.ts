@@ -260,6 +260,31 @@ function socialScoreOf(candidate: ScoredCandidate) {
   return candidate.weightSum / (candidate.watcherIds.length + SCORE_SMOOTHING);
 }
 
+/**
+ * El puntaje que se MUESTRA, de 0 a 10. Distinto del que ordena.
+ *
+ * Compara el entusiasmo del circulo contra el maximo que ese mismo grupo podia
+ * dar: si todos eligieron "me encanto" da 10, sean 3 personas o 300.
+ *
+ * El amortiguador de socialScoreOf queda afuera a proposito. Ese sirve para
+ * ORDENAR, porque mezcla veredicto con confianza, y como efecto secundario
+ * hace que el techo dependa de cuanta gente puntuo: con 3 opiniones el maximo
+ * posible era 3.6, asi que un unanime se mostraba como si fuera mediocre.
+ *
+ * Division del trabajo: este numero dice QUE TAN bien le fue, y el puesto en
+ * la lista dice CUANTA confianza hay en ese numero. Por eso un solo "me
+ * encanto" puede mostrar 10 y aun asi quedar al fondo del ranking; la linea
+ * con el tamaño de la muestra, al lado, es la que lo explica.
+ */
+function displayScoreOf(candidate: ScoredCandidate) {
+  const best = REACTION_WEIGHT.superliked * candidate.watcherIds.length;
+  if (best <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(10, (candidate.weightSum / best) * 10));
+}
+
 /** Cuanto puntuo el circulo del usuario a un titulo, y con cuantas opiniones. */
 export type CircleScore = {
   score: number;
@@ -301,6 +326,226 @@ export async function fetchCircleScores(userId: string): Promise<Map<string, Cir
       }
     ])
   );
+}
+
+/** Una posicion del ranking personal, ya con el detalle del titulo. */
+export type CircleRankingEntry = {
+  item: DiscoveryItem;
+  /** Puesto dentro del ranking, empezando en 1. */
+  rank: number;
+  /** De 0 a 10, para mostrar. No es el numero que ordena: ver displayScoreOf. */
+  score: number;
+  watchers: Watcher[];
+};
+
+export type CircleRanking = {
+  entries: CircleRankingEntry[];
+  /**
+   * Cuantos titulos tiene el ranking completo. Es null filtrando por
+   * miniseries: saber el total exacto obligaria a pedirle a TMDB la ficha de
+   * TODAS las series del circulo, porque "es miniserie" no se sabe hasta
+   * traerla.
+   */
+  total: number | null;
+  hasMore: boolean;
+};
+
+/** Que puede pedir el ranking. "tv" incluye miniseries; "mini" es el subconjunto. */
+export type RankingContentType = "all" | "movie" | "tv" | "mini";
+
+/**
+ * Cuantas series se hidratan por tanda buscando miniseries, y hasta donde se
+ * escanea. El tope existe porque el filtro no se puede resolver sin pedir la
+ * ficha: sin el, un circulo con miles de series puntuadas dispararia miles de
+ * pedidos para llenar una pagina de 20.
+ */
+const MINISERIES_SCAN_CHUNK = 24;
+const MINISERIES_SCAN_LIMIT = 150;
+
+/**
+ * El ranking personal COMPLETO del circulo, sin importar si el usuario ya vio
+ * el titulo.
+ *
+ * Es la diferencia con Descubri: alla cualquier reaccion propia saca el titulo
+ * del mazo, porque el objetivo es ofrecer algo nuevo para ver. Aca el objetivo
+ * es otro -- ver como quedo ordenado lo que mira tu circulo -- y esconder lo
+ * que ya viste romperia justamente eso.
+ *
+ * Tampoco aplica los filtros de plataforma de Descubri: un ranking que se
+ * recorta por donde esta disponible cada titulo deja de ser un ranking.
+ *
+ * `contentType` filtra ANTES de numerar, asi que al elegir "Peliculas" los
+ * puestos son 1, 2, 3... entre peliculas y no los huecos que dejan las series.
+ *
+ * Solo se hidrata contra TMDB el tramo pedido: el circulo puede tener miles de
+ * titulos puntuados y no vamos a pedir el detalle de todos para mostrar 20.
+ * Por eso "ver mas" pide `offset` y suma, en vez de volver a traer desde el
+ * puesto 1: sin eso, el quinto click terminaria pidiendo 100 fichas de TMDB
+ * para mostrar 20 nuevas.
+ *
+ * "mini" es el unico filtro que no se puede resolver contra la base: la
+ * reaccion guardada solo sabe si es pelicula o serie, y que una serie sea
+ * miniserie recien se sabe al traer la ficha. Por eso ese camino escanea por
+ * tandas en vez de cortar de una.
+ */
+export async function fetchCircleRanking(
+  userId: string,
+  options: { offset?: number; limit?: number; contentType?: RankingContentType } = {}
+): Promise<CircleRanking> {
+  const { offset = 0, limit = 20, contentType = "all" } = options;
+  const wantedMediaType: MediaType | null =
+    contentType === "movie" ? "movie" : contentType === "all" ? null : "tv";
+
+  const followingIds = await fetchFollowingUserIds(userId);
+  if (followingIds.length === 0) {
+    return { entries: [], total: 0, hasMore: false };
+  }
+
+  const followedRated = await fetchRatedReactionsForUserIds(followingIds);
+  const candidates = new Map<string, ScoredCandidate>();
+
+  followedRated.forEach((reaction) => {
+    if (wantedMediaType && reaction.mediaType !== wantedMediaType) {
+      return;
+    }
+
+    const key = candidateKey(reaction.mediaType, reaction.tmdbId);
+    const entry = candidates.get(key) ?? {
+      tmdbId: reaction.tmdbId,
+      mediaType: reaction.mediaType,
+      weightSum: 0,
+      watcherIds: []
+    };
+
+    entry.weightSum += REACTION_WEIGHT[reaction.reaction];
+    entry.watcherIds.push({ userId: reaction.userId, reaction: reaction.reaction });
+
+    candidates.set(key, entry);
+  });
+
+  // Igual que en Descubri, los de puntaje <= 0 quedan afuera: son titulos que
+  // al circulo no le gustaron, y numerarlos dentro de un ranking los leeria
+  // como recomendados.
+  const ordered = [...candidates.values()]
+    .filter((candidate) => socialScoreOf(candidate) > 0)
+    .sort((left, right) => {
+      const diff = socialScoreOf(right) - socialScoreOf(left);
+      if (diff !== 0) {
+        return diff;
+      }
+
+      // A igual promedio gana el que junto mas opiniones: es mas confiable.
+      return right.watcherIds.length - left.watcherIds.length;
+    });
+
+  const start = Math.max(0, offset);
+  const size = Math.max(0, limit);
+
+  type Hydrated = {
+    item: DiscoveryItem;
+    rank: number;
+    score: number;
+    watcherIds: ScoredCandidate["watcherIds"];
+  };
+
+  let detailed: Hydrated[];
+  let total: number | null;
+  let hasMore: boolean;
+
+  if (contentType === "mini") {
+    // Escaneo por tandas: hidratamos series en orden de ranking y nos quedamos
+    // con las miniseries hasta juntar la pagina pedida (mas una, para saber si
+    // hay siguiente). El cache de getTitleById hace que "ver mas" no vuelva a
+    // pagar las tandas ya escaneadas.
+    const needed = start + size + 1;
+    const kept: Array<{ candidate: ScoredCandidate; item: DiscoveryItem }> = [];
+    let scanned = 0;
+
+    while (kept.length < needed && scanned < ordered.length && scanned < MINISERIES_SCAN_LIMIT) {
+      const chunk = ordered.slice(scanned, scanned + MINISERIES_SCAN_CHUNK);
+      scanned += chunk.length;
+
+      const hydratedChunk = await Promise.all(
+        chunk.map(async (candidate) => {
+          const item = await getTitleById(candidate.tmdbId, candidate.mediaType);
+          return item ? { candidate, item } : null;
+        })
+      );
+
+      for (const entry of hydratedChunk) {
+        if (entry && entry.item.seriesType === "Miniseries") {
+          kept.push(entry);
+        }
+      }
+    }
+
+    const scannedEverything = scanned >= ordered.length;
+    detailed = kept.slice(start, start + size).map((entry, index) => ({
+      item: entry.item,
+      rank: start + index + 1,
+      score: displayScoreOf(entry.candidate),
+      watcherIds: entry.candidate.watcherIds
+    }));
+
+    // El total solo se sabe si se recorrio todo; si se corto por el tope,
+    // puede haber mas miniseries mas abajo que nunca se miraron.
+    total = scannedEverything ? kept.length : null;
+    hasMore = kept.length > start + size;
+  } else {
+    const slice = ordered.slice(start, start + size);
+
+    // El puesto se calcula contra el ranking completo, antes de descartar los
+    // titulos que TMDB no devuelve: si uno falla, los demas conservan su numero
+    // real en vez de correrse y mentir sobre su lugar.
+    detailed = (
+      await Promise.all(
+        slice.map(async (candidate, index) => {
+          const item = await getTitleById(candidate.tmdbId, candidate.mediaType);
+          if (!item) {
+            return null;
+          }
+
+          return {
+            item,
+            rank: start + index + 1,
+            score: displayScoreOf(candidate),
+            watcherIds: candidate.watcherIds
+          };
+        })
+      )
+    ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+    total = ordered.length;
+    hasMore = start + size < ordered.length;
+  }
+
+  const neededProfileIds = [
+    ...new Set(detailed.flatMap((entry) => entry.watcherIds.map((watcher) => watcher.userId)))
+  ];
+  let profiles: ProfileSummary[] = [];
+  try {
+    profiles = await fetchProfileSummaries(neededProfileIds);
+  } catch {
+    // Los nombres del circulo son decorativos: sin ellos el ranking igual sirve.
+  }
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+
+  return {
+    total,
+    hasMore,
+    entries: detailed.map((entry) => ({
+      item: entry.item,
+      rank: entry.rank,
+      score: entry.score,
+      watchers: entry.watcherIds
+        .map((watcher) => {
+          const profile = profileById.get(watcher.userId);
+          return profile ? { ...profile, reaction: watcher.reaction } : null;
+        })
+        .filter((watcher): watcher is Watcher => watcher !== null)
+        .sort((left, right) => REACTION_WEIGHT[right.reaction] - REACTION_WEIGHT[left.reaction])
+    }))
+  };
 }
 
 /**

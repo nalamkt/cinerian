@@ -24,12 +24,43 @@ import {
   getUpcomingTitles,
   searchTalent
 } from "../lib/tmdb";
+import { fetchTopCinerianTitles } from "../lib/topCinerian";
 import type { DiscoveryItem, TalentSearchItem } from "../types";
 
 type SearchPanelProps = {
   userId: string;
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
 };
+
+type SearchTab = "all" | "users" | "actors";
+
+const SEARCH_TABS: { id: SearchTab; label: string }[] = [
+  { id: "all", label: "Series & Peliculas" },
+  { id: "users", label: "Usuarios" },
+  { id: "actors", label: "Actores" }
+];
+
+const RECENT_SEARCHES_KEY = "cinerian:recent-searches";
+const RECENT_SEARCHES_LIMIT = 8;
+
+function loadRecentSearches(userId: string): string[] {
+  try {
+    const raw = window.localStorage.getItem(`${RECENT_SEARCHES_KEY}:${userId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistRecentSearches(userId: string, values: string[]) {
+  try {
+    window.localStorage.setItem(`${RECENT_SEARCHES_KEY}:${userId}`, JSON.stringify(values));
+  } catch {
+    /* ignore */
+  }
+}
 
 type BrowseRail = {
   id: string;
@@ -54,6 +85,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [talentResults, setTalentResults] = useState<TalentSearchItem[]>([]);
+  const [topCinerianTitles, setTopCinerianTitles] = useState<DiscoveryItem[]>([]);
   const [trendingTitles, setTrendingTitles] = useState<DiscoveryItem[]>([]);
   const [upcomingTitles, setUpcomingTitles] = useState<DiscoveryItem[]>([]);
   const [genreRails, setGenreRails] = useState<BrowseRail[]>([]);
@@ -62,8 +94,46 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   const [isTalentLoading, setIsTalentLoading] = useState(false);
   const [talentError, setTalentError] = useState<string | null>(null);
   const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [activeTab, setActiveTab] = useState<SearchTab>("all");
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches(userId));
   const reactionsRequestRef = useRef(0);
   const { results, isLoading, error } = useDiscovery(query);
+
+  useEffect(() => {
+    setRecentSearches(loadRecentSearches(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed || trimmed.length < 2) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setRecentSearches((current) => {
+        const next = [trimmed, ...current.filter((entry) => entry.toLowerCase() !== trimmed.toLowerCase())].slice(
+          0,
+          RECENT_SEARCHES_LIMIT
+        );
+        persistRecentSearches(userId, next);
+        return next;
+      });
+    }, 900);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [query, userId]);
+
+  function removeRecentSearch(term: string) {
+    setRecentSearches((current) => {
+      const next = current.filter((entry) => entry !== term);
+      persistRecentSearches(userId, next);
+      return next;
+    });
+  }
+
+  function clearRecentSearches() {
+    setRecentSearches([]);
+    persistRecentSearches(userId, []);
+  }
 
   useEffect(() => {
     async function loadStoredReactions() {
@@ -106,6 +176,14 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
 
   useEffect(() => {
     let isMounted = true;
+
+    void fetchTopCinerianTitles(15)
+      .then((items) => {
+        if (isMounted) setTopCinerianTitles(items);
+      })
+      .catch(() => {
+        if (isMounted) setTopCinerianTitles([]);
+      });
 
     void Promise.allSettled([
       getTrendingTitles(),
@@ -316,23 +394,91 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   return (
     <section className="panel search-panel">
       <label className="input-stack search-panel__input search-panel__input--glass">
+        <svg className="search-panel__input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+        </svg>
         <input
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Ej: Interstellar, @elchoks, Christopher Nolan"
+          onFocus={() => setIsInputFocused(true)}
+          onBlur={() => window.setTimeout(() => setIsInputFocused(false), 150)}
+          placeholder="Peliculas, series, usuarios o actores"
         />
       </label>
+
+      {(isInputFocused || hasQuery) ? (
+        <div className="search-panel__tabs" role="tablist">
+          {SEARCH_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              className={`search-panel__tab${activeTab === tab.id ? " search-panel__tab--active" : ""}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="inline-status">
         {syncMessage ?? (hasQuery && isSearching ? "Buscando en titulos, personas y talentos..." : null)}
       </div>
 
+      {!hasQuery && isInputFocused && recentSearches.length ? (
+        <div className="search-panel__recents">
+          <div className="search-panel__recents-header">
+            <p>Busquedas recientes</p>
+            <button
+              type="button"
+              className="search-panel__recents-clear"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={clearRecentSearches}
+            >
+              Limpiar
+            </button>
+          </div>
+          {recentSearches.map((term) => (
+            <button
+              key={term}
+              type="button"
+              className="search-panel__recent"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setQuery(term)}
+            >
+              <svg className="search-panel__recent-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+              </svg>
+              <span className="search-panel__recent-label">{term}</span>
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={`Eliminar ${term}`}
+                className="search-panel__recent-remove"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  removeRecentSearch(term);
+                }}
+              >
+                ×
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {hasQuery ? (
         <div className="search-result-sections">
           {error ? <p className="inline-status">{error}</p> : null}
           {talentError ? <p className="inline-status">{talentError}</p> : null}
-          {results.length ? (
+          {activeTab === "all" && results.length ? (
             <section className="search-result-section">
               <div className="search-result-section__heading">
                 <p className="section-eyebrow">Titulos</p>
@@ -431,7 +577,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
             </section>
           ) : null}
 
-          {profileResults.length ? (
+          {activeTab === "users" && profileResults.length ? (
             <section className="search-result-section">
               <div className="search-result-section__heading">
                 <p className="section-eyebrow">Cinerianos</p>
@@ -463,7 +609,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
             </section>
           ) : null}
 
-          {talentResults.length ? (
+          {activeTab === "actors" && talentResults.length ? (
             <section className="search-result-section">
               <div className="search-result-section__heading">
                 <p className="section-eyebrow">Talentos</p>
@@ -491,13 +637,27 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
             </section>
           ) : null}
 
-          {!isSearching && !results.length && !profileResults.length && !talentResults.length ? (
+          {!isSearching && (
+            (activeTab === "all" && !results.length) ||
+            (activeTab === "users" && !profileResults.length) ||
+            (activeTab === "actors" && !talentResults.length)
+          ) ? (
             <p className="search-empty">No encontramos coincidencias. Proba con otro nombre o titulo.</p>
           ) : null}
         </div>
       ) : (
         <div className="search-browse" aria-busy={isBrowseLoading}>
           {isBrowseLoading ? <p className="inline-status">Cargando para explorar...</p> : null}
+          {topCinerianTitles.length ? (
+            <BrowseTitleRail
+              title="Top Cinerian"
+              description="Ranking global segun las puntuaciones de la comunidad"
+              eyebrow="La comunidad"
+              items={topCinerianTitles}
+              onOpen={openMediaDetails}
+              ranked
+            />
+          ) : null}
           {trendingTitles.length ? (
             <BrowseTitleRail
               title="En tendencia"
@@ -575,31 +735,43 @@ function BrowseTitleRail({
   title,
   description,
   items,
-  onOpen
+  onOpen,
+  eyebrow = "Para explorar",
+  ranked = false
 }: {
   title: string;
   description: string;
   items: DiscoveryItem[];
   onOpen: (item: DiscoveryItem) => void;
+  eyebrow?: string;
+  ranked?: boolean;
 }) {
   return (
     <section className="search-browse__section">
       <div className="search-browse__heading">
         <div>
-          <p className="section-eyebrow">Para explorar</p>
+          <p className="section-eyebrow">{eyebrow}</p>
           <h2>{title}</h2>
           <p>{description}</p>
         </div>
       </div>
       <div className="search-browse__rail">
-        {items.map((item) => (
+        {items.map((item, index) => (
           <button
-            className="search-browse__title"
+            className={`search-browse__title${ranked ? " search-browse__title--ranked" : ""}`}
             key={`${item.mediaType}-${item.id}`}
             type="button"
             onClick={() => onOpen(item)}
           >
-            <img src={item.posterUrl} alt={item.title} />
+            <div className="search-browse__poster-wrap">
+              <img src={item.posterUrl} alt={item.title} />
+            </div>
+            {ranked ? (
+              <span className="search-browse__rank">
+                {index + 1}
+                <sup>°</sup>
+              </span>
+            ) : null}
             <strong>{item.title}</strong>
             <span>{item.year}</span>
           </button>
