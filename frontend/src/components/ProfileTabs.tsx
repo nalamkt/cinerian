@@ -363,8 +363,6 @@ export function ProfileTabs({
       tabs.push("watching");
     }
 
-    tabs.push("posts");
-
     if (visibilitySettings?.showActivity !== false) {
       tabs.push("insights");
     }
@@ -374,6 +372,9 @@ export function ProfileTabs({
     if (isOwnProfile) {
       tabs.push("ranking");
     }
+
+    // Posts queda visible como adelanto de una capa social que todavia no esta publicada.
+    tabs.push("posts");
 
     return tabs;
   }, [isOwnProfile, viewerUserId, visibilitySettings?.showActivity, visibilitySettings?.showWatchlist]);
@@ -747,19 +748,32 @@ export function ProfileTabs({
   return (
     <section className="profile-tabs">
       <div className="profile-tabs__switcher">
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            className={`profile-tabs__switch ${activeTab === tab ? "is-active" : ""}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tabLabels[tab]}
-            {tabCounts[tab] !== undefined ? (
-              <span className="profile-tabs__switch-count">{tabCounts[tab]}</span>
-            ) : null}
-          </button>
-        ))}
+        {visibleTabs.map((tab) => {
+          const isComingSoon = tab === "posts";
+
+          return (
+            <span
+              key={tab}
+              className={isComingSoon ? "profile-tabs__coming-soon" : undefined}
+              data-tooltip={isComingSoon ? "Próximamente" : undefined}
+            >
+              <button
+                type="button"
+                className={`profile-tabs__switch ${activeTab === tab ? "is-active" : ""} ${
+                  isComingSoon ? "is-disabled" : ""
+                }`}
+                onClick={() => setActiveTab(tab)}
+                disabled={isComingSoon}
+                aria-label={isComingSoon ? "Posts: Próximamente" : undefined}
+              >
+                {tabLabels[tab]}
+                {!isComingSoon && tabCounts[tab] !== undefined ? (
+                  <span className="profile-tabs__switch-count">{tabCounts[tab]}</span>
+                ) : null}
+              </button>
+            </span>
+          );
+        })}
       </div>
 
       {!readOnly && syncMessage ? <div className="inline-status">{syncMessage}</div> : null}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { getTalentDetails } from "../lib/tmdb";
@@ -18,6 +18,7 @@ type TalentDetailsModalProps = {
   onClose: () => void;
   userId?: string;
   closeOnMediaOpen?: boolean;
+  preserveInNavigationStack?: boolean;
   aboveMedia?: boolean;
 };
 
@@ -81,9 +82,10 @@ export function TalentDetailsModal({
   onClose,
   userId,
   closeOnMediaOpen = false,
+  preserveInNavigationStack = false,
   aboveMedia = false
 }: TalentDetailsModalProps) {
-  const { openMediaDetails } = useMediaDetails();
+  const { openMediaDetails, pushMediaDetails } = useMediaDetails();
   const [details, setDetails] = useState<TalentDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [visibleActingCredits, setVisibleActingCredits] = useState(CREDITS_PAGE_SIZE);
@@ -170,11 +172,38 @@ export function TalentDetailsModal({
   );
   const actingCredits = details ? orderCredits(details.actingCredits, creditOrder) : [];
   const directingCredits = details ? orderCredits(details.directingCredits, creditOrder) : [];
+  const heroCredits = details ? [...details.actingCredits, ...details.directingCredits] : [];
+  const heroPoster = [...heroCredits]
+    .sort((left, right) => (Number.parseInt(right.year, 10) || 0) - (Number.parseInt(left.year, 10) || 0))
+    .find((credit) => credit.posterUrl !== "/images/base.png")?.posterUrl;
+  const heroStyle = heroPoster
+    ? ({ "--talent-hero-poster": `url("${heroPoster}")` } as CSSProperties)
+    : undefined;
 
   function changeCreditOrder(order: CreditOrder) {
     setCreditOrder(order);
     setVisibleActingCredits(CREDITS_PAGE_SIZE);
     setVisibleDirectingCredits(CREDITS_PAGE_SIZE);
+  }
+
+  function openCreditDetails(credit: TalentCredit) {
+    const media = {
+      id: credit.id,
+      mediaType: credit.mediaType,
+      title: credit.title
+    };
+
+    // Desde una ficha, el crédito forma parte del recorrido actual. Desde el
+    // buscador abre una ficha nueva y conserva el comportamiento existente.
+    if (closeOnMediaOpen) {
+      pushMediaDetails(media);
+      if (!preserveInNavigationStack) {
+        onClose();
+      }
+      return;
+    }
+
+    openMediaDetails(media);
   }
 
   const modal = (
@@ -206,7 +235,10 @@ export function TalentDetailsModal({
               <div className="media-modal__loading">Cargando ficha de talento...</div>
             ) : (
               <>
-                <div className="media-modal__hero talent-modal__hero">
+                <div
+                  className={`media-modal__hero talent-modal__hero${heroPoster ? " has-backdrop" : ""}`}
+                  style={heroStyle}
+                >
                   <div className="media-modal__hero-inner">
                     <img
                       src={details.profileUrl ?? "/images/base.png"}
@@ -256,16 +288,7 @@ export function TalentDetailsModal({
                         <article
                           className="talent-modal__credit talent-modal__credit--interactive"
                           key={`cast-${credit.mediaType}-${credit.id}`}
-                          onClick={() => {
-                            openMediaDetails({
-                              id: credit.id,
-                              mediaType: credit.mediaType,
-                              title: credit.title
-                            });
-                            if (closeOnMediaOpen) {
-                              onClose();
-                            }
-                          }}
+                          onClick={() => openCreditDetails(credit)}
                         >
                           <img src={credit.posterUrl} alt={credit.title} />
                           <div>
@@ -314,16 +337,7 @@ export function TalentDetailsModal({
                         <article
                           className="talent-modal__credit talent-modal__credit--interactive"
                           key={`crew-${credit.mediaType}-${credit.id}`}
-                          onClick={() => {
-                            openMediaDetails({
-                              id: credit.id,
-                              mediaType: credit.mediaType,
-                              title: credit.title
-                            });
-                            if (closeOnMediaOpen) {
-                              onClose();
-                            }
-                          }}
+                          onClick={() => openCreditDetails(credit)}
                         >
                           <img src={credit.posterUrl} alt={credit.title} />
                           <div>

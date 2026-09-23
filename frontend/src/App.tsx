@@ -671,7 +671,7 @@ export default function App() {
   }
 
   return (
-    <MediaDetailsProvider userId={session.user.id}>
+    <MediaDetailsProvider userId={session.user.id} onOpenUserProfile={handleOpenUserProfile}>
       <VisualReadyGate scopeKey={visualScopeKey} />
       {showWelcomeOnboarding && localProfile ? (
         <WelcomeOnboarding

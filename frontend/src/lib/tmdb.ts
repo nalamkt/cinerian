@@ -534,6 +534,35 @@ async function getPreviousCollectionInstallments(collectionId: number, currentMo
   }
 }
 
+async function fillMissingOverviewFromEnglish(
+  payload: Record<string, unknown>,
+  tmdbId: number,
+  mediaType: MediaType
+) {
+  if (!apiKey || hasUsefulOverview(payload)) {
+    return payload;
+  }
+
+  try {
+    const fallbackUrl = new URL(`${baseUrl}/${mediaType}/${tmdbId}`);
+    fallbackUrl.searchParams.set("api_key", apiKey);
+    fallbackUrl.searchParams.set("language", "en-US");
+
+    const response = await fetch(fallbackUrl.toString());
+    if (!response.ok) {
+      return payload;
+    }
+
+    const fallbackPayload = (await response.json()) as Record<string, unknown>;
+    return hasUsefulOverview(fallbackPayload)
+      ? { ...payload, overview: fallbackPayload.overview }
+      : payload;
+  } catch {
+    // La ficha localizada sigue siendo util aunque no exista traduccion alternativa.
+    return payload;
+  }
+}
+
 function getCastCharacter(person: Record<string, unknown>) {
   const aggregateRoles = Array.isArray(person.roles)
     ? person.roles
@@ -781,6 +810,39 @@ function creditNumber(item: Record<string, unknown>, key: string): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function optionalCreditNumber(item: Record<string, unknown>, key: string): number | null {
+  const value = item[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function creditEpisodeCount(item: Record<string, unknown>): number {
+  return creditNumber(item, "episode_count") || creditNumber(item, "total_episode_count");
+}
+
+function isMarginalTalentAppearance(item: Record<string, unknown>): boolean {
+  const role = typeof item.character === "string" ? item.character.trim().toLowerCase() : "";
+  if (!role) {
+    return false;
+  }
+
+  const isGuest = /\b(guest|guest star|special guest|invitad[oa]|aparici[oó]n especial|cameo)\b/i.test(role);
+  if (isGuest) {
+    return true;
+  }
+
+  // "Self" es una participacion puntual salvo que la recurrencia deje claro
+  // que es el rol principal del programa (por ejemplo, su conductor/a).
+  const isSelfAppearance = /\b(self|himself|herself|themselves|mismo|misma)\b/i.test(role);
+  return isSelfAppearance && creditEpisodeCount(item) <= 3;
+}
+
+function creditProminence(item: Record<string, unknown>): number {
+  const billingOrder = optionalCreditNumber(item, "order");
+  const billingScore = billingOrder === null ? 0 : Math.max(0, 60 - Math.min(billingOrder, 60));
+  const episodeScore = Math.min(Math.log2(creditEpisodeCount(item) + 1) * 9, 54);
+  return billingScore + episodeScore;
+}
+
 function creditReleaseDate(item: Record<string, unknown>): number {
   const date =
     typeof item.release_date === "string"
@@ -796,6 +858,16 @@ function sortTalentCreditsByRelevance(
   credits: Record<string, unknown>[]
 ): Record<string, unknown>[] {
   return [...credits].sort((left, right) => {
+    const marginalDifference = Number(isMarginalTalentAppearance(left)) - Number(isMarginalTalentAppearance(right));
+    if (marginalDifference !== 0) {
+      return marginalDifference;
+    }
+
+    const prominenceDifference = creditProminence(right) - creditProminence(left);
+    if (prominenceDifference !== 0) {
+      return prominenceDifference;
+    }
+
     const popularityDifference = creditNumber(right, "popularity") - creditNumber(left, "popularity");
     if (popularityDifference !== 0) {
       return popularityDifference;
@@ -1598,7 +1670,8 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
     return null;
   }
 
-  const payload = (await detailResponse.json()) as Record<string, unknown>;
+  let payload = (await detailResponse.json()) as Record<string, unknown>;
+  payload = await fillMissingOverviewFromEnglish(payload, tmdbId, mediaType);
   const providersPayload = providersResponse.ok ? ((await providersResponse.json()) as Record<string, unknown>) : {};
   const item = normalizeItem({ ...payload, media_type: mediaType });
   const watchOptions = getWatchOptions(providersPayload, item.title);

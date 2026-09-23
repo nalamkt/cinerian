@@ -281,6 +281,19 @@ export type FollowedRatedReaction = {
   createdAt: string | null;
 };
 
+export type TitleReactionSummary = {
+  likedCount: number;
+  superlikedCount: number;
+  /** Hasta cinco personas del circulo, ordenadas por su reaccion mas reciente. */
+  friends: FollowedRatedReaction[];
+};
+
+export type TitleReactionUser = {
+  userId: string;
+  reaction: RatedReaction;
+  createdAt: string | null;
+};
+
 /** Trae solo las reacciones que implican haber visto el titulo: son las unicas que puntuan. */
 export async function fetchRatedReactionsForUserIds(
   userIds: string[]
@@ -303,6 +316,116 @@ export async function fetchRatedReactionsForUserIds(
     userId: entry.user_id as string,
     tmdbId: Number(entry.tmdb_id),
     mediaType: entry.media_type as MediaType,
+    reaction: entry.reaction as RatedReaction,
+    createdAt: (entry.created_at as string | null) ?? null
+  }));
+}
+
+/**
+ * Resume la senal social de una ficha sin traer el historial completo.
+ * Los contadores se calculan en Postgres y la lista se limita al circulo del
+ * usuario para que no revele nombres de personas ajenas.
+ */
+export async function fetchTitleReactionSummary(
+  item: Pick<DiscoveryItem, "id" | "mediaType">,
+  followingUserIds: string[]
+): Promise<TitleReactionSummary> {
+  if (!supabase) {
+    return { likedCount: 0, superlikedCount: 0, friends: [] };
+  }
+
+  const [likedResult, superlikedResult, friendResult] = await Promise.all([
+    supabase
+      .from("media_reactions")
+      .select("id", { count: "exact", head: true })
+      .eq("tmdb_id", item.id)
+      .eq("media_type", item.mediaType)
+      .eq("reaction", "liked"),
+    supabase
+      .from("media_reactions")
+      .select("id", { count: "exact", head: true })
+      .eq("tmdb_id", item.id)
+      .eq("media_type", item.mediaType)
+      .eq("reaction", "superliked"),
+    followingUserIds.length
+      ? supabase
+          .from("media_reactions")
+          .select("user_id, tmdb_id, media_type, reaction, created_at")
+          .eq("tmdb_id", item.id)
+          .eq("media_type", item.mediaType)
+          .in("reaction", RATED_REACTIONS)
+          .in("user_id", followingUserIds)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          // Veinticinco filas permiten deduplicar instalaciones antiguas antes
+          // de mostrar cinco amistades distintas.
+          .limit(25)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  if (likedResult.error) {
+    throw likedResult.error;
+  }
+
+  if (superlikedResult.error) {
+    throw superlikedResult.error;
+  }
+
+  if (friendResult.error) {
+    throw friendResult.error;
+  }
+
+  const friendsByUserId = new Map<string, FollowedRatedReaction>();
+  (friendResult.data ?? []).forEach((entry) => {
+    const userId = entry.user_id as string;
+    if (!friendsByUserId.has(userId) && isRatedReaction(entry.reaction as RecommendationReaction)) {
+      friendsByUserId.set(userId, {
+        userId,
+        tmdbId: Number(entry.tmdb_id),
+        mediaType: entry.media_type as MediaType,
+        reaction: entry.reaction as RatedReaction,
+        createdAt: (entry.created_at as string | null) ?? null
+      });
+    }
+  });
+
+  return {
+    likedCount: likedResult.count ?? 0,
+    superlikedCount: superlikedResult.count ?? 0,
+    friends: [...friendsByUserId.values()].slice(0, 5)
+  };
+}
+
+/**
+ * Devuelve una pagina estable de personas que reaccionaron al titulo. La UI
+ * carga paginas sucesivas para no depender del maximo de filas de PostgREST.
+ */
+export async function fetchTitleReactionUsers(
+  item: Pick<DiscoveryItem, "id" | "mediaType">,
+  reaction: Extract<RatedReaction, "liked" | "superliked">,
+  offset = 0,
+  limit = 40
+): Promise<TitleReactionUser[]> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("media_reactions")
+    .select("user_id, reaction, created_at")
+    .eq("tmdb_id", item.id)
+    .eq("media_type", item.mediaType)
+    .eq("reaction", reaction)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((entry) => ({
+    userId: entry.user_id as string,
     reaction: entry.reaction as RatedReaction,
     createdAt: (entry.created_at as string | null) ?? null
   }));

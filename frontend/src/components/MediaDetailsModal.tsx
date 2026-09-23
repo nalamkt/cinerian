@@ -3,13 +3,19 @@ import { EpisodeDetailsModal } from "./EpisodeDetailsModal";
 import { SeasonsSection } from "./SeasonsSection";
 import { SendRecommendationModal } from "./SendRecommendationModal";
 import { TalentDetailsModal } from "./TalentDetailsModal";
+import { TitleReactionListModal } from "./TitleReactionListModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { getRatedReactionLabel, RatedReactionIcon } from "./RatedReactionIcon";
+import { fetchProfileSummaries, type ProfileSummary } from "../lib/auth";
 import { createFeedPost, fetchFeedPosts, removeFeedEvent } from "../lib/feed";
+import { fetchFollowingUserIds } from "../lib/follows";
 import { getProviderSearchUrl } from "../lib/providerLinks";
+import { buildSharedProfilePath } from "../lib/profileShare";
 import {
+  fetchTitleReactionSummary,
   fetchStoredReactions,
   isRatedReaction,
+  REACTIONS_UPDATED_EVENT,
   removeStoredRatedReaction,
   removeStoredReaction,
   saveStoredReaction,
@@ -24,6 +30,7 @@ export type MediaReference = Pick<DiscoveryItem, "id" | "mediaType" | "title">;
 
 type MediaDetailsContextValue = {
   openMediaDetails: (item: MediaReference) => void;
+  pushMediaDetails: (item: MediaReference) => void;
 };
 
 const MediaDetailsContext = createContext<MediaDetailsContextValue | null>(null);
@@ -46,6 +53,250 @@ function parseFeedReview(body: string) {
     reaction: reactionBySentiment[match[1]],
     quote: match[2].trim()
   };
+}
+
+type CircleReaction = ProfileSummary & { reaction: RatedReaction };
+type PositiveReaction = Extract<RatedReaction, "liked" | "superliked">;
+
+type TitleSocialSummary = {
+  likedCount: number;
+  superlikedCount: number;
+  friends: CircleReaction[];
+};
+
+function profileInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
+
+function describeCircleReaction(friends: CircleReaction[]) {
+  const names = friends.map((friend) => friend.displayName);
+
+  if (names.length === 1) {
+    return `${names[0]} reaccionó a este título.`;
+  }
+
+  if (names.length === 2) {
+    return `${names[0]} y ${names[1]} reaccionaron a este título.`;
+  }
+
+  return `${names[0]}, ${names[1]} y ${names.length - 2} más reaccionaron a este título.`;
+}
+
+type OpenUserProfile = (profile: { userId: string; username?: string }) => void;
+
+type CircleFriendProfileLinkProps = {
+  friend: CircleReaction;
+  variant: "avatar" | "name";
+  onOpenUserProfile?: OpenUserProfile;
+  children: (image: {
+    imageUrl: string;
+    showInitials: boolean;
+    onImageError: () => void;
+  }) => ReactNode;
+};
+
+function CircleFriendProfileLink({
+  friend,
+  variant,
+  onOpenUserProfile,
+  children
+}: CircleFriendProfileLinkProps) {
+  const [hasImageError, setHasImageError] = useState(false);
+  const imageUrl = friend.avatarUrl?.trim() ?? "";
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [friend.avatarUrl]);
+
+  const showInitials = !imageUrl || hasImageError;
+
+  return (
+    <a
+      href={buildSharedProfilePath(friend.username)}
+      className={`media-modal__friend-link media-modal__friend-link--${variant}`}
+      onClick={(event) => {
+        if (!onOpenUserProfile) {
+          return;
+        }
+
+        event.preventDefault();
+        onOpenUserProfile({ userId: friend.id, username: friend.username });
+      }}
+      aria-label={`Ver el perfil de ${friend.displayName}`}
+    >
+      {children({
+        imageUrl,
+        showInitials,
+        onImageError: () => setHasImageError(true)
+      })}
+      <span className="media-modal__friend-preview" aria-hidden="true">
+        <span className="media-modal__friend-preview-avatar">
+          {showInitials ? (
+            <span className="media-modal__friend-preview-initials">
+              {profileInitials(friend.displayName)}
+            </span>
+          ) : (
+            <img src={imageUrl} alt="" onError={() => setHasImageError(true)} />
+          )}
+        </span>
+        <span className="media-modal__friend-preview-copy">
+          <strong>{friend.displayName}</strong>
+          <span>@{friend.username}</span>
+          <span className="media-modal__friend-preview-reaction">
+            <RatedReactionIcon reaction={friend.reaction} />
+            {getRatedReactionLabel(friend.reaction)}
+          </span>
+        </span>
+        <span className="media-modal__friend-preview-cta">Ver perfil</span>
+      </span>
+    </a>
+  );
+}
+
+function CircleFriendAvatar({
+  friend,
+  onOpenUserProfile
+}: {
+  friend: CircleReaction;
+  onOpenUserProfile?: OpenUserProfile;
+}) {
+  return (
+    <CircleFriendProfileLink friend={friend} variant="avatar" onOpenUserProfile={onOpenUserProfile}>
+      {({ imageUrl, showInitials, onImageError }) => (
+        <span className="media-modal__friend-avatar">
+          {showInitials ? (
+            <span className="media-modal__friend-initials" aria-hidden="true">
+              {profileInitials(friend.displayName)}
+            </span>
+          ) : (
+            <img src={imageUrl} alt="" onError={onImageError} />
+          )}
+          <span className="media-modal__friend-reaction" aria-hidden="true">
+            <RatedReactionIcon reaction={friend.reaction} />
+          </span>
+        </span>
+      )}
+    </CircleFriendProfileLink>
+  );
+}
+
+function CircleReactionDescription({
+  friends,
+  onOpenUserProfile
+}: {
+  friends: CircleReaction[];
+  onOpenUserProfile?: OpenUserProfile;
+}) {
+  const nameLink = (friend: CircleReaction) => (
+    <CircleFriendProfileLink
+      friend={friend}
+      key={friend.id}
+      variant="name"
+      onOpenUserProfile={onOpenUserProfile}
+    >
+      {() => friend.displayName}
+    </CircleFriendProfileLink>
+  );
+
+  if (friends.length === 1) {
+    return <p>{nameLink(friends[0])} reaccionó a este título.</p>;
+  }
+
+  if (friends.length === 2) {
+    return (
+      <p>
+        {nameLink(friends[0])} y {nameLink(friends[1])} reaccionaron a este título.
+      </p>
+    );
+  }
+
+  return (
+    <p>
+      {nameLink(friends[0])}, {nameLink(friends[1])} y {friends.length - 2} más reaccionaron a este título.
+    </p>
+  );
+}
+
+function useTitleSocialSummary(item: MediaReference | null, userId?: string) {
+  const [summary, setSummary] = useState<TitleSocialSummary | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const itemId = item?.id;
+  const mediaType = item?.mediaType;
+
+  useEffect(() => {
+    const currentItem = itemId == null || !mediaType ? null : { id: itemId, mediaType };
+    if (!currentItem) {
+      setSummary(null);
+      return;
+    }
+    const titleReference: Pick<DiscoveryItem, "id" | "mediaType"> = currentItem;
+
+    let isMounted = true;
+
+    async function load() {
+      setSummary(null);
+
+      try {
+        // Los totales se pueden mostrar aunque todavía no siga a nadie. Si la
+        // lectura de follows falla, la señal global no desaparece por eso.
+        const followingIds = userId
+          ? await fetchFollowingUserIds(userId).catch(() => [])
+          : [];
+        const reactionSummary = await fetchTitleReactionSummary(titleReference, followingIds);
+        const profileIds = [...new Set(reactionSummary.friends.map((friend) => friend.userId))];
+        const profiles = await fetchProfileSummaries(profileIds).catch(() => []);
+        const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+
+        if (!isMounted) {
+          return;
+        }
+
+        setSummary({
+          likedCount: reactionSummary.likedCount,
+          superlikedCount: reactionSummary.superlikedCount,
+          friends: reactionSummary.friends
+            .map((friend) => {
+              const profile = profileById.get(friend.userId);
+              return profile ? { ...profile, reaction: friend.reaction } : null;
+            })
+            .filter((friend): friend is CircleReaction => friend !== null)
+        });
+      } catch {
+        if (isMounted) {
+          setSummary(null);
+        }
+      }
+    }
+
+    void load();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [itemId, mediaType, refreshVersion, userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    function refreshAfterOwnReaction(event: Event) {
+      const updatedUserId = (event as CustomEvent<{ userId?: string }>).detail?.userId;
+      if (updatedUserId === userId) {
+        setRefreshVersion((version) => version + 1);
+      }
+    }
+
+    window.addEventListener(REACTIONS_UPDATED_EVENT, refreshAfterOwnReaction);
+    return () => window.removeEventListener(REACTIONS_UPDATED_EVENT, refreshAfterOwnReaction);
+  }, [userId]);
+
+  return summary;
 }
 
 function useMediaDetailsData(item: MediaReference | null) {
@@ -147,6 +398,7 @@ type MediaDetailsSheetProps = {
   item: MediaReference | null;
   details: MediaDetails | null;
   feedPosts: FeedEntry[];
+  socialSummary?: TitleSocialSummary | null;
   isLoading: boolean;
   hasFailed?: boolean;
   onClose?: () => void;
@@ -164,6 +416,8 @@ type MediaDetailsSheetProps = {
   onOpenTalent?: (talent: TalentSearchItem) => void;
   onOpenEpisode?: (reference: EpisodeReference) => void;
   onOpenMedia?: (item: MediaReference) => void;
+  onOpenReactionList?: (reaction: PositiveReaction) => void;
+  onOpenUserProfile?: OpenUserProfile;
   userId?: string;
 };
 
@@ -171,6 +425,7 @@ export function MediaDetailsSheet({
   item,
   details,
   feedPosts,
+  socialSummary = null,
   isLoading,
   hasFailed = false,
   onClose,
@@ -188,6 +443,8 @@ export function MediaDetailsSheet({
   onOpenTalent,
   onOpenEpisode,
   onOpenMedia,
+  onOpenReactionList,
+  onOpenUserProfile,
   userId
 }: MediaDetailsSheetProps) {
   // En series, el reparto se consulta por temporada para no cargar el historial completo.
@@ -233,6 +490,10 @@ export function MediaDetailsSheet({
     ].filter((itemData) => Boolean(itemData.value));
   }, [details]);
   const isUpcoming = Boolean(details?.releaseDate && new Date(`${details.releaseDate}T12:00:00`).getTime() > Date.now());
+  const hasSocialReactionData = Boolean(
+    socialSummary &&
+      (socialSummary.friends.length || socialSummary.likedCount || socialSummary.superlikedCount)
+  );
   const tvCastSeasons = useMemo(() => {
     if (!details || details.mediaType !== "tv") {
       return [];
@@ -481,6 +742,60 @@ export function MediaDetailsSheet({
             </section>
           ) : null}
 
+          {hasSocialReactionData && socialSummary ? (
+            <section className="media-modal__section media-modal__section--social">
+              <p className="section-eyebrow">Reacciones cinerianas</p>
+              <div className="media-modal__social-reactions">
+                {socialSummary.friends.length ? (
+                  <div className="media-modal__circle-reactions">
+                    <div className="media-modal__friend-avatars" aria-label={describeCircleReaction(socialSummary.friends)}>
+                      {socialSummary.friends.map((friend) => (
+                        <CircleFriendAvatar
+                          friend={friend}
+                          key={friend.id}
+                          onOpenUserProfile={onOpenUserProfile}
+                        />
+                      ))}
+                    </div>
+                    <CircleReactionDescription
+                      friends={socialSummary.friends}
+                      onOpenUserProfile={onOpenUserProfile}
+                    />
+                  </div>
+                ) : null}
+
+                {socialSummary.likedCount || socialSummary.superlikedCount ? (
+                  <div className="media-modal__reaction-totals" aria-label="Totales de reacciones en Cinerian">
+                    {socialSummary.likedCount ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenReactionList?.("liked")}
+                        disabled={!onOpenReactionList}
+                        aria-label={`Ver las ${socialSummary.likedCount} personas a quienes les gustó este título`}
+                      >
+                        <RatedReactionIcon reaction="liked" />
+                        <strong>{socialSummary.likedCount}</strong>
+                        Me gusta
+                      </button>
+                    ) : null}
+                    {socialSummary.superlikedCount ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenReactionList?.("superliked")}
+                        disabled={!onOpenReactionList}
+                        aria-label={`Ver las ${socialSummary.superlikedCount} personas a quienes les encantó este título`}
+                      >
+                        <RatedReactionIcon reaction="superliked" />
+                        <strong>{socialSummary.superlikedCount}</strong>
+                        Me encantó
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
           <section className="media-modal__section">
             <p className="section-eyebrow">Sinopsis</p>
             <p className="media-modal__overview">{details.overview}</p>
@@ -704,14 +1019,19 @@ function MediaDetailsModal({
   userId,
   item,
   onClose,
-  onOpenRelatedItem
+  onOpenRelatedItem,
+  onOpenTalent,
+  onOpenUserProfile
 }: {
   userId?: string;
   item: MediaReference | null;
   onClose: () => void;
   onOpenRelatedItem: (item: MediaReference) => void;
+  onOpenTalent: (talent: TalentSearchItem) => void;
+  onOpenUserProfile?: OpenUserProfile;
 }) {
   const { details, feedPosts, isLoading, hasFailed } = useMediaDetailsData(item);
+  const socialSummary = useTitleSocialSummary(item, userId);
   const [shareLabel, setShareLabel] = useState("Compartir");
   const [saveLabel, setSaveLabel] = useState("Guardar");
   const [watchedLabel, setWatchedLabel] = useState("Ya la vi");
@@ -719,11 +1039,18 @@ function MediaDetailsModal({
   const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
   const [isReviewSaving, setIsReviewSaving] = useState(false);
   const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
-  const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
   const [activeEpisode, setActiveEpisode] = useState<EpisodeReference | null>(null);
+  const [activeReactionList, setActiveReactionList] = useState<PositiveReaction | null>(null);
+  const handleOpenUserProfile = onOpenUserProfile
+    ? (profile: { userId: string; username?: string }) => {
+        onClose();
+        onOpenUserProfile(profile);
+      }
+    : undefined;
 
   useEffect(() => {
     setShareLabel("Compartir");
+    setActiveReactionList(null);
   }, [item]);
 
   useEffect(() => {
@@ -956,6 +1283,7 @@ function MediaDetailsModal({
             item={item}
             details={details}
             feedPosts={feedPosts}
+            socialSummary={socialSummary}
             isLoading={isLoading}
             hasFailed={hasFailed}
             onClose={onClose}
@@ -968,9 +1296,11 @@ function MediaDetailsModal({
             watchedReaction={watchedReaction}
             canSave={Boolean(userId)}
             canMarkWatched={Boolean(userId)}
-            onOpenTalent={setActiveTalent}
+            onOpenTalent={onOpenTalent}
             onOpenEpisode={setActiveEpisode}
             onOpenMedia={onOpenRelatedItem}
+            onOpenReactionList={setActiveReactionList}
+            onOpenUserProfile={handleOpenUserProfile}
             userId={userId}
           />
         </div>
@@ -985,6 +1315,20 @@ function MediaDetailsModal({
           onClose={() => setReviewItem(null)}
           onSubmit={(input) => void handleReviewSubmit(input)}
         />
+        <TitleReactionListModal
+          item={item}
+          reaction={activeReactionList}
+          totalCount={
+            activeReactionList === "liked"
+              ? socialSummary?.likedCount ?? 0
+              : activeReactionList === "superliked"
+                ? socialSummary?.superlikedCount ?? 0
+                : 0
+          }
+          userId={userId}
+          onClose={() => setActiveReactionList(null)}
+          onOpenUserProfile={handleOpenUserProfile}
+        />
         {userId ? (
           <SendRecommendationModal
             userId={userId}
@@ -996,52 +1340,70 @@ function MediaDetailsModal({
             }}
           />
         ) : null}
-        <TalentDetailsModal
-          item={activeTalent}
-          userId={userId}
-          onClose={() => setActiveTalent(null)}
-          closeOnMediaOpen
-          aboveMedia
-        />
       </div>
     </div>
   );
 }
 
+type DetailStackEntry =
+  | { kind: "media"; item: MediaReference }
+  | { kind: "talent"; item: TalentSearchItem };
+
 export function MediaDetailsProvider({
   userId,
+  onOpenUserProfile,
   children
 }: {
   userId?: string;
+  onOpenUserProfile?: OpenUserProfile;
   children: ReactNode;
 }) {
-  const [activeItems, setActiveItems] = useState<MediaReference[]>([]);
-  const activeItem = activeItems[activeItems.length - 1] ?? null;
+  const [detailStack, setDetailStack] = useState<DetailStackEntry[]>([]);
+  const activeEntry = detailStack[detailStack.length - 1] ?? null;
+  const activeMedia = [...detailStack]
+    .reverse()
+    .find((entry): entry is Extract<DetailStackEntry, { kind: "media" }> => entry.kind === "media")?.item ?? null;
+  const activeTalent = activeEntry?.kind === "talent" ? activeEntry.item : null;
 
   function openMediaDetails(item: MediaReference) {
-    setActiveItems([item]);
+    setDetailStack([{ kind: "media", item }]);
   }
 
   function closeMediaDetails() {
-    setActiveItems((items) => items.slice(0, -1));
+    setDetailStack((entries) => entries.slice(0, -1));
   }
 
   function openRelatedMedia(item: MediaReference) {
-    setActiveItems((items) => [...items, item]);
+    setDetailStack((entries) => [...entries, { kind: "media", item }]);
+  }
+
+  function openRelatedTalent(item: TalentSearchItem) {
+    setDetailStack((entries) => [...entries, { kind: "talent", item }]);
   }
 
   return (
     <MediaDetailsContext.Provider
       value={{
-        openMediaDetails
+        openMediaDetails,
+        pushMediaDetails: openRelatedMedia
       }}
     >
       {children}
       <MediaDetailsModal
         userId={userId}
-        item={activeItem}
+        item={activeMedia}
         onClose={closeMediaDetails}
         onOpenRelatedItem={openRelatedMedia}
+        onOpenTalent={openRelatedTalent}
+        onOpenUserProfile={onOpenUserProfile}
+      />
+      <TalentDetailsModal
+        item={activeTalent}
+        userId={userId}
+        onClose={closeMediaDetails}
+        closeOnMediaOpen
+        preserveInNavigationStack
+        aboveMedia
       />
     </MediaDetailsContext.Provider>
   );
