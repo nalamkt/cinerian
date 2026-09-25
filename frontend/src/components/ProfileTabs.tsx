@@ -38,27 +38,9 @@ type ProfileTabsProps = {
   profile?: Profile | null;
   visibilitySettings?: ProfileVisibilitySettings;
   onProfileUpdated?: (profile: Profile) => void;
-  activitySummary?: {
-    recommendations: number;
-    posts: number;
-    lastActivityLabel: string;
-  };
-  tasteInsights?: {
-    topGenre: string;
-    topDecade: string;
-    formatSplit: string;
-    profileMood: string;
-  };
 };
 
-type TabId =
-  | "watched"
-  | "watchlist"
-  | "mutual-likes"
-  | "watching"
-  | "posts"
-  | "insights"
-  | "ranking";
+type TabId = "watched" | "watchlist" | "mutual-likes" | "watching" | "posts" | "ranking";
 
 /** Cuantos puestos del ranking traemos por tanda. */
 const RANKING_PAGE_SIZE = 20;
@@ -154,7 +136,6 @@ const tabLabels: Record<TabId, string> = {
   "mutual-likes": "En común",
   watching: "Viendo",
   posts: "Posts",
-  insights: "Insights",
   ranking: "Mi Ranking"
 };
 
@@ -165,14 +146,7 @@ export function ProfileTabs({
   isOwnProfile = true,
   profile = null,
   visibilitySettings,
-  onProfileUpdated,
-  activitySummary = { recommendations: 0, posts: 0, lastActivityLabel: "Sin actividad reciente" },
-  tasteInsights = {
-    topGenre: "Sin definir",
-    topDecade: "Sin definir",
-    formatSplit: "Sin datos",
-    profileMood: "Todavia estamos aprendiendo de este perfil"
-  }
+  onProfileUpdated
 }: ProfileTabsProps) {
   const { openMediaDetails } = useMediaDetails();
   const [activeTab, setActiveTab] = useState<TabId>("watched");
@@ -363,10 +337,6 @@ export function ProfileTabs({
       tabs.push("watching");
     }
 
-    if (visibilitySettings?.showActivity !== false) {
-      tabs.push("insights");
-    }
-
     // El ranking se arma con a quien seguis vos, asi que solo tiene sentido en
     // tu propio perfil: en el de otro seria tu ranking con su cara.
     if (isOwnProfile) {
@@ -377,7 +347,7 @@ export function ProfileTabs({
     tabs.push("posts");
 
     return tabs;
-  }, [isOwnProfile, viewerUserId, visibilitySettings?.showActivity, visibilitySettings?.showWatchlist]);
+  }, [isOwnProfile, viewerUserId, visibilitySettings?.showWatchlist]);
 
   useEffect(() => {
     if (!visibleTabs.includes(activeTab)) {
@@ -703,7 +673,6 @@ export function ProfileTabs({
         bannerUrl: profile.banner_url ?? "",
         gender: profile.gender,
         birthDate: profile.birth_date,
-        favoriteGenres: profile.favorite_genres,
         favoriteTitles: profile.favorite_titles,
         featuredCollections: profile.featured_collections,
         currentWatching: nextEntries,
@@ -906,65 +875,6 @@ export function ProfileTabs({
               Todavía no cargaste series en Viendo. Sumá una desde el buscador para arrancar.
             </div>
           )}
-        </div>
-      ) : activeTab === "insights" ? (
-        <div className="profile-insights-tab">
-          <div className="profile-summary-grid">
-            <article className="profile-summary-card">
-              <span className="profile-summary-card__label">Recomendaciones</span>
-              <strong>{activitySummary.recommendations}</strong>
-              <p>
-                {isOwnProfile
-                  ? "Titulos que dejaste visibles como parte de tu gusto."
-                  : "Titulos recomendados dentro de este perfil."}
-              </p>
-            </article>
-            <article className="profile-summary-card">
-              <span className="profile-summary-card__label">Posts propios</span>
-              <strong>{activitySummary.posts}</strong>
-              <p>
-                {isOwnProfile
-                  ? "Textos y opiniones publicadas por vos."
-                  : "Textos y opiniones que esta persona compartio."}
-              </p>
-            </article>
-            <article className="profile-summary-card">
-              <span className="profile-summary-card__label">Ultimo movimiento</span>
-              <strong>{activitySummary.lastActivityLabel}</strong>
-              <p>
-                {isOwnProfile
-                  ? "La senal mas reciente de tu actividad."
-                  : "Lo ultimo que movio dentro de Cinerian."}
-              </p>
-            </article>
-          </div>
-
-          {isOwnProfile && visibilitySettings?.showInsights !== false ? (
-            <div className="profile-insights">
-              <div className="profile-insights__header">
-                <div>
-                  <p className="section-eyebrow">Insights de gusto</p>
-                  <h3>Lo que tu historial dice de vos</h3>
-                  <p>{tasteInsights.profileMood}</p>
-                </div>
-              </div>
-
-              <div className="profile-insights__grid">
-                <article className="profile-insight-card">
-                  <span>Genero dominante</span>
-                  <strong>{tasteInsights.topGenre}</strong>
-                </article>
-                <article className="profile-insight-card">
-                  <span>Decada favorita</span>
-                  <strong>{tasteInsights.topDecade}</strong>
-                </article>
-                <article className="profile-insight-card">
-                  <span>Balance de formato</span>
-                  <strong>{tasteInsights.formatSplit}</strong>
-                </article>
-              </div>
-            </div>
-          ) : null}
         </div>
       ) : activeTab === "ranking" ? (
         <div className="profile-ranking">

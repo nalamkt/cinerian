@@ -243,7 +243,6 @@ export default function App() {
     }
 
     const userId = sessionUserId;
-    const profileForOnboarding = localProfile;
     followSuggestionsLoginRef.current = userId;
     hasAppliedDefaultViewRef.current = false;
 
@@ -262,11 +261,8 @@ export default function App() {
         return;
       }
 
-      // A new account has neither preference. Existing members only see this
-      // flow again when either their genres or streaming services are missing.
-      const needsOnboarding =
-        profileForOnboarding.favorite_genres.length === 0 || filters.providerIds.length === 0;
-      setShowWelcomeOnboarding(needsOnboarding);
+      // El onboarding vuelve a aparecer solo si faltan las plataformas.
+      setShowWelcomeOnboarding(filters.providerIds.length === 0);
       setShowFollowSuggestions(false);
     }
 
@@ -603,7 +599,7 @@ export default function App() {
         if (!accessControl.canAccessView("recommendations")) {
           break;
         }
-        return <RecommendationPanel userId={session!.user.id} />;
+        return <RecommendationPanel userId={session!.user.id} onOpenUserProfile={handleOpenUserProfile} />;
       case "user":
         return (
           <ProfilePanel
@@ -676,7 +672,6 @@ export default function App() {
       {showWelcomeOnboarding && localProfile ? (
         <WelcomeOnboarding
           profile={localProfile}
-          onProfileUpdated={setLocalProfile}
           onComplete={() => {
             setShowWelcomeOnboarding(false);
             setShowFollowSuggestions(true);

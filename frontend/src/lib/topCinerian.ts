@@ -36,14 +36,26 @@ export async function fetchTopCinerianRanking(limit = 20): Promise<TopCinerianEn
 }
 
 export async function fetchTopCinerianTitles(limit = 15): Promise<DiscoveryItem[]> {
-  const ranking = await fetchTopCinerianRanking(limit);
+  // Pedimos mas entradas de las que vamos a mostrar para que el desempate por
+  // score de TMDB tenga margen de maniobra sin que se pierda ninguna posicion.
+  const ranking = await fetchTopCinerianRanking(Math.max(limit * 2, 30));
   if (!ranking.length) return [];
 
   const settled = await Promise.allSettled(
     ranking.map((entry) => getTitleById(entry.tmdbId, entry.mediaType))
   );
 
-  return settled.flatMap((result) =>
-    result.status === "fulfilled" && result.value ? [result.value] : []
-  );
+  const hydrated = ranking.flatMap((entry, index) => {
+    const result = settled[index];
+    if (result.status !== "fulfilled" || !result.value) return [];
+    return [{ entry, item: result.value }];
+  });
+
+  hydrated.sort((a, b) => {
+    if (b.entry.score !== a.entry.score) return b.entry.score - a.entry.score;
+    if (b.entry.votes !== a.entry.votes) return b.entry.votes - a.entry.votes;
+    return (b.item.score ?? 0) - (a.item.score ?? 0);
+  });
+
+  return hydrated.slice(0, limit).map(({ item }) => item);
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { useMediaDetails } from "./MediaDetailsModal";
+import { CircleFriendAvatar, useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { LoadingState } from "./LoadingState";
 import { RatedReactionIcon } from "./RatedReactionIcon";
@@ -34,6 +34,7 @@ import type { DiscoveryItem, MediaDetails } from "../types";
 
 type RecommendationPanelProps = {
   userId: string;
+  onOpenUserProfile?: (profile: { userId: string; username?: string }) => void;
 };
 
 /**
@@ -188,11 +189,7 @@ function buildSocialLine(watchers: Watcher[]) {
   return { first, others, verb, faces: positive.slice(0, 3) };
 }
 
-function initialFor(watcher: Watcher) {
-  return (watcher.displayName || watcher.username || "?").trim().charAt(0).toUpperCase();
-}
-
-export function RecommendationPanel({ userId }: RecommendationPanelProps) {
+export function RecommendationPanel({ userId, onOpenUserProfile }: RecommendationPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   // Arranca vacio a proposito: demoDiscovery es el respaldo para cuando faltan
   // las claves de TMDB, no un estado inicial. Usarlo como tal hacia que se
@@ -1084,9 +1081,11 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
                 </div>
 
                 <div className="discover-card__body">
-                  <p className={`discover-rank ${nextEntry.rank === null ? "is-filler" : ""}`}>
-                    {nextEntry.rank === null ? "Popular ahora" : `${nextEntry.rank}° en tu ranking`}
-                  </p>
+                  {nextEntry.rank === null ? (
+                    <p className="discover-rank discover-rank--outside">Fuera de tu círculo</p>
+                  ) : (
+                    <p className="discover-rank">{nextEntry.rank}° · en tu círculo</p>
+                  )}
 
                   <h2 className="discover-title">{nextSpotlight.title}</h2>
 
@@ -1160,9 +1159,11 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
               className={`discover-card__body ${hasMoreBelow ? "has-more-below" : ""}`}
               ref={bodyRef}
             >
-              <p className={`discover-rank ${current.rank === null ? "is-filler" : ""}`}>
-                {current.rank === null ? "Popular ahora" : `${current.rank}° en tu ranking`}
-              </p>
+              {current.rank === null ? (
+                <p className="discover-rank discover-rank--outside">Fuera de tu círculo</p>
+              ) : (
+                <p className="discover-rank">{current.rank}° · en tu círculo</p>
+              )}
 
               <h2 className="discover-title">{spotlight.title}</h2>
 
@@ -1171,27 +1172,28 @@ export function RecommendationPanel({ userId }: RecommendationPanelProps) {
               </p>
 
               {socialLine ? (
-                <div className="discover-social">
-                  <div className="discover-social__faces">
+                <div className="discover-circle">
+                  <div className="discover-circle__faces media-modal__friend-avatars">
                     {socialLine.faces.map((watcher) => (
-                      <span
+                      <CircleFriendAvatar
                         key={watcher.id}
-                        className="discover-social__face"
-                        title={watcher.displayName}
-                      >
-                        {watcher.avatarUrl ? (
-                          <img src={watcher.avatarUrl} alt="" />
-                        ) : (
-                          initialFor(watcher)
-                        )}
-                      </span>
+                        friend={watcher}
+                        onOpenUserProfile={onOpenUserProfile}
+                      />
                     ))}
                   </div>
-                  <p>
-                    A <strong>{socialLine.first.displayName}</strong>
-                    {socialLine.others} {socialLine.verb}
-                  </p>
+                  <div className="discover-circle__copy">
+                    <p>
+                      A <strong>{socialLine.first.displayName}</strong>
+                      {socialLine.others} {socialLine.verb}
+                    </p>
+                    <span className="discover-circle__label">de tu círculo</span>
+                  </div>
                 </div>
+              ) : current.rank === null ? (
+                <p className="discover-circle-empty">
+                  Nadie de tu círculo la vio todavía. La sumamos porque es popular ahora.
+                </p>
               ) : null}
 
               {primaryFacts.length ? (

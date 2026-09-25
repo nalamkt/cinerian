@@ -1,4 +1,4 @@
-import { fetchProfileSummaries, getProfileById, type ProfileSummary } from "./auth";
+import { fetchProfileSummaries, type ProfileSummary } from "./auth";
 import { fetchFollowingUserIds } from "./follows";
 import {
   fetchRatedReactionsForUserIds,
@@ -111,18 +111,24 @@ function normalizeGenreLabel(value: string) {
   return value.trim().toLowerCase();
 }
 
+/**
+ * Los generos que mas aparecen en lo que te gusto.
+ *
+ * Antes, con menos de 3 titulos puntuados, caia en los generos que el usuario
+ * elegia a mano en su perfil. Esa lista ya no existe: recomendamos por lo que
+ * viste vos y lo que vio tu circulo, no por una preferencia declarada. Sin
+ * suficientes datos no hay bonus de genero, que es lo correcto -- el ranking
+ * social sigue funcionando igual.
+ */
 async function buildOwnGenreAffinity(userId: string): Promise<Set<string>> {
-  const [ownReactions, ownProfile] = await Promise.all([
-    fetchStoredReactions(userId),
-    getProfileById(userId)
-  ]);
+  const ownReactions = await fetchStoredReactions(userId);
 
   const ownLiked = ownReactions
     .filter((reaction) => reaction.reaction === "liked" || reaction.reaction === "superliked")
     .slice(0, OWN_GENRE_SAMPLE_LIMIT);
 
   if (ownLiked.length < 3) {
-    return new Set((ownProfile?.favorite_genres ?? []).map(normalizeGenreLabel));
+    return new Set<string>();
   }
 
   const ownItems = await Promise.all(
@@ -710,17 +716,61 @@ export async function fetchSocialRecommendations(
     return ranked;
   }
 
-  // 5) Relleno: populares de TMDB, sin puesto ni prueba social.
+  // 5) Relleno: populares de TMDB. No llevan puesto (rank: null) pero SI
+  // pueden llevar señal social — si alguien del círculo del usuario reaccionó
+  // al título, esos watchers vienen con el item. Sin este cruce la tarjeta
+  // decía "nadie de tu círculo la vio todavía" para películas que sí habían
+  // marcado los amigos, cuando el título entraba por relleno (porque no
+  // llegaba al ranking por poca señal, filtros, o cayó en otra página).
   const seenKeys = new Set(ranked.map((entry) => candidateKey(entry.item.mediaType, entry.item.id)));
-  const filler = (
-    await collectFillerTitles(
-      catalogPageForDeckPage(page),
-      limit - ranked.length,
-      excludedKeys,
-      filters,
-      seenKeys
+  const fillerItems = await collectFillerTitles(
+    catalogPageForDeckPage(page),
+    limit - ranked.length,
+    excludedKeys,
+    filters,
+    seenKeys
+  );
+
+  // Indice de reacciones del circulo por titulo, reusando lo ya traido.
+  const watchersByTitle = new Map<string, Array<{ userId: string; reaction: RatedReaction }>>();
+  followedRated.forEach((reaction) => {
+    const key = candidateKey(reaction.mediaType, reaction.tmdbId);
+    const list = watchersByTitle.get(key) ?? [];
+    list.push({ userId: reaction.userId, reaction: reaction.reaction });
+    watchersByTitle.set(key, list);
+  });
+
+  // Perfiles adicionales que necesitamos para los watchers del relleno.
+  const fillerWatcherIds = [
+    ...new Set(
+      fillerItems.flatMap((item) => {
+        const list = watchersByTitle.get(candidateKey(item.mediaType, item.id)) ?? [];
+        return list.map((watcher) => watcher.userId);
+      })
     )
-  ).map((item) => ({ item, rank: null, watchers: [] as Watcher[] }));
+  ].filter((id) => !profileById.has(id));
+
+  if (fillerWatcherIds.length) {
+    try {
+      const extra = await fetchProfileSummaries(fillerWatcherIds);
+      extra.forEach((profile) => profileById.set(profile.id, profile));
+    } catch {
+      // Si falla, el relleno pierde los avatares pero sigue mostrandose.
+    }
+  }
+
+  const filler = fillerItems.map((item) => {
+    const rawWatchers = watchersByTitle.get(candidateKey(item.mediaType, item.id)) ?? [];
+    const watchers = rawWatchers
+      .map((watcher) => {
+        const profile = profileById.get(watcher.userId);
+        return profile ? { ...profile, reaction: watcher.reaction } : null;
+      })
+      .filter((watcher): watcher is Watcher => watcher !== null)
+      .sort((left, right) => REACTION_WEIGHT[right.reaction] - REACTION_WEIGHT[left.reaction]);
+
+    return { item, rank: null, watchers };
+  });
 
   return [...ranked, ...filler];
 }

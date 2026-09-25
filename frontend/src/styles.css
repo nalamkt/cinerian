@@ -2813,29 +2813,6 @@ textarea {
   line-height: 1.5;
 }
 
-.welcome-onboarding__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.welcome-onboarding__chip {
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  padding: 12px 18px;
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.04);
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.welcome-onboarding__chip.is-selected {
-  border-color: rgba(252, 195, 95, 0.65);
-  color: var(--accent);
-  background: rgba(252, 195, 95, 0.12);
-}
-
 .welcome-onboarding__search {
   display: flex;
   align-items: center;
@@ -3813,6 +3790,31 @@ textarea {
   background: linear-gradient(180deg, rgba(16, 20, 27, 0), rgba(16, 20, 27, 0.92));
 }
 
+/*
+  Volanta "Fuera de tu circulo" — reemplaza al viejo "Popular ahora" cuando
+  el titulo llega por relleno. Es una pastilla en tono calido bajo para
+  diferenciarla del ambar del ranking sin sonar a error.
+*/
+.discover-rank--outside {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 8px;
+  border-radius: 999px;
+  background: rgba(232, 150, 90, 0.13);
+  color: #e8965a;
+  letter-spacing: 0.12em;
+}
+
+.discover-rank--outside::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  flex: none;
+}
+
 .discover-rank {
   margin: 0 0 6px;
   font-size: 0.78rem;
@@ -3861,53 +3863,59 @@ textarea {
   color: var(--muted);
 }
 
-.discover-social {
+/*
+  Bloque social del circulo. Sube de una "linea de facts" a un bloque
+  propio con avatares grandes, hover al perfil (reusa CircleFriendAvatar del
+  detalle) y un rotulo "de tu circulo" para que quede claro de donde sale la
+  recomendacion.
+*/
+.discover-circle {
   margin-top: 12px;
-  /* Cuando viene despues del chip de tipo, el margen se apreta: el chip ya
-     hizo el trabajo de separar el titulo del resto. */
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(252, 195, 95, 0.24);
+  background: rgba(252, 195, 95, 0.06);
 }
 
-.discover-social__faces {
+.discover-circle__copy {
   display: flex;
-  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
-.discover-social__face {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  border: 2px solid var(--bg-soft);
-  background: linear-gradient(140deg, var(--accent), var(--accent-2));
-  color: #201507;
-  display: grid;
-  place-items: center;
-  font-size: 0.78rem;
-  font-weight: 700;
-  overflow: hidden;
-}
-
-.discover-social__face + .discover-social__face {
-  margin-left: -10px;
-}
-
-.discover-social__face img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.discover-social p {
+.discover-circle__copy p {
   margin: 0;
-  font-size: 1rem;
-  color: var(--muted);
+  font-size: 0.98rem;
+  color: var(--text);
 }
 
-.discover-social strong {
+.discover-circle__copy strong {
   color: var(--text);
   font-weight: 600;
+}
+
+.discover-circle__label {
+  font-size: 0.76rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/*
+  Estado vacio: filler puro. En vez de dejar el hueco silencioso, decimos
+  explicitamente por que el titulo esta ahi.
+*/
+.discover-circle-empty {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.4;
 }
 
 .discover-facts {
@@ -5083,20 +5091,8 @@ textarea {
   order: 1;
 }
 
-.profile-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  order: 4;
-}
-
 .profile-secondary__copy {
   color: var(--muted);
-}
-
-.profile-insights-tab {
-  display: grid;
-  gap: 20px;
 }
 
 /* ---------- Mi Ranking ---------- */
@@ -5254,117 +5250,6 @@ textarea {
 
 .profile-mutual-likes__intro > p:last-child {
   color: var(--muted);
-}
-
-.profile-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text);
-  font-weight: 800;
-}
-
-.profile-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.profile-summary-card {
-  display: grid;
-  gap: 8px;
-  padding: 18px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.profile-summary-card__label {
-  color: var(--muted);
-  font-size: 0.9rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.profile-summary-card strong {
-  font-family: var(--font-display);
-  font-size: 1.65rem;
-  line-height: 1.1;
-}
-
-.profile-summary-card p {
-  margin: 0;
-  color: var(--muted);
-}
-
-.profile-insights {
-  display: grid;
-  gap: 14px;
-  padding: 20px;
-  border-radius: 22px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 187, 54, 0.1), transparent 28%),
-    rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.profile-insights__header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: start;
-}
-
-.profile-insights__header h3,
-.profile-insights__header p {
-  margin: 0;
-}
-
-.profile-insights__header > div:first-child {
-  display: grid;
-  gap: 6px;
-}
-
-.profile-insights__header > div:first-child > p:last-child {
-  color: var(--muted);
-}
-
-.profile-insights__actions {
-  flex-shrink: 0;
-}
-
-.profile-insights__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.profile-insight-card {
-  display: grid;
-  gap: 8px;
-  padding: 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.profile-insight-card span {
-  color: var(--muted);
-  font-size: 0.88rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.profile-insight-card strong {
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  line-height: 1.1;
 }
 
 .profile-watching {
@@ -5561,25 +5446,6 @@ textarea {
   gap: 8px;
   padding: 14px 20px 20px;
   overflow-y: auto;
-}
-
-.profile-genres {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  order: 2;
-}
-
-.profile-genre-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 187, 54, 0.2);
-  background: rgba(255, 187, 54, 0.08);
-  color: var(--accent);
-  font-weight: 700;
 }
 
 .profile-activity {
@@ -7579,12 +7445,21 @@ textarea {
 }
 
 .media-modal__toolbar {
-  position: absolute;
-  inset: 18px 18px auto;
+  position: sticky;
+  top: 18px;
   z-index: 6;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  padding: 0 18px;
+  /* Compensa el alto que ocupa el toolbar en flujo para que el hero
+     mantenga su padding superior original y quede detras del boton. */
+  margin-bottom: -70px;
+  pointer-events: none;
+}
+
+.media-modal__toolbar > * {
+  pointer-events: auto;
 }
 
 .media-modal__back {
@@ -8646,13 +8521,32 @@ textarea {
 .media-modal__cast-card {
   width: 100%;
   display: grid;
+  grid-template-rows: auto auto auto;
   gap: 8px;
   justify-items: center;
+  align-items: start;
   text-align: center;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--text);
+}
+
+.media-modal__cast-card strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.2;
+}
+
+.media-modal__cast-card span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .media-modal__cast-card--interactive {
@@ -10031,15 +9925,9 @@ textarea {
 
   /* El encabezado del perfil se resuelve en su propio bloque, mas abajo. */
 
-  .profile-summary-grid,
-  .profile-insights__grid,
   .profile-editor__grid,
   .profile-editor__visibility {
     grid-template-columns: 1fr;
-  }
-
-  .profile-insights__header {
-    display: grid;
   }
 
   .profile-grid {
@@ -11275,8 +11163,9 @@ textarea {
 
   .media-modal__toolbar {
     /* Alineado con el padding lateral del hero para que no baile. */
-    inset: 12px 18px auto;
-    padding: 0;
+    top: 12px;
+    padding: 0 18px;
+    margin-bottom: -60px;
   }
 
   .media-modal__back {
@@ -11778,16 +11667,6 @@ textarea {
     grid-column: 1 / -1;
     grid-row: 5;
     width: 100%;
-  }
-
-  .profile-genres {
-    grid-column: 1 / -1;
-    grid-row: 6;
-  }
-
-  /* Los badges automaticos ocupaban dos lineas y no aportaban. */
-  .profile-badges {
-    display: none;
   }
 
   /*

@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { getTalentDetails } from "../lib/tmdb";
@@ -12,6 +12,18 @@ import type { TalentCredit, TalentDetails, TalentSearchItem } from "../types";
 
 const CREDITS_PAGE_SIZE = 12;
 type CreditOrder = "known" | "recent";
+
+// Cuando el usuario abre una ficha de pelicula desde el perfil de un actor, el
+// TalentDetailsModal se desmonta y al volver arrancaba en el tope de la lista,
+// perdiendo el "Ver mas" ya expandido y el scroll. Guardamos ese contexto
+// aca (module-level) por talento para restaurarlo al remontar.
+type TalentUiState = {
+  scrollTop: number;
+  visibleActingCredits: number;
+  visibleDirectingCredits: number;
+  creditOrder: CreditOrder;
+};
+const talentUiCache = new Map<number, TalentUiState>();
 
 type TalentDetailsModalProps = {
   item: TalentSearchItem | null;
@@ -86,12 +98,19 @@ export function TalentDetailsModal({
   aboveMedia = false
 }: TalentDetailsModalProps) {
   const { openMediaDetails, pushMediaDetails } = useMediaDetails();
+  const cached = item ? talentUiCache.get(item.id) : null;
   const [details, setDetails] = useState<TalentDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [visibleActingCredits, setVisibleActingCredits] = useState(CREDITS_PAGE_SIZE);
-  const [visibleDirectingCredits, setVisibleDirectingCredits] = useState(CREDITS_PAGE_SIZE);
-  const [creditOrder, setCreditOrder] = useState<CreditOrder>("known");
+  const [visibleActingCredits, setVisibleActingCredits] = useState(
+    cached?.visibleActingCredits ?? CREDITS_PAGE_SIZE
+  );
+  const [visibleDirectingCredits, setVisibleDirectingCredits] = useState(
+    cached?.visibleDirectingCredits ?? CREDITS_PAGE_SIZE
+  );
+  const [creditOrder, setCreditOrder] = useState<CreditOrder>(cached?.creditOrder ?? "known");
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollRef = useRef<number | null>(cached?.scrollTop ?? null);
 
   useEffect(() => {
     if (!item) {
@@ -120,9 +139,12 @@ export function TalentDetailsModal({
   }, [item]);
 
   useEffect(() => {
-    setVisibleActingCredits(CREDITS_PAGE_SIZE);
-    setVisibleDirectingCredits(CREDITS_PAGE_SIZE);
-    setCreditOrder("known");
+    if (!item) return;
+    const nextCached = talentUiCache.get(item.id);
+    setVisibleActingCredits(nextCached?.visibleActingCredits ?? CREDITS_PAGE_SIZE);
+    setVisibleDirectingCredits(nextCached?.visibleDirectingCredits ?? CREDITS_PAGE_SIZE);
+    setCreditOrder(nextCached?.creditOrder ?? "known");
+    pendingScrollRef.current = nextCached?.scrollTop ?? 0;
   }, [item?.id]);
 
   useEffect(() => {
@@ -163,6 +185,23 @@ export function TalentDetailsModal({
     };
   }, [userId]);
 
+  useLayoutEffect(() => {
+    if (!details || pendingScrollRef.current == null) return;
+    const target = pendingScrollRef.current;
+    const el = scrollRef.current;
+    if (!el) return;
+    // Los posters cargan de a poco: aplicamos el scroll ahora y otra vez tras
+    // un frame por si las imagenes cambiaron la altura del contenido.
+    el.scrollTop = target;
+    const rafId = window.requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = target;
+      }
+      pendingScrollRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [details, visibleActingCredits, visibleDirectingCredits]);
+
   if (!item) {
     return null;
   }
@@ -186,7 +225,23 @@ export function TalentDetailsModal({
     setVisibleDirectingCredits(CREDITS_PAGE_SIZE);
   }
 
+  function saveUiState() {
+    if (!item) return;
+    talentUiCache.set(item.id, {
+      scrollTop: scrollRef.current?.scrollTop ?? 0,
+      visibleActingCredits,
+      visibleDirectingCredits,
+      creditOrder
+    });
+  }
+
+  function handleClose() {
+    saveUiState();
+    onClose();
+  }
+
   function openCreditDetails(credit: TalentCredit) {
+    saveUiState();
     const media = {
       id: credit.id,
       mediaType: credit.mediaType,
@@ -210,20 +265,42 @@ export function TalentDetailsModal({
     <div
       className={`media-modal__backdrop media-modal__backdrop--talent ${aboveMedia ? "is-above-media" : ""}`}
       role="presentation"
-      onClick={onClose}
+      onClick={handleClose}
     >
-      <div className="media-modal__frame media-modal__frame--talent" role="presentation">
+      <div
+        className="media-modal__frame media-modal__frame--talent"
+        role="presentation"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            handleClose();
+          }
+        }}
+      >
         <div
           className="media-modal__panel media-modal__panel--talent"
           role="presentation"
-          onClick={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              handleClose();
+              return;
+            }
+            event.stopPropagation();
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              handleClose();
+            }
+          }}
         >
-          <div className="media-modal media-modal--public talent-modal talent-modal--page">
+          <div
+            ref={scrollRef}
+            className="media-modal media-modal--public talent-modal talent-modal--page"
+          >
             <div className="media-modal__toolbar">
               <button
                 type="button"
                 className="media-modal__back"
-                onClick={onClose}
+                onClick={handleClose}
                 aria-label="Volver"
                 data-escape-dismiss
               >
