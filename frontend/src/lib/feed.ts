@@ -15,10 +15,12 @@ type FeedPostRow = {
     | {
         display_name: string;
         username: string;
+        avatar_url: string | null;
       }
     | {
         display_name: string;
         username: string;
+        avatar_url: string | null;
       }[]
     | null;
 };
@@ -33,10 +35,12 @@ type FeedCommentRow = {
     | {
         display_name: string;
         username: string;
+        avatar_url: string | null;
       }
     | {
         display_name: string;
         username: string;
+        avatar_url: string | null;
       }[]
     | null;
 };
@@ -65,7 +69,7 @@ function formatRelativeLabel(dateString: string) {
 
 function extractProfile(
   profiles: FeedPostRow["profiles"]
-): { display_name: string; username: string } | null {
+): { display_name: string; username: string; avatar_url: string | null } | null {
   if (!profiles) {
     return null;
   }
@@ -104,6 +108,7 @@ function mapFeedRow(entry: FeedPostRow): FeedEntry {
     userId: entry.user_id,
     author: profile?.display_name ?? "Cineriano",
     username: profile?.username ?? undefined,
+    avatarUrl: profile?.avatar_url ?? null,
     body: normalizeFeedBody(entry.body, entry.post_type),
     createdAtLabel: formatRelativeLabel(entry.created_at),
     createdAt: entry.created_at,
@@ -236,7 +241,7 @@ export async function fetchFeedPosts(): Promise<FeedEntry[]> {
 
   const { data, error } = await supabase
     .from("feed_posts")
-    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username)")
+    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username, avatar_url)")
     .order("created_at", { ascending: false })
     .limit(60);
 
@@ -254,7 +259,7 @@ export async function fetchFeedPostById(postId: string): Promise<FeedEntry | nul
 
   const { data, error } = await supabase
     .from("feed_posts")
-    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username)")
+    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username, avatar_url)")
     .eq("id", postId)
     .maybeSingle();
 
@@ -272,7 +277,7 @@ export async function fetchFeedPostsByUsers(userIds: string[]): Promise<FeedEntr
 
   const { data, error } = await supabase
     .from("feed_posts")
-    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username)")
+    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username, avatar_url)")
     .in("user_id", userIds)
     .order("created_at", { ascending: false })
     .limit(60);
@@ -291,7 +296,7 @@ export async function fetchUserTextPosts(userId: string): Promise<FeedEntry[]> {
 
   const { data, error } = await supabase
     .from("feed_posts")
-    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username)")
+    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username, avatar_url)")
     .eq("user_id", userId)
     .is("tmdb_id", null)
     .order("created_at", { ascending: false });
@@ -333,7 +338,7 @@ export async function fetchUserMediaPosts(userId: string): Promise<FeedEntry[]> 
 
   const { data, error } = await supabase
     .from("feed_posts")
-    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username)")
+    .select("id, user_id, body, post_type, created_at, tmdb_id, media_type, profiles(display_name, username, avatar_url)")
     .eq("user_id", userId)
     .not("tmdb_id", "is", null)
     .order("created_at", { ascending: false });
@@ -384,7 +389,7 @@ export async function fetchFeedComments(postIds: string[]): Promise<Record<strin
 
   const { data, error } = await supabase
     .from("feed_post_comments")
-    .select("id, post_id, user_id, body, created_at, profiles(display_name, username)")
+    .select("id, post_id, user_id, body, created_at, profiles(display_name, username, avatar_url)")
     .in("post_id", postIds)
     .order("created_at", { ascending: true });
 

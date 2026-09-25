@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { EpisodeDetailsModal } from "./EpisodeDetailsModal";
 import { SeasonsSection } from "./SeasonsSection";
 import { SendRecommendationModal } from "./SendRecommendationModal";
@@ -34,6 +34,22 @@ type MediaDetailsContextValue = {
 };
 
 const MediaDetailsContext = createContext<MediaDetailsContextValue | null>(null);
+
+// Actores con muchos personajes (tipico en animacion) mandan strings enormes
+// tipo "Bart / Lisa / Maggie (voice)". En la card mostramos solo el primero y
+// un contador "+N"; la lista completa queda en el atributo title y en el
+// TalentDetailsModal al tocar la card.
+function formatCharacterForCard(character: string): string {
+  const parts = character
+    .split(/\s*[·/]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) {
+    return character;
+  }
+  const [first, ...rest] = parts;
+  return `${first} · +${rest.length}`;
+}
 
 function parseFeedReview(body: string) {
   const match =
@@ -158,7 +174,7 @@ function CircleFriendProfileLink({
   );
 }
 
-function CircleFriendAvatar({
+export function CircleFriendAvatar({
   friend,
   onOpenUserProfile
 }: {
@@ -299,11 +315,29 @@ function useTitleSocialSummary(item: MediaReference | null, userId?: string) {
   return summary;
 }
 
+function filterMediaReviews(posts: FeedEntry[], item: MediaReference) {
+  return posts
+    .filter((post) => post.type === "rating")
+    .filter((post) => post.tmdbId === item.id && post.mediaType === item.mediaType)
+    .filter((post) => Boolean(parseFeedReview(post.body)))
+    .slice(0, 4);
+}
+
 function useMediaDetailsData(item: MediaReference | null) {
   const [details, setDetails] = useState<MediaDetails | null>(null);
   const [feedPosts, setFeedPosts] = useState<FeedEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFailed, setHasFailed] = useState(false);
+
+  const refreshFeedPosts = useCallback(async () => {
+    if (!item) return;
+    try {
+      const posts = await fetchFeedPosts();
+      setFeedPosts(filterMediaReviews(posts, item));
+    } catch {
+      // Preservamos los posts existentes si falla el refresco.
+    }
+  }, [item]);
 
   useEffect(() => {
     if (!item) {
@@ -365,17 +399,8 @@ function useMediaDetailsData(item: MediaReference | null) {
 
       void fetchFeedPosts()
         .then((posts) => {
-          if (!isMounted) {
-            return;
-          }
-
-          setFeedPosts(
-            posts
-              .filter((post) => post.type === "rating")
-              .filter((post) => post.tmdbId === currentItem.id && post.mediaType === currentItem.mediaType)
-              .filter((post) => Boolean(parseFeedReview(post.body)))
-              .slice(0, 4)
-          );
+          if (!isMounted) return;
+          setFeedPosts(filterMediaReviews(posts, currentItem));
         })
         .catch(() => {
           if (isMounted) {
@@ -391,7 +416,7 @@ function useMediaDetailsData(item: MediaReference | null) {
     };
   }, [item]);
 
-  return { details, feedPosts, isLoading, hasFailed };
+  return { details, feedPosts, isLoading, hasFailed, refreshFeedPosts };
 }
 
 type MediaDetailsSheetProps = {
@@ -796,6 +821,46 @@ export function MediaDetailsSheet({
             </section>
           ) : null}
 
+          {feedPosts.length ? (
+            <section className="media-modal__section">
+              <p className="section-eyebrow">Reseñas de cinerianos</p>
+              <div className="media-modal__reviews">
+                {feedPosts.map((post) => {
+                  const review = parseFeedReview(post.body);
+                  const initial = post.author?.trim().charAt(0).toUpperCase() || "C";
+
+                  return (
+                    <article className="media-modal__review-card" key={post.id}>
+                      <header className="media-modal__review-header">
+                        <div className="media-modal__review-avatar" aria-hidden="true">
+                          {post.avatarUrl ? (
+                            <img src={post.avatarUrl} alt="" />
+                          ) : (
+                            <span>{initial}</span>
+                          )}
+                        </div>
+                        <div className="media-modal__review-heading">
+                          <strong>{post.author}</strong>
+                          <span className="media-modal__review-meta">{post.createdAtLabel}</span>
+                        </div>
+                        {review ? (
+                          <span
+                            className="media-modal__review-reaction-icon"
+                            aria-label={getRatedReactionLabel(review.reaction)}
+                            title={getRatedReactionLabel(review.reaction)}
+                          >
+                            <RatedReactionIcon reaction={review.reaction} />
+                          </span>
+                        ) : null}
+                      </header>
+                      {review?.quote ? <p>{review.quote}</p> : null}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
           <section className="media-modal__section">
             <p className="section-eyebrow">Sinopsis</p>
             <p className="media-modal__overview">{details.overview}</p>
@@ -851,31 +916,6 @@ export function MediaDetailsSheet({
               onOpenEpisode={onOpenEpisode}
               userId={userId ?? null}
             />
-          ) : null}
-
-          {feedPosts.length ? (
-            <section className="media-modal__section">
-              <p className="section-eyebrow">Reseñas de cinerianos</p>
-              <div className="media-modal__reviews">
-                {feedPosts.map((post) => {
-                  const review = parseFeedReview(post.body);
-
-                  return (
-                    <article className="media-modal__review-card" key={post.id}>
-                      <strong>{post.author}</strong>
-                      <span className="media-modal__review-meta">{post.createdAtLabel}</span>
-                      {review ? (
-                        <span className="media-modal__review-reaction">
-                          <RatedReactionIcon reaction={review.reaction} />
-                          {getRatedReactionLabel(review.reaction)}
-                        </span>
-                      ) : null}
-                      <p>{review?.quote}</p>
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
           ) : null}
 
           {hasCast || crewList.length ? (
@@ -954,7 +994,11 @@ export function MediaDetailsSheet({
                           )}
                         </div>
                         <strong>{person.name}</strong>
-                        {person.character ? <span>{person.character}</span> : null}
+                        {person.character ? (
+                          <span title={person.character}>
+                            {formatCharacterForCard(person.character)}
+                          </span>
+                        ) : null}
                       </button>
                     ))
                   ) : (
@@ -1030,7 +1074,7 @@ function MediaDetailsModal({
   onOpenTalent: (talent: TalentSearchItem) => void;
   onOpenUserProfile?: OpenUserProfile;
 }) {
-  const { details, feedPosts, isLoading, hasFailed } = useMediaDetailsData(item);
+  const { details, feedPosts, isLoading, hasFailed, refreshFeedPosts } = useMediaDetailsData(item);
   const socialSummary = useTitleSocialSummary(item, userId);
   const [shareLabel, setShareLabel] = useState("Compartir");
   const [saveLabel, setSaveLabel] = useState("Guardar");
@@ -1229,6 +1273,7 @@ function MediaDetailsModal({
       setWatchedReaction(input.reaction);
       setWatchedLabel(getRatedReactionLabel(input.reaction));
       setReviewItem(null);
+      void refreshFeedPosts();
     } catch {
       setWatchedLabel("No pude marcar");
       window.setTimeout(() => setWatchedLabel("Ya la vi"), 1800);

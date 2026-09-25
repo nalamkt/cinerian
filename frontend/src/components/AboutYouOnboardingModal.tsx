@@ -26,7 +26,6 @@ export function AboutYouOnboardingModal({ profile, onComplete }: AboutYouOnboard
         bannerUrl: profile.banner_url ?? "",
         gender: nextGender,
         birthDate: nextBirthDate,
-        favoriteGenres: profile.favorite_genres,
         favoriteTitles: profile.favorite_titles,
         featuredCollections: profile.featured_collections,
         currentWatching: profile.current_watching,

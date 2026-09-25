@@ -163,6 +163,7 @@ export type FeedEntry = {
   author: string;
   username?: string;
   userId?: string;
+  avatarUrl?: string | null;
   body: string;
   createdAtLabel: string;
   createdAt?: string;

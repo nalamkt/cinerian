@@ -21,30 +21,8 @@ type FormState = {
   avatarUrl: string;
   gender: Gender | null;
   birthDate: string;
-  favoriteGenres: string[];
   visibilitySettings: ProfileVisibilitySettings;
 };
-
-const GENRE_OPTIONS = [
-  "Accion",
-  "Animacion",
-  "Aventura",
-  "Belica",
-  "Comedia",
-  "Crimen",
-  "Documental",
-  "Drama",
-  "Fantasia",
-  "Historia",
-  "Misterio",
-  "Musica",
-  "Romance",
-  "Sci-fi",
-  "Suspenso",
-  "Terror",
-  "Thriller",
-  "Western"
-];
 
 function normalizeUsername(value: string) {
   return value
@@ -63,7 +41,6 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
     avatarUrl: profile.avatar_url ?? "",
     gender: profile.gender,
     birthDate: profile.birth_date ?? "",
-    favoriteGenres: profile.favorite_genres ?? [],
     visibilitySettings: profile.visibility_settings
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -86,26 +63,6 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
         ...current.visibilitySettings,
         [key]: value
       }
-    }));
-  }
-
-  function updateInsightsVisibility(value: boolean) {
-    setForm((current) => ({
-      ...current,
-      visibilitySettings: {
-        ...current.visibilitySettings,
-        showActivity: value,
-        showInsights: value
-      }
-    }));
-  }
-
-  function toggleGenre(genre: string) {
-    setForm((current) => ({
-      ...current,
-      favoriteGenres: current.favoriteGenres.includes(genre)
-        ? current.favoriteGenres.filter((entry) => entry !== genre)
-        : [...current.favoriteGenres, genre].slice(0, 6)
     }));
   }
 
@@ -140,7 +97,6 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
         bannerUrl: profile.banner_url ?? "",
         gender: form.gender,
         birthDate: form.birthDate,
-        favoriteGenres: form.favoriteGenres,
         favoriteTitles: profile.favorite_titles,
         featuredCollections: profile.featured_collections,
         currentWatching: profile.current_watching,
@@ -282,33 +238,6 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
         <div className="profile-editor__section-copy">
           <div className="profile-editor__section-title">
             <span className="profile-editor__section-number">3</span>
-            <strong>Gustos</strong>
-          </div>
-          <p>Elegí hasta 6 para que el perfil cuente rapido tus gustos.</p>
-        </div>
-
-        <div className="profile-editor__chips">
-          {GENRE_OPTIONS.map((genre) => {
-            const isActive = form.favoriteGenres.includes(genre);
-
-            return (
-              <button
-                key={genre}
-                type="button"
-                className={`profile-editor__chip ${isActive ? "is-active" : ""}`}
-                onClick={() => toggleGenre(genre)}
-              >
-                {genre}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="profile-editor__section">
-        <div className="profile-editor__section-copy">
-          <div className="profile-editor__section-title">
-            <span className="profile-editor__section-number">4</span>
             <strong>Qué mostrar en tu perfil</strong>
           </div>
           <p>Elegí qué partes querés mostrar en tu perfil compartido.</p>
@@ -324,23 +253,6 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
             />
           </label>
 
-          <label className="profile-editor__toggle">
-            <span>Mostrar badges</span>
-            <input
-              type="checkbox"
-              checked={form.visibilitySettings.showBadges}
-              onChange={(event) => updateVisibility("showBadges", event.target.checked)}
-            />
-          </label>
-
-          <label className="profile-editor__toggle">
-            <span>Mostrar pestaña de Insights</span>
-            <input
-              type="checkbox"
-              checked={form.visibilitySettings.showActivity}
-              onChange={(event) => updateInsightsVisibility(event.target.checked)}
-            />
-          </label>
         </div>
       </div>
 

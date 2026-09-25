@@ -1,10 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { listProfiles, type Profile } from "../lib/auth";
-import { fetchUserMediaPosts, fetchUserTextPosts } from "../lib/feed";
 import { fetchFollowerCount, fetchFollowerUserIds, fetchFollowingUserIds } from "../lib/follows";
 import { fetchStoredReactions, isRatedReaction, REACTIONS_UPDATED_EVENT } from "../lib/reactions";
-import { getTitleById } from "../lib/tmdb";
-import type { DiscoveryItem } from "../types";
 import { EditProfileForm } from "./EditProfileForm";
 import { ProfileTabs } from "./ProfileTabs";
 
@@ -41,182 +38,18 @@ export function ProfilePanel({
   const avatarUrl = profile?.avatar_url ?? null;
   const bannerUrl = profile?.banner_url ?? null;
   const bio = profile?.bio?.trim();
-  const favoriteGenres = profile?.favorite_genres ?? [];
-  const featuredCollections = profile?.featured_collections ?? [];
   const visibilitySettings = profile?.visibility_settings;
-  const canShowBadges = visibilitySettings?.showBadges !== false;
   const [stats, setStats] = useState({ likes: 0, watched: 0, followers: 0, following: 0 });
   const [isEditing, setIsEditing] = useState(false);
   const [followerProfiles, setFollowerProfiles] = useState<Profile[]>([]);
   const [followingProfiles, setFollowingProfiles] = useState<Profile[]>([]);
   const [peoplePopupTab, setPeoplePopupTab] = useState<"followers" | "following" | null>(null);
   const [peopleSearchQuery, setPeopleSearchQuery] = useState("");
-  const [identityBadges, setIdentityBadges] = useState<string[]>([]);
-  const [tasteInsights, setTasteInsights] = useState({
-    topGenre: "Sin definir",
-    topDecade: "Sin definir",
-    formatSplit: "Sin datos",
-    profileMood: "Todavia estamos aprendiendo de este perfil"
-  });
-  const [activitySummary, setActivitySummary] = useState({
-    recommendations: 0,
-    posts: 0,
-    lastActivityLabel: "Sin actividad reciente"
-  });
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadStats() {
-      const results = await Promise.allSettled([
-        fetchStoredReactions(userId),
-        fetchFollowerCount(userId),
-        fetchUserTextPosts(userId),
-        fetchUserMediaPosts(userId),
-        listProfiles(),
-        fetchFollowerUserIds(userId),
-        fetchFollowingUserIds(userId)
-      ]);
-      if (!isMounted) {
-        return;
-      }
-
-      const reactionsResult = results[0];
-      const followersResult = results[1];
-      const textPostsResult = results[2];
-      const mediaPostsResult = results[3];
-      const profilesResult = results[4];
-      const followerIdsResult = results[5];
-      const followingIdsResult = results[6];
-      const storedReactions = reactionsResult.status === "fulfilled" ? reactionsResult.value : [];
-      const followers = followersResult.status === "fulfilled" ? followersResult.value : 0;
-      const textPosts = textPostsResult.status === "fulfilled" ? textPostsResult.value : [];
-      const mediaPosts = mediaPostsResult.status === "fulfilled" ? mediaPostsResult.value : [];
-      const allProfiles = profilesResult.status === "fulfilled" ? profilesResult.value : [];
-      const followerIds = followerIdsResult.status === "fulfilled" ? followerIdsResult.value : [];
-      const followingIds = followingIdsResult.status === "fulfilled" ? followingIdsResult.value : [];
-      const uniqueTasteEntries = storedReactions
-        .filter((entry) => entry.reaction !== "ignored")
-        .filter(
-          (entry, index, all) =>
-            all.findIndex(
-              (candidate) =>
-                candidate.tmdbId === entry.tmdbId && candidate.mediaType === entry.mediaType
-            ) === index
-        )
-        .slice(0, 30);
-      const resolvedTasteItems = (
-        await Promise.all(uniqueTasteEntries.map((entry) => getTitleById(entry.tmdbId, entry.mediaType)))
-      ).filter((item): item is DiscoveryItem => Boolean(item));
-      const mergedActivity = [...mediaPosts, ...textPosts]
-        .sort((left, right) => {
-          const leftDate = left.createdAt ? new Date(left.createdAt).getTime() : 0;
-          const rightDate = right.createdAt ? new Date(right.createdAt).getTime() : 0;
-          return rightDate - leftDate;
-        })
-        .slice(0, 4);
-
-      setStats({
-        likes: storedReactions.filter((entry) => entry.reaction === "watchlist").length,
-        watched: storedReactions.filter(
-          (entry) => isRatedReaction(entry.reaction)
-        ).length,
-        followers: followerCountOverride ?? followers,
-        following: followingIds.length
-      });
-      setFollowerProfiles(allProfiles.filter((entry) => followerIds.includes(entry.id)));
-      setFollowingProfiles(allProfiles.filter((entry) => followingIds.includes(entry.id)));
-      const genreCount = resolvedTasteItems.reduce<Record<string, number>>((accumulator, item) => {
-        item.genres.forEach((genre) => {
-          accumulator[genre] = (accumulator[genre] ?? 0) + 1;
-        });
-        return accumulator;
-      }, {});
-      const topGenre =
-        Object.entries(genreCount).sort((left, right) => right[1] - left[1])[0]?.[0] ?? "Sin definir";
-      const decadeCount = resolvedTasteItems.reduce<Record<string, number>>((accumulator, item) => {
-        const parsedYear = Number(item.year);
-        if (!Number.isFinite(parsedYear)) {
-          return accumulator;
-        }
-
-        const decade = `${Math.floor(parsedYear / 10) * 10}s`;
-        accumulator[decade] = (accumulator[decade] ?? 0) + 1;
-        return accumulator;
-      }, {});
-      const topDecade =
-        Object.entries(decadeCount).sort((left, right) => right[1] - left[1])[0]?.[0] ?? "Sin definir";
-      const movieCount = resolvedTasteItems.filter((item) => item.mediaType === "movie").length;
-      const tvCount = resolvedTasteItems.filter((item) => item.mediaType === "tv").length;
-      const formatSplit =
-        movieCount || tvCount
-          ? `${movieCount} pelis · ${tvCount} series`
-          : "Sin datos";
-      const profileMood =
-        topGenre === "Sin definir"
-          ? "Todavia estamos aprendiendo de este perfil"
-          : movieCount > tvCount
-            ? `Perfil mas de cine ${topGenre.toLowerCase()} que de maraton`
-            : tvCount > movieCount
-              ? `Perfil bien seriéfilo con debilidad por ${topGenre.toLowerCase()}`
-              : `Gusto equilibrado con mucha energia ${topGenre.toLowerCase()}`;
-      const badges = [
-        topGenre !== "Sin definir" ? `${topGenre} lover` : null,
-        movieCount > tvCount ? "Mas cine que series" : tvCount > movieCount ? "Serieadicto" : "Todo terreno",
-        mediaPosts.filter((post) => post.type === "rating").length >= 5 ? "Recomienda seguido" : null,
-        textPosts.length >= 3 ? "Opinionista" : null,
-        featuredCollections.length > 0 ? "Curador de listas" : null
-      ].filter((badge): badge is string => Boolean(badge));
-
-      setActivitySummary({
-        recommendations: mediaPosts.filter((post) => post.type === "rating").length,
-        posts: textPosts.length,
-        lastActivityLabel: mergedActivity[0]?.createdAtLabel ?? "Sin actividad reciente"
-      });
-      setTasteInsights({
-        topGenre,
-        topDecade,
-        formatSplit,
-        profileMood
-      });
-      setIdentityBadges(badges.slice(0, 4));
-    }
-
-    function handleReactionsUpdated(event: Event) {
-      const detail = (event as CustomEvent<{ userId?: string }>).detail;
-      if (detail?.userId && detail.userId !== userId) {
-        return;
-      }
-
-      void loadStats().catch(() => {
-        if (!isMounted) {
-          return;
-        }
-
-        setStats((current) => ({
-          likes: 0,
-          watched: 0,
-          followers: followerCountOverride ?? current.followers ?? 0,
-          following: current.following ?? 0
-        }));
-        setFollowerProfiles([]);
-        setFollowingProfiles([]);
-        setActivitySummary({
-          recommendations: 0,
-          posts: 0,
-          lastActivityLabel: "Sin actividad reciente"
-        });
-        setTasteInsights({
-          topGenre: "Sin definir",
-          topDecade: "Sin definir",
-          formatSplit: "Sin datos",
-          profileMood: "Todavia estamos aprendiendo de este perfil"
-        });
-        setIdentityBadges([]);
-      });
-    }
-
-    void loadStats().catch(() => {
+    function resetStats() {
       if (!isMounted) {
         return;
       }
@@ -229,19 +62,48 @@ export function ProfilePanel({
       }));
       setFollowerProfiles([]);
       setFollowingProfiles([]);
-      setActivitySummary({
-        recommendations: 0,
-        posts: 0,
-        lastActivityLabel: "Sin actividad reciente"
+    }
+
+    async function loadStats() {
+      const results = await Promise.allSettled([
+        fetchStoredReactions(userId),
+        fetchFollowerCount(userId),
+        listProfiles(),
+        fetchFollowerUserIds(userId),
+        fetchFollowingUserIds(userId)
+      ]);
+      if (!isMounted) {
+        return;
+      }
+
+      const [reactionsResult, followersResult, profilesResult, followerIdsResult, followingIdsResult] =
+        results;
+      const storedReactions = reactionsResult.status === "fulfilled" ? reactionsResult.value : [];
+      const followers = followersResult.status === "fulfilled" ? followersResult.value : 0;
+      const allProfiles = profilesResult.status === "fulfilled" ? profilesResult.value : [];
+      const followerIds = followerIdsResult.status === "fulfilled" ? followerIdsResult.value : [];
+      const followingIds = followingIdsResult.status === "fulfilled" ? followingIdsResult.value : [];
+
+      setStats({
+        likes: storedReactions.filter((entry) => entry.reaction === "watchlist").length,
+        watched: storedReactions.filter((entry) => isRatedReaction(entry.reaction)).length,
+        followers: followerCountOverride ?? followers,
+        following: followingIds.length
       });
-      setTasteInsights({
-        topGenre: "Sin definir",
-        topDecade: "Sin definir",
-        formatSplit: "Sin datos",
-        profileMood: "Todavia estamos aprendiendo de este perfil"
-      });
-      setIdentityBadges([]);
-    });
+      setFollowerProfiles(allProfiles.filter((entry) => followerIds.includes(entry.id)));
+      setFollowingProfiles(allProfiles.filter((entry) => followingIds.includes(entry.id)));
+    }
+
+    function handleReactionsUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (detail?.userId && detail.userId !== userId) {
+        return;
+      }
+
+      void loadStats().catch(resetStats);
+    }
+
+    void loadStats().catch(resetStats);
 
     window.addEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
 
@@ -345,27 +207,6 @@ export function ProfilePanel({
                 ? "Tu perfil va juntando automaticamente lo que marcaste como visto y lo que guardaste en Watchlist."
                 : "Aca ves lo que esta persona ya miro, guardo para despues y publico dentro de Cinerian.")}
           </p>
-
-          {favoriteGenres.length ? (
-            <div className="profile-genres">
-              {favoriteGenres.map((genre) => (
-                <span key={genre} className="profile-genre-chip">
-                  {genre}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          {canShowBadges && identityBadges.length ? (
-            <div className="profile-badges">
-              {identityBadges.map((badge) => (
-                <span key={badge} className="profile-badge">
-                  {badge}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
         </div>
       </div>
 
@@ -493,8 +334,6 @@ export function ProfilePanel({
         profile={profile}
         visibilitySettings={visibilitySettings}
         onProfileUpdated={onProfileUpdated}
-        activitySummary={activitySummary}
-        tasteInsights={tasteInsights}
       />
     </section>
   );
