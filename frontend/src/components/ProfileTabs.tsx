@@ -343,9 +343,6 @@ export function ProfileTabs({
       tabs.push("ranking");
     }
 
-    // Posts queda visible como adelanto de una capa social que todavia no esta publicada.
-    tabs.push("posts");
-
     return tabs;
   }, [isOwnProfile, viewerUserId, visibilitySettings?.showWatchlist]);
 

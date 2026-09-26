@@ -4409,13 +4409,45 @@ textarea {
     color: var(--muted);
   }
 
-  /*
-    Lo primero que sobra cuando el alto manda: la duracion y la nota de TMDB
-    (que ademas compite con nuestro propio ranking), el rotulo redundante de
-    las plataformas y la sinopsis. Todo eso sigue en "Ver detalles".
-  */
-  .discover-facts--quiet,
+  /* La duracion y la nota de TMDB compiten con nuestro propio ranking en una
+     pantalla chica; la sinopsis se conserva debajo, plegada a tres lineas. */
+  .discover-facts--quiet {
+    display: none;
+  }
+
   .discover-overview {
+    display: block;
+    margin-top: 12px;
+    max-width: none;
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+
+  .discover-overview__text--clamped {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+
+  .discover-overview p[role="button"] {
+    cursor: pointer;
+  }
+
+  .discover-overview__more {
+    margin-top: 4px;
+    font-size: 0.78rem;
+  }
+
+  /* Al abrir la sinopsis, la ficha conserva su ancla inferior y crece sobre
+     el poster. Si un texto excepcionalmente largo ocupa toda la ficha, este
+     bloque propio habilita scroll sin mover los controles inferiores. */
+  .discover-card__body.is-overview-open {
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: none;
+  }
+
+  .discover-card__body.is-overview-open::-webkit-scrollbar {
     display: none;
   }
 
@@ -7805,6 +7837,94 @@ textarea {
   border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
+}
+
+.media-modal__review-header {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.media-modal__review-avatar,
+.media-modal__review-avatar img,
+.media-modal__review-avatar span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.media-modal__review-avatar {
+  flex: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.media-modal__review-avatar img {
+  object-fit: cover;
+}
+
+.media-modal__review-avatar span {
+  background: linear-gradient(135deg, rgba(252, 195, 95, 0.92), rgba(144, 85, 36, 0.92));
+  color: #1b150f;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.media-modal__review-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.media-modal__review-heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-modal__review-meta {
+  margin-left: auto;
+  flex: none;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.media-modal__review-reaction-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(252, 195, 95, 0.24);
+  border-radius: 50%;
+  color: var(--accent);
+}
+
+.media-modal__review-reaction-icon .rated-reaction-icon {
+  gap: 0;
+}
+
+.media-modal__review-reaction-icon .rated-reaction-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+}
+
+.media-modal__review-reaction-icon .rated-reaction-icon svg + svg {
+  margin-left: -6px;
+}
+
+.media-modal__review-card > p {
+  grid-column: 1 / -1;
+  color: var(--text);
+  line-height: 1.5;
 }
 
 .media-modal__review-card p,
@@ -11333,8 +11453,33 @@ textarea {
     line-height: 1.55;
   }
 
+  .media-modal__review-header {
+    grid-template-columns: 36px minmax(0, 1fr) 26px;
+    gap: 9px;
+  }
+
+  .media-modal__review-avatar,
+  .media-modal__review-avatar img,
+  .media-modal__review-avatar span {
+    width: 36px;
+    height: 36px;
+  }
+
+  .media-modal__review-heading {
+    gap: 8px;
+  }
+
+  .media-modal__review-heading strong {
+    font-size: 0.9rem;
+  }
+
   .media-modal__review-meta {
     font-size: 0.76rem;
+  }
+
+  .media-modal__review-reaction-icon {
+    width: 26px;
+    height: 26px;
   }
 
   .media-modal__cast {

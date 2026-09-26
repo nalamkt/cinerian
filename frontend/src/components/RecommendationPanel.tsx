@@ -1156,7 +1156,9 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
             </div>
 
             <div
-              className={`discover-card__body ${hasMoreBelow ? "has-more-below" : ""}`}
+              className={`discover-card__body ${hasMoreBelow ? "has-more-below" : ""}${
+                isOverviewOpen ? " is-overview-open" : ""
+              }`}
               ref={bodyRef}
             >
               {current.rank === null ? (
@@ -1243,6 +1245,20 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                 <p
                   ref={overviewRef}
                   className={isOverviewOpen ? undefined : "discover-overview__text--clamped"}
+                  onClick={() => {
+                    if (isOverviewClamped) {
+                      setIsOverviewOpen((value) => !value);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (isOverviewClamped && (event.key === "Enter" || event.key === " ")) {
+                      event.preventDefault();
+                      setIsOverviewOpen((value) => !value);
+                    }
+                  }}
+                  role={isOverviewClamped ? "button" : undefined}
+                  tabIndex={isOverviewClamped ? 0 : undefined}
+                  aria-expanded={isOverviewClamped ? isOverviewOpen : undefined}
                 >
                   {spotlight.overview}
                 </p>
