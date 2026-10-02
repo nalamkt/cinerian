@@ -19,11 +19,16 @@
   --danger: #ff7a70;
   --shadow: 0 28px 90px rgba(0, 0, 0, 0.34);
 
-  /* El fondo de la app. El mismo degradado que usa .title-reactions. */
+  /*
+    El fondo de la app, tambien usado por .title-reactions. Las dos fuentes
+    calidas nacen en la esquina superior izquierda: el resplandor dorado y el
+    arranque del degradado, que a 135deg corre por la diagonal exacta hacia
+    abajo a la derecha.
+  */
   --app-backdrop-base: #121419;
   --app-backdrop:
-    radial-gradient(circle at top right, rgba(252, 195, 95, 0.16), transparent 40%),
-    linear-gradient(155deg, #20180f, #121419 60%);
+    radial-gradient(circle at top left, rgba(252, 195, 95, 0.16), transparent 40%),
+    linear-gradient(135deg, #20180f, #121419 60%);
   --radius-xl: 32px;
   --radius-lg: 24px;
   --radius-md: 18px;
