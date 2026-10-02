@@ -18,6 +18,12 @@
   --success: #7ee7a6;
   --danger: #ff7a70;
   --shadow: 0 28px 90px rgba(0, 0, 0, 0.34);
+
+  /* El fondo de la app. El mismo degradado que usa .title-reactions. */
+  --app-backdrop-base: #121419;
+  --app-backdrop:
+    radial-gradient(circle at top right, rgba(252, 195, 95, 0.16), transparent 40%),
+    linear-gradient(155deg, #20180f, #121419 60%);
   --radius-xl: 32px;
   --radius-lg: 24px;
   --radius-md: 18px;
@@ -37,14 +43,32 @@
 body {
   margin: 0;
   font-family: var(--font-body);
-  /* Negro plano: un solo fondo en toda la app. El degradado y sus tintes
-     competian con los posters, que son lo unico que deberia tener color. */
-  background: #000;
+  /* Color de respaldo: el degradado real lo pinta body::before. */
+  background: var(--app-backdrop-base);
   color: var(--text);
   min-height: 100vh;
   overflow-x: clip;
   letter-spacing: 0.01em;
   line-height: 1.5;
+}
+
+/*
+  El fondo de toda la app: el mismo degradado del modal de reacciones
+  cinerianas. Calido arriba a la izquierda, frio abajo a la derecha, con el
+  resplandor dorado en la esquina superior derecha.
+
+  Va en un pseudo fijo y no en el background de body por dos razones: anclado al
+  viewport no se estira con el largo del documento (en el feed el degradado se
+  perderia a los dos scrolls), y background-attachment: fixed no anda en Safari
+  de iOS.
+*/
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--app-backdrop);
 }
 
 h1,
@@ -8275,9 +8299,7 @@ textarea {
   padding: 30px;
   border: 1px solid rgba(252, 195, 95, 0.3);
   border-radius: 28px;
-  background:
-    radial-gradient(circle at top right, rgba(252, 195, 95, 0.16), transparent 40%),
-    linear-gradient(155deg, #20180f, #121419 60%);
+  background: var(--app-backdrop);
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5);
 }
 
