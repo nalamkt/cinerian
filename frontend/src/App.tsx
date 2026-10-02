@@ -521,6 +521,16 @@ export default function App() {
         { event: "INSERT", schema: "public", table: "feed_post_comment_notifications", filter: `recipient_user_id=eq.${currentUserId}` },
         () => window.dispatchEvent(new CustomEvent(INBOX_UPDATED_EVENT, { detail: { userId: currentUserId } }))
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "recommendation_messages", filter: `sender_id=eq.${currentUserId}` },
+        () => window.dispatchEvent(new CustomEvent(INBOX_UPDATED_EVENT, { detail: { userId: currentUserId } }))
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "recommendation_message_replies", filter: `sender_id=eq.${currentUserId}` },
+        () => window.dispatchEvent(new CustomEvent(INBOX_UPDATED_EVENT, { detail: { userId: currentUserId } }))
+      )
       .subscribe();
 
     return () => {
@@ -621,6 +631,7 @@ export default function App() {
           <InboxPanel
             userId={session!.user.id}
             onOpenUserProfile={handleOpenUserProfile}
+            onStartRecommendation={() => handleChangeView("search")}
           />
         );
       case "feed":

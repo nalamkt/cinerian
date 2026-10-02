@@ -607,6 +607,92 @@ export async function sendRecommendationReply(input: {
   dispatchInboxUpdate(input.recipientId);
 }
 
+export async function editRecommendationReply(input: {
+  replyId: string;
+  userId: string;
+  recipientId: string;
+  body: string;
+}) {
+  if (!supabase) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("recommendation_message_replies")
+    .update({ body: input.body.trim() })
+    .eq("id", input.replyId)
+    .eq("sender_id", input.userId)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data?.length) {
+    throw new Error("No tenés permiso para editar este mensaje.");
+  }
+
+  dispatchInboxUpdate(input.userId);
+  dispatchInboxUpdate(input.recipientId);
+}
+
+export async function deleteRecommendationReply(input: {
+  replyId: string;
+  userId: string;
+  recipientId: string;
+}) {
+  if (!supabase) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("recommendation_message_replies")
+    .delete()
+    .eq("id", input.replyId)
+    .eq("sender_id", input.userId)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data?.length) {
+    throw new Error("No tenés permiso para eliminar este mensaje.");
+  }
+
+  dispatchInboxUpdate(input.userId);
+  dispatchInboxUpdate(input.recipientId);
+}
+
+export async function editRecommendationNote(input: {
+  messageId: string;
+  userId: string;
+  recipientId: string;
+  note: string;
+}) {
+  if (!supabase) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("recommendation_messages")
+    .update({ note: input.note.trim() || null })
+    .eq("id", input.messageId)
+    .eq("sender_id", input.userId)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data?.length) {
+    throw new Error("No tenés permiso para editar este mensaje.");
+  }
+
+  dispatchInboxUpdate(input.userId);
+  dispatchInboxUpdate(input.recipientId);
+}
+
 export async function markRecommendationRepliesAsRead(input: { messageId: string; userId: string }) {
   if (!supabase) {
     return;
