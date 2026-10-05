@@ -158,7 +158,6 @@ export default function App() {
     () => dockItems.filter((item) => accessControl.canAccessView(item.id)),
     [accessControl]
   );
-  const visualScopeKey = `${activeView}:${selectedProfileRoute?.userId ?? selectedProfileRoute?.username ?? ""}`;
 
   useEffect(() => {
     function dismissTopmostPopup(event: KeyboardEvent) {
@@ -700,7 +699,7 @@ export default function App() {
 
   return (
     <MediaDetailsProvider userId={session.user.id} onOpenUserProfile={handleOpenUserProfile}>
-      <VisualReadyGate scopeKey={visualScopeKey} />
+      <VisualReadyGate canReveal={isActiveViewRestored} />
       {showWelcomeOnboarding && localProfile ? (
         <WelcomeOnboarding
           profile={localProfile}

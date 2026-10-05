@@ -151,7 +151,13 @@ export function useAuth() {
       setState((current) => ({
         ...current,
         session,
-        isLoading: true
+        /*
+          Solo la primera resolucion bloquea. onAuthStateChange tambien dispara
+          en cada refresh de token y al volver a la pestana: con el perfil ya
+          cargado, eso prendia "Cargando sesion..." encima de la app sin que
+          hubiera nada que esperar.
+        */
+        isLoading: current.profile === null
       }));
 
       if (event === "TOKEN_REFRESHED") {
