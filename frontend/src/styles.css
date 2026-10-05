@@ -45,6 +45,21 @@
   user-select: none;
 }
 
+/*
+  Excepcion a la regla de arriba, que apaga la seleccion en toda la app para que
+  se sienta una aplicacion y no una pagina. Los campos de formulario quedan
+  afuera: sin seleccion nativa, en iOS el long press no abre el menu de Pegar, y
+  sin ese menu no hay manera de pegar un codigo copiado del mail.
+*/
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 body {
   margin: 0;
   font-family: var(--font-body);
@@ -684,6 +699,17 @@ textarea {
   box-shadow: 0 0 0 3px rgba(252, 195, 95, 0.15);
 }
 
+/*
+  El campo real va encima de las ocho casillas, que son solo decoracion.
+
+  Transparente en vez de opacity: 0. Un campo con opacidad cero tambien es
+  invisible para el menu de edicion de iOS, que necesita anclar el cursor y las
+  manijas de seleccion a algo pintado; con el texto en transparente el campo
+  existe para el sistema, se puede pegar, y lo que se sigue viendo son las
+  casillas de abajo.
+
+  El cuerpo de 16px es lo que evita que iOS haga zoom al enfocar.
+*/
 .auth-code-input {
   position: absolute;
   z-index: 1;
@@ -691,8 +717,24 @@ textarea {
   width: 100%;
   height: 100%;
   margin: 0;
-  opacity: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px;
   cursor: text;
+}
+
+.auth-code-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* La seleccion del texto invisible no tiene que pintar sobre las casillas. */
+.auth-code-input::selection {
+  background: rgba(252, 195, 95, 0.22);
 }
 
 .auth-hint {
