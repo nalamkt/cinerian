@@ -10951,9 +10951,17 @@ textarea {
     display: none;
   }
 
-  .auth-steps,
-  .auth-intro__short {
+  .auth-steps {
     display: grid;
+  }
+
+  /*
+    Inline, no grid: el span tiene tres nodos hijos (el texto, el <em> y el
+    punto final) y como grid cada uno caia en su propia fila, dejando el punto
+    huerfano abajo de la frase.
+  */
+  .auth-intro__short {
+    display: inline;
   }
 
   /*
