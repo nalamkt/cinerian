@@ -3,9 +3,8 @@ import { getTrendingTitles } from "./tmdb";
 import type { DiscoveryItem } from "../types";
 
 /*
-  Un solo fetch compartido por las dos piezas visuales del acceso: el abanico de
-  fichas en desktop y el muro de posters en mobile. Los dos se montan juntos, asi
-  que sin esto serian dos llamadas a TMDB por la misma lista.
+  Los titulos que ilustran el acceso. La promesa queda cacheada a nivel modulo,
+  asi remontar el panel no dispara otra llamada a TMDB.
 */
 let pending: Promise<DiscoveryItem[]> | null = null;
 

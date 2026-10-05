@@ -1,6 +1,6 @@
 import { AuthPanel } from "./components/AuthPanel";
-import { AuthPosterWall } from "./components/AuthPosterWall";
 import { AuthShowcase } from "./components/AuthShowcase";
+import { AuthSteps } from "./components/AuthSteps";
 import { CinerianLogo } from "./components/CinerianLogo";
 import { FeedPanel } from "./components/FeedPanel";
 import { FollowSuggestionsModal } from "./components/FollowSuggestionsModal";
@@ -667,14 +667,25 @@ export default function App() {
     return (
       <div className="auth-shell">
         <section className="auth-intro">
-          <AuthPosterWall />
           <CinerianLogo className="auth-logo" />
           <div className="auth-intro__body">
+            {/*
+              Dos redacciones de la misma frase en un solo h1: la larga lleva el
+              contraste con el algoritmo, que necesita lugar, y en mobile entra
+              la corta. Van como spans y no como dos h1 para no repetir el
+              encabezado en el arbol de accesibilidad.
+            */}
             <h1>
-              Tu ranking de películas no lo arma un algoritmo.{" "}
-              <em>Lo arma tu círculo.</em>
+              <span className="auth-intro__long">
+                Tu ranking de películas no lo arma un algoritmo.{" "}
+                <em>Lo arma tu círculo.</em>
+              </span>
+              <span className="auth-intro__short">
+                Tu ranking lo arma <em>tu círculo</em>.
+              </span>
             </h1>
             <AuthShowcase />
+            <AuthSteps />
           </div>
         </section>
 

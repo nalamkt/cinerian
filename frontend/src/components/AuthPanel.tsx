@@ -209,7 +209,9 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
               {isSubmitting ? "Enviando" : "Enviame el link de acceso"}
             </button>
 
-            <p className="auth-hint">Sin contraseña: te llega un link para entrar de una.</p>
+            <p className="auth-hint">
+              Sin contraseña. ¿Primera vez? Entrás con el mismo link.
+            </p>
           </>
         ) : (
           <>

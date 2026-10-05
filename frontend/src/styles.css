@@ -196,69 +196,63 @@ button:disabled {
 /* ---------- La ilustracion: el ranking, no un mosaico decorativo ---------- */
 
 /*
-  El muro de posters: el fondo del acceso en mobile. En desktop no se dibuja,
-  porque ahi manda el abanico de fichas.
-
-  Sale a sangre: al ser absolute contra .auth-intro se posiciona contra su caja
-  de padding, asi que ignora el margen lateral de la columna y llega a los dos
-  bordes de la pantalla.
+  Las tres filas que explican la app. Solo en mobile: en desktop esa funcion la
+  cumple el abanico de fichas, que muestra el producto en vez de describirlo.
 */
-.auth-poster-wall {
+.auth-steps {
   display: none;
-  position: absolute;
-  /*
-    Cubre la intro entera en vez de un porcentaje fijo: asi el muro siempre
-    llega hasta abajo del titular, mida lo que mida la frase, y el velo funde
-    justo donde arranca el formulario.
-  */
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-/*
-  La grilla se pasa de los bordes y la recorta el overflow del padre: el blur
-  aclara los bordes de su propia caja, y asi esa franja queda fuera de cuadro.
-
-  Las filas son fraccionarias en vez de aspect-ratio para que las seis fichas
-  llenen el alto exacto del contenedor. Con object-fit no quedan huecos ni
-  costuras entre ellas.
-*/
-.auth-poster-wall__grid {
-  position: absolute;
-  inset: -10%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  filter: blur(7px) saturate(0.72) brightness(0.68);
-}
-
-.auth-poster-wall__tile {
-  overflow: hidden;
-}
-
-.auth-poster-wall__tile img {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+  gap: 18px;
+}
+
+.auth-step {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.auth-step__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  border: 1px solid var(--panel-edge-strong);
+}
+
+.auth-step__icon svg {
+  width: 17px;
+  height: 17px;
+  color: var(--accent);
+}
+
+.auth-step__copy {
+  display: grid;
+  gap: 2px;
+}
+
+.auth-step__copy b {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.auth-step__copy > span {
+  font-size: 0.84rem;
+  line-height: 1.42;
+  color: var(--muted);
 }
 
 /*
-  El velo apaga los posters para que el titular se lea encima, y funde el muro
-  con el fondo de la app en vez de cortarlo con una linea.
+  La frase larga y la corta son la misma, en dos medidas. La corta solo aparece
+  en el breakpoint de mobile.
 */
-.auth-poster-wall__veil {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to bottom,
-    rgba(18, 20, 25, 0.42) 0%,
-    rgba(18, 20, 25, 0.34) 38%,
-    rgba(18, 20, 25, 0.82) 76%,
-    var(--app-backdrop-base) 100%
-  );
+.auth-intro__short {
+  display: none;
 }
 
 /*
@@ -10951,18 +10945,20 @@ textarea {
     max-width: 18ch;
   }
 
-  .auth-showcase {
+  .auth-showcase,
+  .auth-intro__long {
     display: none;
   }
 
-  .auth-poster-wall {
-    display: block;
+  .auth-steps,
+  .auth-intro__short {
+    display: grid;
   }
 
   /*
-    La intro ocupa lo que necesita y el formulario se queda con el resto, donde
-    se centra: el sobrante se reparte arriba y abajo en vez de amontonarse al
-    pie de la pantalla.
+    La intro ocupa lo que necesita y el formulario se queda con el resto. Sin
+    ilustracion que llene el alto, el contenido tiene que repartirse: por eso el
+    cuerpo distribuye en vez de centrarse en bloque.
   */
   .auth-shell {
     grid-template-rows: auto 1fr;
@@ -10971,9 +10967,14 @@ textarea {
   }
 
   .auth-intro {
-    padding: 30px 22px 26px;
-    gap: 14px;
-    min-height: 46vh;
+    padding: 30px 22px 10px;
+    gap: 18px;
+  }
+
+  .auth-intro__body {
+    gap: 26px;
+    align-content: start;
+    justify-items: stretch;
   }
 
   .auth-logo {
