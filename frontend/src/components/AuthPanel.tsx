@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { sendMagicLink, signInWithGoogle, verifyEmailOtp } from "../lib/auth";
+import { sendMagicLink, signInWithApple, signInWithGoogle, verifyEmailOtp } from "../lib/auth";
+import { hasAppleAuth } from "../lib/supabase";
 
 type AuthPanelProps = {
   isSupabaseReady: boolean;
@@ -146,7 +147,7 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
     }
   }
 
-  async function handleGoogleSignIn() {
+  async function handleOAuthSignIn(provider: "google" | "apple") {
     if (isSubmitting) {
       return;
     }
@@ -160,7 +161,10 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
       setIsSubmitting(true);
       setMessage(null);
 
-      const { error } = await signInWithGoogle();
+      const { error } = provider === "apple"
+        ? await signInWithApple()
+        : await signInWithGoogle();
+
       if (error) {
         throw error;
       }
@@ -279,10 +283,24 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
             <span />
           </div>
 
+          {hasAppleAuth ? (
+            <button
+              type="button"
+              className="oauth-button"
+              onClick={() => void handleOAuthSignIn("apple")}
+              disabled={isSubmitting}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M17.05 12.54c-.02-2.2 1.79-3.26 1.87-3.31-1.02-1.49-2.6-1.7-3.17-1.72-1.35-.14-2.63.79-3.32.79-.68 0-1.74-.77-2.86-.75-1.47.02-2.83.85-3.59 2.16-1.53 2.65-.39 6.58 1.1 8.73.73 1.05 1.6 2.23 2.74 2.19 1.1-.05 1.51-.71 2.84-.71 1.33 0 1.7.71 2.86.69 1.18-.02 1.93-1.07 2.65-2.13.84-1.22 1.18-2.4 1.2-2.46-.03-.01-2.3-.88-2.32-3.48ZM14.87 5.9c.6-.74 1.01-1.75.9-2.77-.87.04-1.94.58-2.57 1.31-.56.65-1.05 1.7-.92 2.7.97.08 1.97-.49 2.59-1.24Z" />
+              </svg>
+              Continuar con Apple
+            </button>
+          ) : null}
+
           <button
             type="button"
-            className="google-button"
-            onClick={() => void handleGoogleSignIn()}
+            className="oauth-button"
+            onClick={() => void handleOAuthSignIn("google")}
             disabled={isSubmitting}
           >
             <svg aria-hidden="true" viewBox="0 0 24 24">

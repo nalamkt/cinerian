@@ -587,6 +587,17 @@ export default function App() {
     }
   }
 
+  /*
+    Todas las vistas de la app se mantienen montadas y se muestran/ocultan con
+    `hidden`. El motivo: al cambiar de pestaña el componente se desmontaba y
+    al volver reconstruia su estado desde cero (fetch de datos, catalogo de
+    TMDB, perfiles, etc.), lo que generaba un "cargando..." de 2-4 segundos.
+    Montandolos una vez, volver a cualquier pestaña es instantaneo y el estado
+    (scroll, filtros, inputs) queda tal como el usuario lo dejo.
+
+    `UserProfilePage` sigue siendo condicional porque depende del
+    `selectedProfileRoute` y cada perfil es un componente distinto.
+  */
   function renderActiveView() {
     if (selectedProfileRoute) {
       return (
@@ -599,19 +610,39 @@ export default function App() {
       );
     }
 
-    switch (activeView) {
-      case "search":
-        if (!accessControl.canAccessView("search")) {
-          break;
-        }
-        return <SearchPanel userId={session!.user.id} onOpenUserProfile={handleOpenUserProfile} />;
-      case "recommendations":
-        if (!accessControl.canAccessView("recommendations")) {
-          break;
-        }
-        return <RecommendationPanel userId={session!.user.id} onOpenUserProfile={handleOpenUserProfile} />;
-      case "user":
-        return (
+    const hiddenWhen = (view: AppView) => activeView !== view || !!selectedProfileRoute;
+
+    return (
+      <>
+        <div hidden={hiddenWhen("feed")}>
+          <FeedPanel
+            userId={session!.user.id}
+            profile={localProfile}
+            canAccessEditorial={accessControl.canAccessFeature("editorial")}
+            canAccessPremieres={accessControl.canAccessFeature("premieres")}
+            onOpenUserProfile={handleOpenUserProfile}
+            highlightedPost={highlightedFeedPost}
+            onHighlightHandled={() => setHighlightedFeedPost(null)}
+          />
+        </div>
+
+        {accessControl.canAccessView("search") ? (
+          <div hidden={hiddenWhen("search")}>
+            <SearchPanel userId={session!.user.id} onOpenUserProfile={handleOpenUserProfile} />
+          </div>
+        ) : null}
+
+        {accessControl.canAccessView("inbox") ? (
+          <div hidden={hiddenWhen("inbox")}>
+            <InboxPanel
+              userId={session!.user.id}
+              onOpenUserProfile={handleOpenUserProfile}
+              onStartRecommendation={() => handleChangeView("search")}
+            />
+          </div>
+        ) : null}
+
+        <div hidden={hiddenWhen("user")}>
           <ProfilePanel
             userId={session!.user.id}
             viewerUserId={session!.user.id}
@@ -622,32 +653,9 @@ export default function App() {
             onProfileUpdated={setLocalProfile}
             onOpenUserProfile={handleOpenUserProfile}
           />
-        );
-      case "inbox":
-        if (!accessControl.canAccessView("inbox")) {
-          break;
-        }
-        return (
-          <InboxPanel
-            userId={session!.user.id}
-            onOpenUserProfile={handleOpenUserProfile}
-            onStartRecommendation={() => handleChangeView("search")}
-          />
-        );
-      case "feed":
-      default:
-        return (
-          <FeedPanel
-            userId={session!.user.id}
-            profile={localProfile}
-            canAccessEditorial={accessControl.canAccessFeature("editorial")}
-            canAccessPremieres={accessControl.canAccessFeature("premieres")}
-            onOpenUserProfile={handleOpenUserProfile}
-            highlightedPost={highlightedFeedPost}
-            onHighlightHandled={() => setHighlightedFeedPost(null)}
-          />
-        );
-    }
+        </div>
+      </>
+    );
   }
 
   if (!session) {
@@ -737,6 +745,20 @@ export default function App() {
           </nav>
 
           <section className={`workspace-content workspace-content--${selectedProfileRoute ? "profile" : activeView}`}>
+            {/*
+              Descubrí vive aca aparte del resto porque es el unico panel que
+              se renderiza siempre (independiente del selectedProfileRoute) —
+              el resto esta adentro de renderActiveView() y comparte la misma
+              estrategia: montado una vez, oculto con `hidden`.
+            */}
+            {session && accessControl.canAccessView("recommendations") ? (
+              <div hidden={activeView !== "recommendations" || !!selectedProfileRoute}>
+                <RecommendationPanel
+                  userId={session.user.id}
+                  onOpenUserProfile={handleOpenUserProfile}
+                />
+              </div>
+            ) : null}
             {renderActiveView()}
           </section>
         </main>

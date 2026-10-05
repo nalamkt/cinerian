@@ -5,6 +5,7 @@ export type ProductEventName =
   | "profile_created"
   | "auth_magic_link_requested"
   | "auth_google_started"
+  | "auth_apple_started"
   | "reaction_saved"
   | "feed_post_created"
   | "feed_comment_created"

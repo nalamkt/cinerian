@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { LoadingState } from "./LoadingState";
 import { TitleCard } from "./TitleCard";
@@ -44,6 +44,41 @@ type TabId = "watched" | "watchlist" | "mutual-likes" | "watching" | "posts" | "
 
 /** Cuantos puestos del ranking traemos por tanda. */
 const RANKING_PAGE_SIZE = 20;
+
+type WatchlistSort = "score" | "recent" | "alpha";
+
+/**
+ * `short` es lo que se ve en el disparador y `label` lo que se lee dentro del
+ * menu: el disparador vive al lado de los filtros y no puede crecer.
+ */
+const WATCHLIST_SORT_OPTIONS: Array<{ id: WatchlistSort; short: string; label: string }> = [
+  { id: "score", short: "Mejor puntuadas", label: "Mejor puntuadas" },
+  { id: "recent", short: "Recientes", label: "Agregadas recientemente" },
+  { id: "alpha", short: "A–Z", label: "Orden alfabético" }
+];
+
+const WATCHLIST_SORT_KEY = "cinerian:watchlist-sort";
+
+/**
+ * El orden elegido se recuerda entre sesiones: si alguien prefiere ver lo
+ * ultimo que guardo, tener que volver a elegirlo cada vez anula la opcion.
+ */
+function loadWatchlistSort(ownerId: string): WatchlistSort {
+  try {
+    const raw = window.localStorage.getItem(`${WATCHLIST_SORT_KEY}:${ownerId}`);
+    return raw === "recent" || raw === "alpha" || raw === "score" ? raw : "score";
+  } catch {
+    return "score";
+  }
+}
+
+function persistWatchlistSort(ownerId: string, value: WatchlistSort) {
+  try {
+    window.localStorage.setItem(`${WATCHLIST_SORT_KEY}:${ownerId}`, value);
+  } catch {
+    // Es una comodidad: si el navegador bloquea el storage, no pasa nada.
+  }
+}
 
 /**
  * El puntaje de 0 a 10 dice que tan bien le fue, pero no con cuanta gente: un
@@ -354,6 +389,44 @@ export function ProfileTabs({
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [mutualFilter, setMutualFilter] = useState<"watched" | "watchlist">("watched");
+  // La preferencia es de quien mira, no del perfil que se esta viendo.
+  const sortOwnerId = viewerUserId ?? userId;
+  const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>(() =>
+    loadWatchlistSort(sortOwnerId)
+  );
+
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setWatchlistSort(loadWatchlistSort(sortOwnerId));
+  }, [sortOwnerId]);
+
+  /*
+    Escape lo maneja el handler global de App via `data-escape-dismiss`, que
+    le hace click al disparador. Aca solo hace falta cerrar al tocar afuera.
+  */
+  useEffect(() => {
+    if (!isSortMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target as Node)) {
+        setIsSortMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isSortMenuOpen]);
+
+  function changeWatchlistSort(value: WatchlistSort) {
+    setWatchlistSort(value);
+    persistWatchlistSort(sortOwnerId, value);
+    setIsSortMenuOpen(false);
+  }
+
   const [circleScores, setCircleScores] = useState<Map<string, CircleScore>>(new Map());
   const [ranking, setRanking] = useState<CircleRanking>({
     entries: [],
@@ -499,32 +572,58 @@ export function ProfileTabs({
       .filter((item): item is DiscoveryItem => Boolean(item))
       .filter((item) => matchesTypeFilter(item, typeFilter));
 
-    // La Watchlist es una lista para elegir que ver: arranca por lo mejor
-    // puntuado por tu circulo. Lo que nadie de tu circulo vio queda al final
-    // (no tiene puntaje, que no es lo mismo que tener cero) y ahi desempata TMDB.
     if (activeTab === "watchlist") {
-      items.sort((left, right) => {
-        const leftScore = circleScores.get(`${left.mediaType}-${left.id}`)?.score ?? null;
-        const rightScore = circleScores.get(`${right.mediaType}-${right.id}`)?.score ?? null;
+      if (watchlistSort === "alpha") {
+        // `localeCompare` en español: ignora acentos y mayusculas, y ordena
+        // "Rocky 2" antes que "Rocky 10" en vez de alfabeticamente.
+        items.sort((left, right) =>
+          left.title.localeCompare(right.title, "es", { sensitivity: "base", numeric: true })
+        );
+      } else if (watchlistSort === "recent") {
+        // El item no trae la fecha; la fecha vive en la reaccion guardada.
+        const addedAt = new Map(
+          entries.map((entry) => [
+            `${entry.mediaType}-${entry.tmdbId}`,
+            toTimestamp(entry.createdAt)
+          ])
+        );
 
-        if (leftScore !== rightScore) {
-          if (leftScore === null) {
-            return 1;
+        items.sort(
+          (left, right) =>
+            (addedAt.get(`${right.mediaType}-${right.id}`) ?? 0) -
+            (addedAt.get(`${left.mediaType}-${left.id}`) ?? 0)
+        );
+      } else {
+        // Por defecto, lo mejor puntuado por tu circulo. Lo que nadie de tu
+        // circulo vio queda al final (no tiene puntaje, que no es lo mismo que
+        // tener cero) y ahi desempata TMDB.
+        items.sort((left, right) => {
+          const leftScore = circleScores.get(`${left.mediaType}-${left.id}`)?.score ?? null;
+          const rightScore = circleScores.get(`${right.mediaType}-${right.id}`)?.score ?? null;
+
+          if (leftScore !== rightScore) {
+            if (leftScore === null) {
+              return 1;
+            }
+
+            if (rightScore === null) {
+              return -1;
+            }
+
+            return rightScore - leftScore;
           }
 
-          if (rightScore === null) {
-            return -1;
-          }
-
-          return rightScore - leftScore;
-        }
-
-        return right.score - left.score;
-      });
+          return right.score - left.score;
+        });
+      }
     }
 
     return items;
-  }, [activeTab, circleScores, mutualItems, reactions, titles, typeFilter]);
+  }, [activeTab, circleScores, mutualItems, reactions, titles, typeFilter, watchlistSort]);
+
+  const activeSortOption =
+    WATCHLIST_SORT_OPTIONS.find((option) => option.id === watchlistSort) ??
+    WATCHLIST_SORT_OPTIONS[0];
 
   const reactionByTitle = useMemo(
     () => new Map(reactions.map((entry) => [`${entry.mediaType}-${entry.tmdbId}`, entry.reaction])),
@@ -1122,14 +1221,50 @@ export function ProfileTabs({
             )}
 
             {activeTab === "watchlist" ? (
-              <p className="profile-list-order">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M7 10v10M7 10l3.5-6a2.5 2.5 0 0 1 2.4 3.2L12 10h6a2 2 0 0 1 2 2.4l-1.2 6a2 2 0 0 1-2 1.6H7" />
-                </svg>
-                {circleScores.size
-                  ? "Mejor puntuadas por tu círculo primero"
-                  : "Se ordenan por lo que puntúa tu círculo"}
-              </p>
+              <div className="profile-list-order" ref={sortMenuRef}>
+                <button
+                  type="button"
+                  className="profile-list-order__trigger"
+                  onClick={() => setIsSortMenuOpen((current) => !current)}
+                  aria-haspopup="menu"
+                  aria-expanded={isSortMenuOpen}
+                  aria-label={`Ordenar por: ${activeSortOption.label}`}
+                  // En mobile se ve solo el icono, asi que el handler global de
+                  // Escape es la unica forma de cerrarlo sin elegir.
+                  data-escape-dismiss={isSortMenuOpen ? "" : undefined}
+                >
+                  <svg className="profile-list-order__icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 4v16M7 20l-3-3M7 20l3-3" />
+                    <path d="M17 20V4M17 4l-3 3M17 4l3 3" />
+                  </svg>
+                  <span className="profile-list-order__value">{activeSortOption.short}</span>
+                  <svg className="profile-list-order__caret" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+
+                {isSortMenuOpen ? (
+                  <div className="profile-list-order__menu" role="menu">
+                    {WATCHLIST_SORT_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={watchlistSort === option.id}
+                        className={`profile-list-order__option ${
+                          watchlistSort === option.id ? "is-current" : ""
+                        }`}
+                        onClick={() => changeWatchlistSort(option.id)}
+                      >
+                        {option.label}
+                        <svg className="profile-list-order__check" viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="m5 13 4 4L19 7" />
+                        </svg>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
 

@@ -138,6 +138,8 @@ button:disabled {
   en 100vh tambien cuando la pantalla es ancha y baja.
 */
 .auth-intro {
+  position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-rows: auto 1fr;
   gap: clamp(20px, 3.5vh, 44px);
@@ -149,6 +151,8 @@ button:disabled {
 }
 
 .auth-intro__body {
+  position: relative;
+  z-index: 1;
   display: grid;
   align-content: center;
   justify-items: start;
@@ -190,6 +194,62 @@ button:disabled {
 }
 
 /* ---------- La ilustracion: el ranking, no un mosaico decorativo ---------- */
+
+/*
+  El muro de posters: el fondo del acceso en mobile. En desktop no se dibuja,
+  porque ahi manda el abanico de fichas.
+
+  Va desenfocado y desaturado a proposito: tiene que leerse como un telon, no
+  competir con el titular que va encima. El degradado lo funde con el fondo de
+  la app en vez de cortarlo con una linea.
+*/
+.auth-wall,
+.auth-wall__fade {
+  display: none;
+}
+
+.auth-wall {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 46%;
+  z-index: 0;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  padding: 5px;
+  /* La escala tapa los bordes claros que deja el blur contra el borde. */
+  transform: scale(1.06);
+  filter: blur(2px) saturate(0.78);
+  pointer-events: none;
+}
+
+.auth-wall__tile {
+  aspect-ratio: 2 / 3;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-soft);
+}
+
+.auth-wall__tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.auth-wall__fade {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 52%;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(18, 20, 25, 0.62) 0%,
+    rgba(18, 20, 25, 0.42) 32%,
+    rgba(18, 20, 25, 0.88) 72%,
+    var(--app-backdrop-base) 100%
+  );
+}
 
 /*
   El alto de la ilustracion sale de su ancho (aspect-ratio), asi que el tope en
@@ -430,6 +490,8 @@ button:disabled {
 
 /* El logo va arriba a la izquierda: la marca no grita en su propia pantalla. */
 .auth-logo {
+  position: relative;
+  z-index: 1;
   display: block;
   width: clamp(140px, min(11vw, 22vh), 210px);
 }
@@ -572,7 +634,7 @@ textarea {
 }
 
 .auth-panel .primary-button,
-.auth-panel .google-button {
+.auth-panel .oauth-button {
   min-height: 54px;
   padding: 15px 20px;
   font-size: 1rem;
@@ -2648,10 +2710,11 @@ textarea {
 }
 
 /*
-  Secundario y calmo. En blanco puro era el objeto mas brillante de la pantalla,
-  mas que el boton primario: gritaba mas fuerte que la accion que queremos.
+  Los botones de proveedor (Google, Apple). Secundarios y calmos: en blanco puro
+  eran el objeto mas brillante de la pantalla, mas que el boton primario, y
+  gritaban mas fuerte que la accion que queremos.
 */
-.google-button {
+.oauth-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2668,18 +2731,18 @@ textarea {
   cursor: pointer;
 }
 
-.google-button svg {
+.oauth-button svg {
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
 }
 
-.google-button:hover:not(:disabled) {
+.oauth-button:hover:not(:disabled) {
   background: rgba(246, 241, 232, 0.05);
   border-color: rgba(246, 241, 232, 0.26);
 }
 
-.google-button:disabled {
+.oauth-button:disabled {
   cursor: not-allowed;
   opacity: 0.65;
 }
@@ -9283,25 +9346,113 @@ textarea {
   margin-bottom: 18px;
 }
 
+/*
+  Control de orden discreto: sin caja ni relleno, se lee como metadato y no
+  como accion principal. En mobile se queda solo el icono (ver el bloque de
+  680px): al lado de cuatro filtros no hay lugar para el texto.
+*/
 .profile-list-order {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.profile-list-order__trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 0;
-  font-size: 0.82rem;
-  font-weight: 600;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.profile-list-order svg {
-  width: 14px;
-  height: 14px;
+.profile-list-order__trigger:hover {
+  color: var(--text);
+}
+
+.profile-list-order__icon,
+.profile-list-order__caret {
   fill: none;
-  stroke: var(--accent);
-  stroke-width: 2.2;
+  stroke: currentColor;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
   flex: none;
+}
+
+.profile-list-order__icon {
+  width: 15px;
+  height: 15px;
+}
+
+.profile-list-order__caret {
+  width: 13px;
+  height: 13px;
+  opacity: 0.7;
+}
+
+.profile-list-order__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 12;
+  display: grid;
+  gap: 2px;
+  width: 224px;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(18, 20, 26, 0.98);
+  border: 1px solid rgba(252, 195, 95, 0.34);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7);
+}
+
+.profile-list-order__option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-list-order__option:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.profile-list-order__option.is-current {
+  color: var(--accent);
+  background: rgba(252, 195, 95, 0.1);
+  border-color: rgba(252, 195, 95, 0.34);
+}
+
+.profile-list-order__check {
+  margin-left: auto;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+
+.profile-list-order__option.is-current .profile-list-order__check {
+  opacity: 1;
 }
 
 .profile-type-filter {
@@ -10779,6 +10930,23 @@ textarea {
     display: none;
   }
 
+  .auth-wall {
+    display: grid;
+  }
+
+  .auth-wall__fade {
+    display: block;
+  }
+
+  /*
+    El muro necesita que el logo y el titular respiren encima, si no el texto
+    cae justo sobre los posters y pierde contraste.
+  */
+  .auth-intro {
+    padding: 34px 22px 16px;
+    gap: 16px;
+  }
+
   .auth-logo {
     width: 124px;
   }
@@ -11113,16 +11281,46 @@ textarea {
   }
 
   /*
+    Filtros y orden conviven en UNA linea: con wrap, el orden caia debajo y
+    se veia amontonado. Los filtros ya scrollean, asi que son ellos los que
+    ceden ancho (min-width: 0 es lo que habilita que flex los encoja).
+  */
+  .profile-list-toolbar {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  /*
     Con "Miniseries" son cuatro filtros y a 375px no entran a lo ancho: se
     achican, y si aun asi no entran la fila se desplaza en horizontal en vez
     de desbordar la pantalla.
   */
   .profile-type-filter {
+    min-width: 0;
     max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* Solo el icono: el texto del orden no entra al lado de cuatro filtros. */
+  .profile-list-order__value,
+  .profile-list-order__caret {
+    display: none;
+  }
+
+  .profile-list-order__trigger {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .profile-list-order__menu {
+    width: 208px;
   }
 
   .profile-type-filter::-webkit-scrollbar {

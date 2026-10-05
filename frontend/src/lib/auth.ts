@@ -384,6 +384,23 @@ export async function signInWithGoogle() {
   });
 }
 
+export async function signInWithApple() {
+  if (!supabase) {
+    throw new Error("Supabase no esta configurado.");
+  }
+
+  await trackProductEvent({
+    eventName: "auth_apple_started"
+  });
+
+  return supabase.auth.signInWithOAuth({
+    provider: "apple",
+    options: {
+      redirectTo: getAuthRedirectUrl()
+    }
+  });
+}
+
 export async function signOut() {
   if (!supabase) {
     return;
