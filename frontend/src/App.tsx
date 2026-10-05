@@ -1,4 +1,5 @@
 import { AuthPanel } from "./components/AuthPanel";
+import { AuthPosterWall } from "./components/AuthPosterWall";
 import { AuthShowcase } from "./components/AuthShowcase";
 import { CinerianLogo } from "./components/CinerianLogo";
 import { FeedPanel } from "./components/FeedPanel";
@@ -666,6 +667,7 @@ export default function App() {
     return (
       <div className="auth-shell">
         <section className="auth-intro">
+          <AuthPosterWall />
           <CinerianLogo className="auth-logo" />
           <div className="auth-intro__body">
             <h1>

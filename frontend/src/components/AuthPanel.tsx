@@ -311,6 +311,10 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
             </svg>
             Continuar con Google
           </button>
+
+          <p className="auth-legal">
+            Al entrar aceptás los términos y la política de privacidad.
+          </p>
         </>
       ) : (
         <button

@@ -1,17 +1,12 @@
-import { useEffect, useState } from "react";
-import { getTrendingTitles } from "../lib/tmdb";
-import type { DiscoveryItem } from "../types";
+import { useAuthTitles } from "../lib/authTitles";
 
 /*
-  La ilustracion del acceso, en dos formas que salen del mismo fetch.
+  La ilustracion del acceso en desktop: tres fichas en abanico con su puesto en
+  el ranking. Muestra de que se trata la app en vez de pedirle al visitante que
+  lea un parrafo.
 
-  En desktop, tres fichas en abanico con su puesto en el ranking: muestra de que
-  se trata la app en vez de pedirle al visitante que lea un parrafo.
-
-  En mobile el abanico no entra (en 375px los titulos y los puntajes no se leen)
-  y antes no se dibujaba nada, lo que dejaba el 40% inferior de la pantalla
-  vacio. En su lugar va un muro de posters desenfocado detras del logo y el
-  titular, que cumple la misma funcion sin pedir que se lea nada.
+  En mobile no se dibuja: ahi va AuthPosterWall, porque en 375px los titulos y
+  los puntajes de las fichas no se leen.
 
   Los posters y los puntajes son titulos reales de TMDB; el ranking es un
   ejemplo de como se ve la funcion una vez que entras.
@@ -32,49 +27,11 @@ const SLOTS: Slot[] = [
   { rank: 1, className: "auth-showcase__card auth-showcase__card--front" }
 ];
 
-/* Cuatro columnas por tres filas. Si TMDB devuelve menos, se repiten. */
-const WALL_TILES = 12;
-
 export function AuthShowcase() {
-  const [titles, setTitles] = useState<DiscoveryItem[]>([]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    getTrendingTitles()
-      .then((items) => {
-        if (!isActive) {
-          return;
-        }
-
-        setTitles(items.filter((item) => Boolean(item.posterUrl)));
-      })
-      .catch(() => {
-        /* El acceso no depende de esto: si TMDB no responde, quedan las fichas vacias. */
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
+  const titles = useAuthTitles();
 
   return (
-    <>
-      {/* Solo en mobile: ver .auth-wall en styles.css */}
-      <div className="auth-wall" aria-hidden="true">
-        {Array.from({ length: WALL_TILES }, (_, index) => {
-          const item = titles.length > 0 ? titles[index % titles.length] : null;
-
-          return (
-            <div className="auth-wall__tile" key={index}>
-              {item ? <img src={item.posterUrl} alt="" loading="lazy" /> : null}
-            </div>
-          );
-        })}
-      </div>
-      <div className="auth-wall__fade" aria-hidden="true" />
-
-      <div className="auth-showcase" aria-hidden="true">
+    <div className="auth-showcase" aria-hidden="true">
       <span className="auth-showcase__chip auth-showcase__chip--top">
         <span className="auth-showcase__faces">
           <i />
@@ -108,7 +65,6 @@ export function AuthShowcase() {
       <span className="auth-showcase__chip auth-showcase__chip--bottom">
         Según lo que vieron tus amigos
       </span>
-      </div>
-    </>
+    </div>
   );
 }

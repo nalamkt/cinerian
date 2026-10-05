@@ -199,54 +199,64 @@ button:disabled {
   El muro de posters: el fondo del acceso en mobile. En desktop no se dibuja,
   porque ahi manda el abanico de fichas.
 
-  Va desenfocado y desaturado a proposito: tiene que leerse como un telon, no
-  competir con el titular que va encima. El degradado lo funde con el fondo de
-  la app en vez de cortarlo con una linea.
+  Sale a sangre: al ser absolute contra .auth-intro se posiciona contra su caja
+  de padding, asi que ignora el margen lateral de la columna y llega a los dos
+  bordes de la pantalla.
 */
-.auth-wall,
-.auth-wall__fade {
+.auth-poster-wall {
   display: none;
-}
-
-.auth-wall {
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 46%;
+  /*
+    Cubre la intro entera en vez de un porcentaje fijo: asi el muro siempre
+    llega hasta abajo del titular, mida lo que mida la frase, y el velo funde
+    justo donde arranca el formulario.
+  */
+  inset: 0;
   z-index: 0;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 5px;
-  padding: 5px;
-  /* La escala tapa los bordes claros que deja el blur contra el borde. */
-  transform: scale(1.06);
-  filter: blur(2px) saturate(0.78);
+  overflow: hidden;
   pointer-events: none;
 }
 
-.auth-wall__tile {
-  aspect-ratio: 2 / 3;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--bg-soft);
+/*
+  La grilla se pasa de los bordes y la recorta el overflow del padre: el blur
+  aclara los bordes de su propia caja, y asi esa franja queda fuera de cuadro.
+
+  Las filas son fraccionarias en vez de aspect-ratio para que las seis fichas
+  llenen el alto exacto del contenedor. Con object-fit no quedan huecos ni
+  costuras entre ellas.
+*/
+.auth-poster-wall__grid {
+  position: absolute;
+  inset: -10%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  filter: blur(7px) saturate(0.72) brightness(0.68);
 }
 
-.auth-wall__tile img {
+.auth-poster-wall__tile {
+  overflow: hidden;
+}
+
+.auth-poster-wall__tile img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.auth-wall__fade {
+/*
+  El velo apaga los posters para que el titular se lea encima, y funde el muro
+  con el fondo de la app en vez de cortarlo con una linea.
+*/
+.auth-poster-wall__veil {
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 52%;
-  z-index: 0;
-  pointer-events: none;
+  inset: 0;
   background: linear-gradient(
     to bottom,
-    rgba(18, 20, 25, 0.62) 0%,
-    rgba(18, 20, 25, 0.42) 32%,
-    rgba(18, 20, 25, 0.88) 72%,
+    rgba(18, 20, 25, 0.42) 0%,
+    rgba(18, 20, 25, 0.34) 38%,
+    rgba(18, 20, 25, 0.82) 76%,
     var(--app-backdrop-base) 100%
   );
 }
@@ -717,6 +727,21 @@ textarea {
 
 .auth-back {
   justify-self: start;
+}
+
+/*
+  Pie legal. Va en gris chico y centrado: tiene que estar, no competir.
+  Pendiente: cuando existan /terminos y /privacidad, los dos nombres pasan a
+  ser enlaces. Hoy van como texto para no mandar a nadie a una ruta que el
+  router no conoce.
+*/
+.auth-legal {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--muted-strong);
+  opacity: 0.62;
 }
 
 /* El error se distingue del exito: los tokens ya existian y no se usaban aca. */
@@ -10930,21 +10955,25 @@ textarea {
     display: none;
   }
 
-  .auth-wall {
-    display: grid;
-  }
-
-  .auth-wall__fade {
+  .auth-poster-wall {
     display: block;
   }
 
   /*
-    El muro necesita que el logo y el titular respiren encima, si no el texto
-    cae justo sobre los posters y pierde contraste.
+    La intro ocupa lo que necesita y el formulario se queda con el resto, donde
+    se centra: el sobrante se reparte arriba y abajo en vez de amontonarse al
+    pie de la pantalla.
   */
+  .auth-shell {
+    grid-template-rows: auto 1fr;
+    min-height: 100dvh;
+    align-content: stretch;
+  }
+
   .auth-intro {
-    padding: 34px 22px 16px;
-    gap: 16px;
+    padding: 30px 22px 26px;
+    gap: 14px;
+    min-height: 46vh;
   }
 
   .auth-logo {
@@ -10953,8 +10982,9 @@ textarea {
 
   .auth-shell__form {
     border-left: 0;
-    padding: 18px 22px 36px;
+    padding: 10px 22px 32px;
     justify-items: stretch;
+    align-content: center;
   }
 
   .auth-panel {
