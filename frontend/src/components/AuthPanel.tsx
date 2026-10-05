@@ -14,6 +14,14 @@ type AuthMessage = {
 const RESEND_COOLDOWN_SECONDS = 60;
 
 /*
+  Tiene que coincidir con otp_length de Supabase (Authentication > Email). Si el
+  front corta mas corto que lo que manda Supabase, el codigo llega incompleto y
+  no hay forma de entrar. Una sola fuente de verdad: de aca salen las casillas,
+  el maxLength, el pattern y el recorte del onChange.
+*/
+const OTP_LENGTH = 6;
+
+/*
   Ningun mensaje de Supabase llega crudo al usuario: son en ingles y tecnicos.
   El texto original se manda a la consola para poder diagnosticar.
 */
@@ -182,7 +190,7 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
         {step === "verify" ? (
           <p className="auth-sent-to">
             Te lo enviamos a <strong>{email}</strong>. Tocá el link del mensaje, o pegá el
-            código que te llegó acá abajo.
+            código de {OTP_LENGTH} dígitos acá abajo.
           </p>
         ) : null}
 
@@ -217,8 +225,12 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
           <>
             <label className="auth-field" htmlFor="auth-code">
               <span className="sr-only">Código del email</span>
-              <span className="auth-code-boxes" aria-hidden="true">
-                {Array.from({ length: 8 }, (_, index) => (
+              <span
+                className="auth-code-boxes"
+                aria-hidden="true"
+                style={{ "--auth-code-length": OTP_LENGTH } as React.CSSProperties}
+              >
+                {Array.from({ length: OTP_LENGTH }, (_, index) => (
                   <span
                     key={index}
                     className={`auth-code-box ${otpCode.length === index ? "is-active" : ""}`}
@@ -232,8 +244,8 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
                 ref={codeInputRef}
                 type="text"
                 inputMode="numeric"
-                pattern="[0-9]{8}"
-                maxLength={8}
+                pattern={`[0-9]{${OTP_LENGTH}}`}
+                maxLength={OTP_LENGTH}
                 autoComplete="one-time-code"
                 enterKeyHint="done"
                 autoCapitalize="none"
@@ -242,7 +254,7 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
                 value={otpCode}
                 onChange={(event) =>
                   // Keep this as text so a valid code can start with zero.
-                  setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 8))
+                  setOtpCode(event.target.value.replace(/\D/g, "").slice(0, OTP_LENGTH))
                 }
                 required
                 disabled={isSubmitting}
