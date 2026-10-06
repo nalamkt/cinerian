@@ -11093,6 +11093,10 @@ textarea {
     width: 100%;
   }
 
+  /*
+    Capsula flotante despegada de los bordes, como la de Instagram y la de Sofa
+    Time, en vez de una franja al ras que parte la pantalla en dos.
+  */
   .dock {
     position: fixed;
     left: 0;
@@ -11101,34 +11105,33 @@ textarea {
     top: auto;
     z-index: 35;
     height: auto;
+    padding: 0 12px calc(8px + env(safe-area-inset-bottom));
+    /* El hueco alrededor de la capsula no tiene que robarle toques al contenido. */
+    pointer-events: none;
   }
 
-  /*
-    Barra al ras del borde, no una pastilla flotante. Sigue necesitando color
-    propio porque el contenido scrollea por debajo, pero es practicamente el
-    tono con el que termina el fondo de la app, asi que se lee como una sola
-    superficie separada por una linea.
-  */
   .dock__items {
+    pointer-events: auto;
     display: grid;
-    padding: 8px 10px max(8px, env(safe-area-inset-bottom));
-    gap: 8px;
+    padding: 6px;
+    gap: 0;
     grid-template-columns: 1fr;
     min-height: auto;
-    border: 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 0;
-    background: rgba(8, 10, 14, 0.94);
-    box-shadow: none;
-    backdrop-filter: blur(18px);
+    border: 1px solid rgba(246, 241, 232, 0.09);
+    border-top: 1px solid rgba(246, 241, 232, 0.09);
+    border-radius: 26px;
+    background: rgba(18, 21, 27, 0.78);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(22px) saturate(1.3);
+    -webkit-backdrop-filter: blur(22px) saturate(1.3);
   }
 
   .dock__nav {
     display: flex;
     /* La cantidad de accesos depende de permisos y funcionalidades activas.
-       Flex los centra sin dejar columnas vacias ni ocultar el ultimo boton. */
+       Flex los reparte sin dejar columnas vacias ni ocultar el ultimo boton. */
     justify-content: center;
-    gap: 8px;
+    gap: 2px;
   }
 
   .dock__brand {
@@ -11143,11 +11146,48 @@ textarea {
     display: grid;
     justify-items: center;
     flex: 1 1 0;
-    max-width: 96px;
-    padding: 8px 2px;
-    gap: 4px;
-    border-radius: 16px;
+    max-width: none;
+    padding: 7px 2px 6px;
+    gap: 3px;
+    border-radius: 18px;
     min-width: 0;
+  }
+
+  /*
+    El icono va suelto. La cajita con fondo y borde lo hacia ver como un boton
+    adentro de otro boton, y es lo que mas separaba este menu del de las dos
+    apps de referencia.
+  */
+  .dock__icon {
+    width: auto;
+    height: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .dock__icon svg {
+    width: 25px;
+    height: 25px;
+    stroke-width: 1.9;
+  }
+
+  /*
+    Activo sutil: un fondo apenas visible detras del item entero y el contenido
+    en dorado. El pill dorado lleno competia con los posters, que son lo unico
+    que deberia tener color fuerte.
+  */
+  .dock__button.is-active {
+    background: rgba(246, 241, 232, 0.07);
+    box-shadow: none;
+    color: var(--accent);
+  }
+
+  .dock__button.is-active .dock__icon {
+    background: transparent;
+    border-color: transparent;
+    color: var(--accent);
   }
 
   .dock__button--logout {
@@ -11156,11 +11196,17 @@ textarea {
 
   .dock__label {
     display: block;
-    font-size: 0.66rem;
+    font-size: 0.69rem;
+    font-weight: 600;
     text-align: center;
-    line-height: 1.15;
+    line-height: 1.2;
     white-space: nowrap;
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
+  }
+
+  /* La capsula flota encima del contenido: hay que dejarle lugar al final. */
+  .workspace-content {
+    padding-bottom: calc(86px + env(safe-area-inset-bottom));
   }
 
   .workspace-content,
@@ -11752,10 +11798,9 @@ textarea {
     border-radius: 18px;
   }
 
-  .dock__icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 11px;
+  .dock__icon svg {
+    width: 23px;
+    height: 23px;
   }
 
   .dock__brand-logo {
@@ -11763,10 +11808,10 @@ textarea {
   }
 
   .dock__label {
-    font-size: 0.56rem;
-    line-height: 1.05;
+    font-size: 0.64rem;
+    line-height: 1.15;
     white-space: nowrap;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.01em;
   }
 
   .feed-header__tab {
