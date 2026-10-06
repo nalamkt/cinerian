@@ -12733,11 +12733,23 @@ textarea {
     justify-content: center;
   }
 
+  /*
+    Las pestañas se reparten el ancho de la pantalla en columnas iguales.
+    El `minmax(max-content, 1fr)` es lo que hace que sea seguro: reparten el
+    sobrante en partes iguales, pero ninguna se encoge por debajo de su texto
+    -- si algun dia no entran (una etiqueta mas larga, mas pestañas, o la
+    fuente agrandada del sistema), la fila vuelve a scrollear en vez de
+    aplastar las palabras.
+
+    El gap pasa a 0 porque con cuatro pestañas los 22px de base se comian
+    66px, casi una pestaña entera.
+  */
   .profile-tabs__switcher {
     width: 100%;
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: max-content;
+    grid-auto-columns: minmax(max-content, 1fr);
+    gap: 0;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -12750,8 +12762,10 @@ textarea {
 
   .profile-tabs__switch {
     flex: 0 0 auto;
+    padding: 0 4px 12px;
     white-space: nowrap;
-    font-size: clamp(0.84rem, 2.1vw, 0.95rem);
+    text-align: center;
+    font-size: clamp(0.78rem, 2.1vw, 0.95rem);
     font-weight: 500;
   }
 
