@@ -52,7 +52,7 @@ type WatchlistSort = "score" | "recent" | "alpha";
  * menu: el disparador vive al lado de los filtros y no puede crecer.
  */
 const WATCHLIST_SORT_OPTIONS: Array<{ id: WatchlistSort; short: string; label: string }> = [
-  { id: "score", short: "Mejor puntuadas", label: "Mejor puntuadas" },
+  { id: "score", short: "Ranking Cineriano", label: "Ranking Cineriano" },
   { id: "recent", short: "Recientes", label: "Agregadas recientemente" },
   { id: "alpha", short: "A–Z", label: "Orden alfabético" }
 ];
