@@ -4683,10 +4683,10 @@ textarea {
   }
 
   .discover-title {
-    /* Mas grande que antes (1.15 → 1.3rem) ahora que el chip comparte linea y
-       el ranking se fue al backdrop. Pelea con el clamp base de 1.85rem. */
-    font-size: 1.3rem;
-    line-height: 1.1;
+    /* Mas grande ahora que el chip comparte linea y el ranking se fue al
+       backdrop. Pelea con el clamp base de 1.85rem. */
+    font-size: 1.55rem;
+    line-height: 1.08;
   }
 
   .discover-social {
@@ -4733,8 +4733,8 @@ textarea {
     hueco negro.
   */
   .discover-overview__text--clamped {
-    -webkit-line-clamp: var(--discover-overview-lines, 8);
-    line-clamp: var(--discover-overview-lines, 8);
+    -webkit-line-clamp: var(--discover-overview-lines, 15);
+    line-clamp: var(--discover-overview-lines, 15);
   }
 
   .discover-overview p[role="button"] {
@@ -4767,9 +4767,9 @@ textarea {
   .discover-watch__label {
     flex: none;
     margin: 0;
-    font-size: 0.66rem;
+    font-size: 0.82rem;
     font-weight: 600;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.02em;
     text-transform: none;
   }
 

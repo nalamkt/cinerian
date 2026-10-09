@@ -1349,7 +1349,7 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                   className={isOverviewOpen ? undefined : "discover-overview__text--clamped"}
                   style={
                     overviewMaxLines && !isOverviewOpen
-                      ? ({ "--discover-overview-lines": overviewMaxLines } as CSSProperties)
+                      ? ({ "--discover-overview-lines": String(overviewMaxLines) } as CSSProperties)
                       : undefined
                   }
                   onClick={() => {
