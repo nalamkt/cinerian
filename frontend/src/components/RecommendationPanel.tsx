@@ -1166,6 +1166,27 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
               <span className="discover-card__poster-hint" aria-hidden="true">
                 Ver detalles
               </span>
+              {/*
+                Overlays mobile-only sobre el backdrop. En desktop el CSS los
+                oculta y el ranking + TMDB viven adentro de la ficha como
+                siempre. En mobile se eleva el ranking a la esquina inferior
+                izquierda y TMDB a la inferior derecha.
+              */}
+              <span
+                className={`discover-card__rank-overlay ${
+                  current.rank === null ? "discover-card__rank-overlay--outside" : ""
+                }`}
+                aria-hidden="true"
+              >
+                {current.rank === null
+                  ? "Fuera de tu círculo"
+                  : `${current.rank}° · En tu círculo`}
+              </span>
+              {spotlight.score ? (
+                <span className="discover-card__score-overlay" aria-hidden="true">
+                  TMDB {spotlight.score}
+                </span>
+              ) : null}
             </div>
 
             <div
@@ -1180,11 +1201,12 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                 <p className="discover-rank">{current.rank}° · en tu círculo</p>
               )}
 
-              <h2 className="discover-title">{spotlight.title}</h2>
-
-              <p className="discover-kind">
-                {spotlight.mediaType === "tv" ? "Serie" : "Película"}
-              </p>
+              <div className="discover-title-row">
+                <h2 className="discover-title">{spotlight.title}</h2>
+                <p className="discover-kind">
+                  {spotlight.mediaType === "tv" ? "Serie" : "Película"}
+                </p>
+              </div>
 
               {socialLine ? (
                 <div className="discover-circle">

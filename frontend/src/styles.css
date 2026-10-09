@@ -4024,13 +4024,47 @@ textarea {
   color: var(--muted);
 }
 
-/* Override mobile: chip chico pegado al titulo. */
+/*
+  Contenedor del titulo + chip de tipo. En base no cambia nada visualmente
+  porque el chip ya tiene margen propio; en mobile el flex los pone en linea
+  compartiendo renglon.
+*/
+.discover-title-row {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+  Overlays sobre el backdrop: solo visibles en mobile. En desktop quedan
+  escondidos y el ranking + TMDB viven en la ficha como siempre.
+*/
+.discover-card__rank-overlay,
+.discover-card__score-overlay {
+  display: none;
+}
+
+/*
+  Override mobile: titulo + chip en la MISMA linea, con el chip pegado al
+  baseline del titulo. Si el titulo rompe en dos lineas el chip se baja al
+  final; si entra en una sola, queda a la derecha.
+*/
 @media (max-width: 680px) {
+  .discover-title-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+  }
+
   .discover-kind {
-    margin-top: 4px;
-    padding: 2px 8px;
-    font-size: 0.62rem;
+    margin: 0;
+    padding: 3px 9px;
+    font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+    font-size: 0.6rem;
+    font-weight: 600;
     letter-spacing: 0.06em;
+    align-self: center;
+    flex: none;
   }
 }
 
@@ -4096,13 +4130,13 @@ textarea {
 */
 @media (max-width: 680px) {
   .discover-circle {
-    margin-top: 8px;
-    padding: 6px 10px;
-    gap: 9px;
+    margin-top: 16px;
+    padding: 9px 12px;
+    gap: 10px;
   }
 
   .discover-circle__copy p {
-    font-size: 0.86rem;
+    font-size: 0.92rem;
     line-height: 1.3;
   }
 
@@ -4111,21 +4145,20 @@ textarea {
   }
 
   .discover-circle-empty {
-    margin-top: 8px;
-    padding: 7px 11px;
-    font-size: 0.82rem;
-    line-height: 1.3;
+    margin-top: 16px;
+    padding: 10px 13px;
+    font-size: 0.86rem;
+    line-height: 1.35;
   }
 
-  /* Avatares del circulo mas chicos para que no empujen el alto del bloque. */
   .discover-circle .media-modal__friend-link--avatar,
   .discover-circle .media-modal__friend-avatar {
-    width: 30px;
-    height: 30px;
-    flex-basis: 30px;
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
   }
   .discover-circle .media-modal__friend-link--avatar {
-    margin-left: -7px;
+    margin-left: -8px;
   }
   .discover-circle .media-modal__friend-link--avatar:first-child {
     margin-left: 0;
@@ -4566,6 +4599,62 @@ textarea {
     backdrop-filter: blur(6px);
   }
 
+  /*
+    Overlay del ranking: pastilla con blur en la esquina inferior izquierda del
+    backdrop. Reemplaza visualmente a la volanta en la ficha (que se oculta
+    con .discover-rank display:none mas abajo).
+  */
+  .discover-card__rank-overlay {
+    display: inline-block;
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    z-index: 3;
+    padding: 5px 11px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.56);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(252, 195, 95, 0.3);
+    color: var(--accent);
+    font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .discover-card__rank-overlay--outside {
+    color: #e8965a;
+    border-color: rgba(232, 150, 90, 0.35);
+  }
+
+  /*
+    Overlay de TMDB: pastilla con blur en la esquina inferior derecha. Trae
+    el nombre de la fuente ("TMDB 7.3") para que se entienda de donde sale.
+  */
+  .discover-card__score-overlay {
+    display: inline-block;
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 3;
+    padding: 5px 11px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.56);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #fff;
+    font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+
+  /* La volanta de la ficha se va: su rol lo cumple el overlay sobre el poster. */
+  .discover-rank {
+    display: none;
+  }
+
   .discover-card__body {
     position: static;
     flex: 1;
@@ -4575,7 +4664,7 @@ textarea {
     overflow-y: auto;
     overscroll-behavior-y: contain;
     scrollbar-width: none;
-    padding: 10px 4px 6px;
+    padding: 12px 4px 8px;
     background: none;
   }
 
@@ -4594,10 +4683,10 @@ textarea {
   }
 
   .discover-title {
-    /* Pelea con el clamp base que arranca en 1.85rem. En mobile queremos un
-       titulo que ocupe 2 lineas razonables en nombres largos. */
-    font-size: 1.15rem;
-    line-height: 1.14;
+    /* Mas grande que antes (1.15 → 1.3rem) ahora que el chip comparte linea y
+       el ranking se fue al backdrop. Pelea con el clamp base de 1.85rem. */
+    font-size: 1.3rem;
+    line-height: 1.1;
   }
 
   .discover-social {
@@ -4616,8 +4705,8 @@ textarea {
   }
 
   .discover-facts {
-    margin-top: 7px;
-    font-size: 0.78rem;
+    margin-top: 16px;
+    font-size: 0.84rem;
     font-weight: 500;
     color: var(--muted);
   }
@@ -4630,10 +4719,10 @@ textarea {
 
   .discover-overview {
     display: block;
-    margin-top: 9px;
+    margin-top: 16px;
     max-width: none;
-    font-size: 0.8rem;
-    line-height: 1.4;
+    font-size: 0.86rem;
+    line-height: 1.5;
   }
 
   .discover-overview__text--clamped {
@@ -4646,8 +4735,9 @@ textarea {
   }
 
   .discover-overview__more {
-    margin-top: 4px;
-    font-size: 0.78rem;
+    margin-top: 6px;
+    font-size: 0.82rem;
+    font-weight: 700;
   }
 
   /* La ficha ya scrollea de base; is-overview-open no necesita override. */
@@ -4661,10 +4751,10 @@ textarea {
     "aca lo ves".
   */
   .discover-watch {
-    margin-top: 12px;
+    margin-top: 16px;
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 10px;
   }
 
   .discover-watch__label {
