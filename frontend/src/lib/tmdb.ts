@@ -16,6 +16,7 @@ const apiKey = import.meta.env.VITE_TMDB_API_KEY;
 const baseUrl = "https://api.themoviedb.org/3";
 const imageBase = "https://image.tmdb.org/t/p/w500";
 const backdropBase = "https://image.tmdb.org/t/p/original";
+const backdropListingBase = "https://image.tmdb.org/t/p/w780";
 const profileBase = "https://image.tmdb.org/t/p/w300";
 const WATCH_REGION = "AR";
 
@@ -436,6 +437,7 @@ function getTrailerUrl(payload: Record<string, unknown>) {
 
 function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
   const posterPath = typeof item.poster_path === "string" ? item.poster_path : "";
+  const backdropPath = typeof item.backdrop_path === "string" ? item.backdrop_path : "";
   const releaseDate =
     typeof item.release_date === "string"
       ? item.release_date
@@ -475,6 +477,7 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
       (typeof item.overview === "string" && item.overview) ||
       "Todavia no tenemos descripcion para este titulo.",
     posterUrl: posterPath ? `${imageBase}${posterPath}` : "/images/base.png",
+    backdropUrl: backdropPath ? `${backdropListingBase}${backdropPath}` : null,
     genres,
     providers: [],
     score: typeof item.vote_average === "number" ? Number(item.vote_average.toFixed(1)) : 0,

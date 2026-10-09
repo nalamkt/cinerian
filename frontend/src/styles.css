@@ -4024,6 +4024,16 @@ textarea {
   color: var(--muted);
 }
 
+/* Override mobile: chip chico pegado al titulo. */
+@media (max-width: 680px) {
+  .discover-kind {
+    margin-top: 4px;
+    padding: 2px 8px;
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+  }
+}
+
 /*
   Bloque social del circulo. Sube de una "linea de facts" a un bloque
   propio con avatares grandes, hover al perfil (reusa CircleFriendAvatar del
@@ -4077,6 +4087,49 @@ textarea {
   color: var(--muted);
   font-size: 0.92rem;
   line-height: 1.4;
+}
+
+/*
+  Mobile: el bloque social se compacta. Padding mas chico, texto en una sola
+  linea cuando entra, y la etiqueta "de tu circulo" se oculta — el borde ambar
+  ya marca la pertenencia al circulo.
+*/
+@media (max-width: 680px) {
+  .discover-circle {
+    margin-top: 8px;
+    padding: 6px 10px;
+    gap: 9px;
+  }
+
+  .discover-circle__copy p {
+    font-size: 0.86rem;
+    line-height: 1.3;
+  }
+
+  .discover-circle__label {
+    display: none;
+  }
+
+  .discover-circle-empty {
+    margin-top: 8px;
+    padding: 7px 11px;
+    font-size: 0.82rem;
+    line-height: 1.3;
+  }
+
+  /* Avatares del circulo mas chicos para que no empujen el alto del bloque. */
+  .discover-circle .media-modal__friend-link--avatar,
+  .discover-circle .media-modal__friend-avatar {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+  .discover-circle .media-modal__friend-link--avatar {
+    margin-left: -7px;
+  }
+  .discover-circle .media-modal__friend-link--avatar:first-child {
+    margin-left: 0;
+  }
 }
 
 .discover-facts {
@@ -4462,37 +4515,41 @@ textarea {
     overflow: hidden;
   }
 
+  /*
+    Nuevo layout mobile: backdrop horizontal arriba, ficha abajo. El stage se
+    convierte en flex column; el poster (ahora backdrop) tiene alto propio y
+    la ficha ocupa el sobrante. Antes era un stage con imagen de fondo y la
+    ficha superpuesta con velo.
+  */
   .discover-card__stage {
-    display: block;
+    display: flex;
+    flex-direction: column;
     position: relative;
     grid-row: 1;
-    /*
-      La tarjeta usa align-items: start, asi que sus celdas toman el alto de
-      su CONTENIDO. Adentro del stage todo esta posicionado en absoluto: sin
-      este stretch el contenido en flujo es cero, el stage colapsa a 0 de
-      alto y su overflow: hidden se come el poster y la ficha enteros.
-    */
     align-self: stretch;
     min-height: 0;
+  }
+
+  .discover-card__poster {
+    position: relative;
+    flex: none;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    /*
+      Tope por alto de ventana: en 16/9, un phone 390px da ~220px — sumado al
+      resto no entraba sin scroll. Lo acotamos a ~24dvh y el object-fit del
+      <img> interno recorta los costados en vez de agrandar el alto.
+    */
+    aspect-ratio: 16 / 9;
+    max-height: 24dvh;
+    height: 24dvh;
     border-radius: 14px;
     overflow: hidden;
   }
 
-  .discover-card__poster {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    max-width: none;
-    margin: 0;
-    /* Deja de mandar la relacion 2/3: ahora el alto lo fija el stage y la
-       imagen recorta lo que sobra. */
-    aspect-ratio: auto;
-    border-radius: 0;
-  }
-
-  /* Sin hover en touch la pista va siempre visible, y arriba a la derecha:
-     abajo quedaria tapada por la ficha. */
+  /* Sin hover en touch la pista va siempre visible. Pastilla con fondo
+     oscuro semitransparente para que se lea sobre cualquier backdrop. */
   .discover-card__poster-hint {
     left: auto;
     right: 10px;
@@ -4502,36 +4559,28 @@ textarea {
     transform: none;
     font-size: 0.68rem;
     font-weight: 500;
-    /* Es una accion secundaria: alcanza con la sombra, sin pastilla que
-       compita con el poster. */
-    color: rgba(255, 255, 255, 0.82);
-    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.95);
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(6px);
   }
 
   .discover-card__body {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    position: static;
+    flex: 1;
+    min-height: 0;
     grid-row: auto;
     align-self: auto;
-    overflow: visible;
-    /* El padding superior es el lugar donde la rampa hace todo su recorrido. */
-    padding: 48px 14px 14px;
-    /*
-      La rampa se mide en PIXELES, no en porcentaje. Con 26% el punto opaco
-      dependia del alto de la ficha: con ~148px de ficha caia a los 38px,
-      encima del "1° en tu ranking" que arranca a los 17, y esa linea quedaba
-      sobre el poster a un 40% de opacidad efectiva. En pixeles el velo cierra
-      a los 44px siempre, sin importar cuanto crezca la ficha con un titulo
-      largo o tres plataformas.
-    */
-    background: linear-gradient(
-      180deg,
-      rgba(8, 9, 12, 0) 0,
-      rgba(8, 9, 12, 0.93) 44px,
-      rgba(8, 9, 12, 0.97) 100%
-    );
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: none;
+    padding: 10px 4px 6px;
+    background: none;
+  }
+
+  .discover-card__body::-webkit-scrollbar {
+    display: none;
   }
 
   /* La ficha ya no scrollea: el degradado que lo insinuaba sobra. */
@@ -4540,12 +4589,15 @@ textarea {
   }
 
   .discover-rank {
-    margin-bottom: 4px;
+    margin-bottom: 3px;
     font-size: 0.68rem;
   }
 
   .discover-title {
-    font-size: 1.45rem;
+    /* Pelea con el clamp base que arranca en 1.85rem. En mobile queremos un
+       titulo que ocupe 2 lineas razonables en nombres largos. */
+    font-size: 1.15rem;
+    line-height: 1.14;
   }
 
   .discover-social {
@@ -4564,8 +4616,8 @@ textarea {
   }
 
   .discover-facts {
-    margin-top: 9px;
-    font-size: 0.82rem;
+    margin-top: 7px;
+    font-size: 0.78rem;
     font-weight: 500;
     color: var(--muted);
   }
@@ -4578,10 +4630,10 @@ textarea {
 
   .discover-overview {
     display: block;
-    margin-top: 12px;
+    margin-top: 9px;
     max-width: none;
-    font-size: 0.82rem;
-    line-height: 1.45;
+    font-size: 0.8rem;
+    line-height: 1.4;
   }
 
   .discover-overview__text--clamped {
@@ -4598,16 +4650,7 @@ textarea {
     font-size: 0.78rem;
   }
 
-  /* Al abrir la sinopsis, la ficha conserva su ancla inferior y crece sobre
-     el poster. Si un texto excepcionalmente largo ocupa toda la ficha, este
-     bloque propio habilita scroll sin mover los controles inferiores. */
-  .discover-card__body.is-overview-open {
-    max-height: 100%;
-    overflow-y: auto;
-    overscroll-behavior-y: contain;
-    scrollbar-width: none;
-  }
-
+  /* La ficha ya scrollea de base; is-overview-open no necesita override. */
   .discover-card__body.is-overview-open::-webkit-scrollbar {
     display: none;
   }

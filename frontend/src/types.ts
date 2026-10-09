@@ -57,6 +57,12 @@ export type DiscoveryItem = {
   mediaType: MediaType;
   overview: string;
   posterUrl: string;
+  /**
+   * Imagen horizontal (backdrop) para la version mobile de Descubri. Opcional
+   * porque TMDB no la trae para todos los titulos — el componente cae al poster
+   * cuando falta.
+   */
+  backdropUrl?: string | null;
   genres: string[];
   providers: string[];
   score: number;

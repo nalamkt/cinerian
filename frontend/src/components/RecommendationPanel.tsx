@@ -1149,7 +1149,20 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                 }
               }}
             >
-              <img src={spotlight.posterUrl} alt={spotlight.title} />
+              {spotlight.backdropUrl ? (
+                <picture>
+                  {/* En mobile preferimos el backdrop horizontal. Desktop
+                     mantiene el poster vertical. Si TMDB no mando backdrop
+                     para este titulo, cae al poster en ambos lados. */}
+                  <source
+                    media="(max-width: 680px)"
+                    srcSet={spotlight.backdropUrl}
+                  />
+                  <img src={spotlight.posterUrl} alt={spotlight.title} />
+                </picture>
+              ) : (
+                <img src={spotlight.posterUrl} alt={spotlight.title} />
+              )}
               <span className="discover-card__poster-hint" aria-hidden="true">
                 Ver detalles
               </span>
