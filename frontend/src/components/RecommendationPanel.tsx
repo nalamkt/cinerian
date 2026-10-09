@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { CircleFriendAvatar, useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { LoadingState } from "./LoadingState";
@@ -222,6 +222,13 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
   } | null>(null);
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
   const [isOverviewClamped, setIsOverviewClamped] = useState(false);
+  /*
+    Line-clamp dinamico: medimos cuantas lineas de sinopsis caben en el
+    espacio sobrante de la ficha y lo exponemos como variable CSS. Si el texto
+    es corto o la pantalla es grande, el valor crece y no se desperdicia
+    espacio con un "..." adelantado. Null = usar el fallback del CSS.
+  */
+  const [overviewMaxLines, setOverviewMaxLines] = useState<number | null>(null);
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
   const [isQuickRateActive, setIsQuickRateActive] = useState(false);
   const [quickRateChoice, setQuickRateChoice] = useState<QuickRateChoice | null>(null);
@@ -591,25 +598,52 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     daria "no se corta" y se llevaria puesto el "Ver menos".
   */
   useEffect(() => {
-    const node = overviewRef.current;
-    if (!node || isOverviewOpen) {
+    const overviewNode = overviewRef.current;
+    const bodyNode = bodyRef.current;
+    if (!overviewNode || !bodyNode || isOverviewOpen) {
       return;
     }
 
     function measure() {
-      const element = overviewRef.current;
-      if (element) {
-        setIsOverviewClamped(element.scrollHeight > element.clientHeight + 1);
+      const overview = overviewRef.current;
+      const body = bodyRef.current;
+      if (!overview || !body) {
+        return;
       }
+
+      // Line-height en px, desde el estilo computado.
+      const styles = window.getComputedStyle(overview);
+      const lineHeight = Number.parseFloat(styles.lineHeight);
+      if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
+        return;
+      }
+
+      /*
+        Espacio real que le queda al parrafo. Lo calculamos a partir de donde
+        arranca el overview y donde termina el area util del body — asi se
+        adapta al alto del dispositivo sin asumir un numero fijo de lineas.
+      */
+      const bodyRect = body.getBoundingClientRect();
+      const overviewRect = overview.getBoundingClientRect();
+      const paddingBottom = Number.parseFloat(window.getComputedStyle(body).paddingBottom) || 0;
+      const reserveForMoreButton = 28; // el "Ver mas" vive debajo
+      const available =
+        bodyRect.bottom - overviewRect.top - paddingBottom - reserveForMoreButton;
+
+      const nextLines = Math.max(2, Math.floor(available / lineHeight));
+      setOverviewMaxLines((previous) => (previous === nextLines ? previous : nextLines));
+
+      // Chequeo si el texto se corta: compara con la version natural (sin clamp).
+      const naturalHeight = overview.scrollHeight;
+      const clampedHeight = nextLines * lineHeight;
+      setIsOverviewClamped(naturalHeight > clampedHeight + 1);
     }
 
     measure();
 
-    // El corte depende del ancho disponible y de la fuente ya cargada: el
-    // mismo texto pasa de entrar a no entrar al cambiar el tamaño de la
-    // ventana.
     const observer = new ResizeObserver(measure);
-    observer.observe(node);
+    observer.observe(overviewNode);
+    observer.observe(bodyNode);
 
     return () => observer.disconnect();
   }, [spotlight, isOverviewOpen]);
@@ -1280,6 +1314,11 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                 <p
                   ref={overviewRef}
                   className={isOverviewOpen ? undefined : "discover-overview__text--clamped"}
+                  style={
+                    overviewMaxLines && !isOverviewOpen
+                      ? ({ "--discover-overview-lines": overviewMaxLines } as CSSProperties)
+                      : undefined
+                  }
                   onClick={() => {
                     if (isOverviewClamped) {
                       setIsOverviewOpen((value) => !value);
