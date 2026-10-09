@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { CircleFriendAvatar, useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { LoadingState } from "./LoadingState";
@@ -597,11 +597,39 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     Solo se mide plegado. Expandido no hay recorte que medir, y recalcular ahi
     daria "no se corta" y se llevaria puesto el "Ver menos".
   */
-  useEffect(() => {
-    const overviewNode = overviewRef.current;
-    const bodyNode = bodyRef.current;
-    if (!overviewNode || !bodyNode || isOverviewOpen) {
+  /*
+    useLayoutEffect en vez de useEffect: medimos antes de que el browser pinte
+    para evitar el flash de "3 lineas → N lineas". Si falta algun ref todavia
+    no renderizado, la medida se da por saltada en silencio y vuelve a correr
+    en el proximo ciclo gracias al ResizeObserver.
+  */
+  useLayoutEffect(() => {
+    if (isOverviewOpen) {
       return;
+    }
+
+    function resolveLineHeight(overview: HTMLElement): number {
+      const styles = window.getComputedStyle(overview);
+      const raw = styles.lineHeight;
+      const fontSize = Number.parseFloat(styles.fontSize);
+
+      // Caso 1: el browser ya devolvio pixeles (lo normal en Chrome/Safari).
+      const parsed = Number.parseFloat(raw);
+      if (Number.isFinite(parsed) && parsed > 2) {
+        return parsed;
+      }
+
+      // Caso 2: valor unitless (como "1.5") — se multiplica por el font-size.
+      if (Number.isFinite(parsed) && parsed > 0 && Number.isFinite(fontSize)) {
+        return parsed * fontSize;
+      }
+
+      // Caso 3: "normal" o algo imprevisto. Aproximacion segura: 1.3 x font-size.
+      if (Number.isFinite(fontSize) && fontSize > 0) {
+        return fontSize * 1.3;
+      }
+
+      return 0;
     }
 
     function measure() {
@@ -611,29 +639,29 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
         return;
       }
 
-      // Line-height en px, desde el estilo computado.
-      const styles = window.getComputedStyle(overview);
-      const lineHeight = Number.parseFloat(styles.lineHeight);
-      if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
+      const lineHeight = resolveLineHeight(overview);
+      if (lineHeight <= 0) {
         return;
       }
 
-      /*
-        Espacio real que le queda al parrafo. Lo calculamos a partir de donde
-        arranca el overview y donde termina el area util del body — asi se
-        adapta al alto del dispositivo sin asumir un numero fijo de lineas.
-      */
       const bodyRect = body.getBoundingClientRect();
       const overviewRect = overview.getBoundingClientRect();
-      const paddingBottom = Number.parseFloat(window.getComputedStyle(body).paddingBottom) || 0;
-      const reserveForMoreButton = 28; // el "Ver mas" vive debajo
+      const bodyStyles = window.getComputedStyle(body);
+      const paddingBottom = Number.parseFloat(bodyStyles.paddingBottom) || 0;
+      const reserveForMoreButton = 32; // "Ver mas" + su margin-top
       const available =
         bodyRect.bottom - overviewRect.top - paddingBottom - reserveForMoreButton;
 
-      const nextLines = Math.max(2, Math.floor(available / lineHeight));
+      if (!Number.isFinite(available) || available <= lineHeight) {
+        return;
+      }
+
+      const nextLines = Math.max(3, Math.floor(available / lineHeight));
       setOverviewMaxLines((previous) => (previous === nextLines ? previous : nextLines));
 
-      // Chequeo si el texto se corta: compara con la version natural (sin clamp).
+      // El overview puede estar clampedo visualmente, pero scrollHeight da el
+      // alto natural igual: si lo que entra en nextLines no cubre el total,
+      // hay algo mas y mostramos el "Ver mas".
       const naturalHeight = overview.scrollHeight;
       const clampedHeight = nextLines * lineHeight;
       setIsOverviewClamped(naturalHeight > clampedHeight + 1);
@@ -642,8 +670,13 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     measure();
 
     const observer = new ResizeObserver(measure);
-    observer.observe(overviewNode);
-    observer.observe(bodyNode);
+    if (overviewRef.current) observer.observe(overviewRef.current);
+    if (bodyRef.current) observer.observe(bodyRef.current);
+
+    // Font loading puede cambiar line-height a mitad de camino.
+    if (typeof document !== "undefined" && document.fonts?.ready) {
+      void document.fonts.ready.then(measure).catch(() => {});
+    }
 
     return () => observer.disconnect();
   }, [spotlight, isOverviewOpen]);

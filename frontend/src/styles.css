@@ -4727,14 +4727,14 @@ textarea {
 
   /*
     El numero de lineas lo setea el panel: mide el espacio real que le queda
-    al parrafo en el dispositivo y pasa `--discover-overview-lines`. En
-    pantallas grandes con sinopsis largas entran mas lineas en vez de recortar
-    a 3 y dejar hueco vacio abajo. El fallback 3 cubre el estado inicial
-    antes de que useEffect mida.
+    al parrafo en el dispositivo y pasa `--discover-overview-lines`. El
+    fallback 8 cubre el primer frame y pantallas donde el effect no logre
+    medir — mejor pecar por mostrar demas que por recortar de mas y dejar un
+    hueco negro.
   */
   .discover-overview__text--clamped {
-    -webkit-line-clamp: var(--discover-overview-lines, 3);
-    line-clamp: var(--discover-overview-lines, 3);
+    -webkit-line-clamp: var(--discover-overview-lines, 8);
+    line-clamp: var(--discover-overview-lines, 8);
   }
 
   .discover-overview p[role="button"] {
