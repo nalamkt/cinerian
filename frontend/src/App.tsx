@@ -636,7 +636,6 @@ export default function App() {
           <div hidden={hiddenWhen("inbox")}>
             <InboxPanel
               userId={session!.user.id}
-              onOpenUserProfile={handleOpenUserProfile}
               onStartRecommendation={() => handleChangeView("search")}
             />
           </div>

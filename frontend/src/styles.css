@@ -4012,7 +4012,7 @@ textarea {
 
 .discover-kind {
   display: inline-flex;
-  margin: 8px 0 0;
+  margin: 0 0 0 8px;
   padding: 3px 10px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -4022,16 +4022,17 @@ textarea {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
+  vertical-align: 0.14em;
+  white-space: nowrap;
 }
 
-/*
-  Contenedor del titulo + chip de tipo. En base no cambia nada visualmente
-  porque el chip ya tiene margen propio; en mobile el flex los pone en linea
-  compartiendo renglon.
-*/
+/* El tipo forma parte del mismo flujo del titulo y se mantiene a su lado. */
 .discover-title-row {
-  display: flex;
-  flex-direction: column;
+  display: block;
+}
+
+.discover-title-row .discover-title {
+  display: inline;
 }
 
 /*
@@ -4043,17 +4044,9 @@ textarea {
   display: none;
 }
 
-/*
-  Override mobile: titulo + chip en la MISMA linea, con el chip pegado al
-  baseline del titulo. Si el titulo rompe en dos lineas el chip se baja al
-  final; si entra en una sola, queda a la derecha.
-*/
 @media (max-width: 680px) {
   .discover-title-row {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 8px;
+    display: block;
   }
 
   .discover-kind {
@@ -4063,7 +4056,8 @@ textarea {
     font-size: 0.6rem;
     font-weight: 600;
     letter-spacing: 0.06em;
-    align-self: center;
+    margin-left: 7px;
+    vertical-align: 0.1em;
     flex: none;
   }
 }
@@ -6572,8 +6566,8 @@ textarea {
 
 .inbox-shell {
   grid-template-columns: minmax(0, 1fr);
-  height: calc(100vh - 32px);
-  min-height: 0;
+  height: calc(100dvh - 32px);
+  min-height: calc(100dvh - 32px);
 }
 
 .inbox-main {
@@ -6966,17 +6960,18 @@ textarea {
 }
 
 .inbox-thread-view__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  width: fit-content;
-  min-height: 40px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text);
-  font-weight: 700;
+  width: 40px;
+  height: 40px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 2rem;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .inbox-thread-view {
@@ -6994,8 +6989,8 @@ textarea {
   top: 0;
   z-index: 2;
   display: grid;
-  gap: 14px;
-  padding: 2px 2px 14px;
+  gap: 0;
+  padding: 2px 2px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: transparent;
   backdrop-filter: blur(8px);
@@ -7058,7 +7053,7 @@ textarea {
 
 .inbox-thread-view__header-copy {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -7072,6 +7067,16 @@ textarea {
 .inbox-thread-view__title {
   font-size: clamp(1.1rem, 2vw, 1.35rem);
   line-height: 1.15;
+}
+
+.inbox-thread-view__meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inbox-thread-view__identity {
@@ -7110,6 +7115,77 @@ textarea {
   justify-content: flex-end;
   gap: 8px;
   min-width: 0;
+}
+
+.inbox-thread-view__utility-button {
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted-strong);
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.inbox-thread-view__utility-button:hover {
+  border-color: rgba(252, 195, 95, 0.34);
+  background: rgba(252, 195, 95, 0.1);
+  color: var(--accent);
+}
+
+.inbox-thread-view__utility-button svg,
+.inbox-thread-view__send-button svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
+.inbox-thread-view__menu {
+  position: relative;
+}
+
+.inbox-thread-view__menu-popover {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  width: max-content;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(22, 21, 18, 0.98);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.32);
+}
+
+.inbox-thread-view__menu-popover button {
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inbox-thread-view__menu-popover button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.inbox-thread-view__menu-popover button.is-danger {
+  color: #e39b8a;
 }
 
 .inbox-thread-view__action {
@@ -7415,6 +7491,27 @@ textarea {
 
 .inbox-thread-view__composer-row input::placeholder {
   color: var(--muted);
+}
+
+.inbox-thread-view__send-button {
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
+  min-height: 52px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.inbox-thread-view__send-button:disabled {
+  opacity: 0.45;
+}
+
+.inbox-thread-view__send-pending {
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
 }
 
 .inbox-empty-state {
@@ -7787,31 +7884,49 @@ textarea {
     gap: 12px;
   }
 
-  .inbox-thread-view__kicker {
-    font-size: 0.7rem;
-  }
-
-  .inbox-thread-view__title {
-    font-size: 1.2rem;
-    line-height: 1.12;
-  }
-
-  .inbox-thread-view__identity {
+  .inbox-thread-view__header.is-mobile {
+    grid-template-columns: 36px 42px minmax(0, 1fr) auto;
     gap: 8px;
   }
 
-  .inbox-thread-view__identity-copy span {
-    font-size: 0.8rem;
+  .inbox-thread-view__header.is-mobile .inbox-thread-view__back {
+    width: 36px;
+    height: 36px;
+    font-size: 1.8rem;
   }
 
-  .inbox-thread-view__author {
-    font-size: 0.92rem;
+  .inbox-thread-view__header.is-mobile .inbox-thread-view__poster {
+    width: 42px;
+    border-radius: 10px;
   }
 
-  .inbox-thread-view__header-side {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-    gap: 8px;
+  .inbox-thread-view__header.is-mobile .inbox-thread-view__title {
+    display: block;
+    overflow: hidden;
+    font-size: 1.08rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .inbox-thread-view__header.is-mobile .inbox-thread-view__meta {
+    font-size: 0.76rem;
+  }
+
+  .inbox-thread-view__header.is-mobile .inbox-thread-view__header-side {
+    grid-column: auto;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .inbox-thread-view__header.is-mobile .inbox-thread-view__utility-button {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+  }
+
+  .inbox-thread-view__header.is-mobile .inbox-thread-view__utility-button svg {
+    width: 18px;
+    height: 18px;
   }
 
   .inbox-thread-panel,
@@ -7869,8 +7984,9 @@ textarea {
   }
 
   .inbox-thread-view__composer {
-    position: sticky;
-    bottom: 0;
+    /* The messages area scrolls, so flex keeps the composer at the visible bottom. */
+    position: relative;
+    bottom: auto;
     z-index: 6;
     flex-shrink: 0;
     width: 100%;
@@ -7902,6 +8018,13 @@ textarea {
     min-height: 44px;
   }
 
+  .inbox-thread-view__composer-row .inbox-thread-view__send-button {
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    min-height: 48px;
+  }
+
   .inbox-thread-bubble {
     width: min(100%, 84%);
     padding: 12px 14px;
@@ -7909,15 +8032,15 @@ textarea {
   }
 
   .inbox-shell.is-thread-open-mobile {
-    min-height: calc(100dvh - 18px);
-    height: calc(100dvh - 18px);
+    min-height: calc(var(--inbox-visible-height, 100dvh) - 18px);
+    height: calc(var(--inbox-visible-height, 100dvh) - 18px);
     padding-bottom: 0;
   }
 
   .inbox-shell.is-thread-open-mobile .feed-main {
     border-radius: 30px;
-    min-height: calc(100dvh - 24px);
-    height: calc(100dvh - 24px);
+    min-height: calc(var(--inbox-visible-height, 100dvh) - 24px);
+    height: calc(var(--inbox-visible-height, 100dvh) - 24px);
     overflow: hidden;
   }
 
@@ -10560,6 +10683,37 @@ textarea {
   margin-top: 12px;
 }
 
+.talent-modal__biography {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.talent-modal__biography-text:not(.is-expanded) {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.talent-modal__biography-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.talent-modal__biography-toggle:hover,
+.talent-modal__biography-toggle:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 .talent-modal__section-heading {
   display: flex;
   align-items: center;
@@ -12685,11 +12839,11 @@ textarea {
   }
 }
 
-/* Keep the reply composer anchored to the bottom edge in the two-column Inbox. */
+/* El Inbox no tiene encabezado: el hilo usa todo el alto disponible. */
 @media (min-width: 901px) {
   .inbox-layout {
-    min-height: calc(100dvh - 180px);
-    height: calc(100dvh - 125px);
+    min-height: 0;
+    height: 100%;
   }
 
   .inbox-thread-panel {

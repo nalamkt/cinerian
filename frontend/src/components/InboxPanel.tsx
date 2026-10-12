@@ -26,11 +26,8 @@ import type {
 
 type InboxPanelProps = {
   userId: string;
-  onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
   onStartRecommendation?: () => void;
 };
-
-const QUICK_REPLIES = ["Ya la vi", "Me la guardo", "La estoy viendo", "No es para mí"];
 
 function formatDaySeparator(isoDate: string): string {
   const date = new Date(isoDate);
@@ -144,7 +141,7 @@ function CommentPostPreviewModal({
   );
 }
 
-export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }: InboxPanelProps) {
+export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 900px)").matches : false
@@ -160,6 +157,7 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
+  const [isThreadMenuOpen, setIsThreadMenuOpen] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [commentsByPostId, setCommentsByPostId] = useState<Record<string, FeedComment[]>>({});
@@ -373,26 +371,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
     return [...groups.values()];
   }, [filteredMessages, groupByFriend, userId]);
 
-  const filteredCommentNotifications = useMemo(() => {
-    if (!normalizedSearchQuery) {
-      return commentNotifications;
-    }
-
-    return commentNotifications.filter((notification) => {
-      const haystack = [
-        notification.actorProfile?.display_name ?? "",
-        notification.actorProfile?.username ?? "",
-        notification.body,
-        notification.postBody,
-        notification.item?.title ?? ""
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(normalizedSearchQuery);
-    });
-  }, [commentNotifications, normalizedSearchQuery]);
-
   const isShowingMobileThread =
     isMobile &&
     ((category === "recommendations" && Boolean(activeMessage)) ||
@@ -403,29 +381,28 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
       return;
     }
 
-    if (!filteredMessages.length || (activeMessageId && !filteredMessages.some((message) => message.id === activeMessageId))) {
+    // Un filtro puede ocultar la conversación seleccionada (por ejemplo, al
+    // marcarla como leída), pero no debe cerrar el detalle mientras exista.
+    if (activeMessageId && !visibleMessages.some((message) => message.id === activeMessageId)) {
       setActiveMessageId(null);
     }
-  }, [activeMessageId, category, filteredMessages]);
+  }, [activeMessageId, category, visibleMessages]);
 
   useEffect(() => {
     if (category !== "comments") {
       return;
     }
 
-    if (
-      !filteredCommentNotifications.length ||
-      (activeCommentId &&
-        !filteredCommentNotifications.some((notification) => notification.id === activeCommentId))
-    ) {
+    if (activeCommentId && !commentNotifications.some((notification) => notification.id === activeCommentId)) {
       setActiveCommentId(null);
     }
-  }, [activeCommentId, category, filteredCommentNotifications]);
+  }, [activeCommentId, category, commentNotifications]);
 
   useEffect(() => {
     if (!activeMessage) {
       setReplyDraft("");
     }
+    setIsThreadMenuOpen(false);
     setEditingEntryId(null);
     setEditDraft("");
   }, [activeMessage?.id]);
@@ -530,6 +507,51 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
 
     return () => {
       document.body.classList.remove("inbox-mobile-thread-open");
+    };
+  }, [isShowingMobileThread]);
+
+  useEffect(() => {
+    if (!isShowingMobileThread || typeof window === "undefined") {
+      return;
+    }
+
+    const viewport = window.visualViewport;
+    let frameId: number | undefined;
+
+    // iOS Safari does not always update `dvh` while its keyboard animates.
+    // Keep the thread sized to the actual visible viewport instead.
+    const syncVisibleViewport = () => {
+      // Safari can pan the visual viewport upward for a focused input. Its
+      // height alone then leaves the composer too high; the visible bottom is
+      // the viewport height plus its position within the document.
+      const visibleBottom = Math.round(
+        viewport ? viewport.height + viewport.pageTop : window.innerHeight
+      );
+      document.documentElement.style.setProperty("--inbox-visible-height", `${visibleBottom}px`);
+
+      if (frameId !== undefined) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+      });
+    };
+
+    syncVisibleViewport();
+    viewport?.addEventListener("resize", syncVisibleViewport);
+    viewport?.addEventListener("scroll", syncVisibleViewport);
+    window.addEventListener("resize", syncVisibleViewport);
+
+    return () => {
+      if (frameId !== undefined) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      viewport?.removeEventListener("resize", syncVisibleViewport);
+      viewport?.removeEventListener("scroll", syncVisibleViewport);
+      window.removeEventListener("resize", syncVisibleViewport);
+      document.documentElement.style.removeProperty("--inbox-visible-height");
     };
   }, [isShowingMobileThread]);
 
@@ -638,6 +660,25 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
       setErrorMessage("No pude eliminar este mensaje.");
     } finally {
       setPendingMessageId(null);
+    }
+  }
+
+  async function handleShareConversation(message: RecommendationMessage) {
+    const text = `Mirá ${message.item.title} en Cinerian.`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: message.item.title, text });
+        return;
+      }
+
+      await navigator.clipboard?.writeText(text);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
+      setErrorMessage("No pude compartir la conversación.");
     }
   }
 
@@ -1206,17 +1247,17 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
         onTouchCancel={() => endThreadSwipe()}
       >
         <div className="inbox-thread-view__summary">
-          {isMobile ? (
-            <button
-              type="button"
-              className="inbox-thread-view__back"
-              onClick={() => setActiveMessageId(null)}
-            >
-              <span aria-hidden="true">←</span>
-              <span>Volver</span>
-            </button>
-          ) : null}
-          <div className="inbox-thread-view__header">
+          <div className={`inbox-thread-view__header ${isMobile ? "is-mobile" : ""}`}>
+            {isMobile ? (
+              <button
+                type="button"
+                className="inbox-thread-view__back"
+                aria-label="Volver a mensajes"
+                onClick={() => setActiveMessageId(null)}
+              >
+                <span aria-hidden="true">←</span>
+              </button>
+            ) : null}
             <button
               type="button"
               className="inbox-thread-view__poster-button"
@@ -1230,10 +1271,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
               />
             </button>
             <div className="inbox-thread-view__header-copy">
-              <span className="inbox-thread-view__kicker">
-                {message.item.mediaType === "movie" ? "PELÍCULA" : "SERIE"}
-                {message.item.year ? ` • ${message.item.year}` : ""}
-              </span>
               <button
                 type="button"
                 className="inbox-thread-view__title-button"
@@ -1241,74 +1278,72 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
               >
                 <strong className="inbox-thread-view__title">{message.item.title}</strong>
               </button>
-              <div className="inbox-thread-view__identity">
-                <span className="sidebar-user__avatar inbox-thread-view__avatar" aria-hidden="true">
-                  {counterpart?.avatar_url ? (
-                    <img src={counterpart.avatar_url} alt="" className="sidebar-user__avatar-image" />
-                  ) : (
-                    (counterpart?.display_name ?? "C").slice(0, 1).toUpperCase()
-                  )}
-                </span>
-                <div className="inbox-thread-view__identity-copy">
-                  <button
-                    type="button"
-                    className="timeline-card__author inbox-thread-view__author"
-                    onClick={() =>
-                      counterpart
-                        ? onOpenUserProfile({ userId: counterpart.id, username: counterpart.username })
-                        : undefined
-                    }
-                  >
-                    {counterpart?.display_name ?? "Cineriano"}
-                  </button>
-                  <span>
-                    {isSent ? "Se la mandaste" : "Te la mandó"} • @{counterpart?.username ?? "cineriano"}
-                  </span>
-                </div>
-              </div>
+              <span className="inbox-thread-view__meta">
+                {message.item.mediaType === "movie" ? "Película" : "Serie"}
+                {message.item.year ? ` · ${message.item.year}` : ""}
+                {` · ${isSent ? "Se la mandaste a" : "Te la mandó"} @${counterpart?.username ?? "cineriano"}`}
+              </span>
             </div>
             <div className="inbox-thread-view__header-side">
-              {isLastMessageIncoming(message) ? (
+              <button
+                type="button"
+                className="inbox-thread-view__utility-button"
+                aria-label="Compartir conversación"
+                title="Compartir conversación"
+                onClick={() => void handleShareConversation(message)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14 4h6v6" />
+                  <path d="M20 4 10 14" />
+                  <path d="M20 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4" />
+                </svg>
+              </button>
+              <div className="inbox-thread-view__menu">
                 <button
                   type="button"
-                  className="inbox-thread-view__action"
-                  disabled={isPending}
-                  aria-label={
-                    (getLastIncomingReply(message)?.readAt ?? message.readAt)
-                      ? "Marcar como no leído"
-                      : "Marcar como leído"
-                  }
-                  title={
-                    (getLastIncomingReply(message)?.readAt ?? message.readAt)
-                      ? "Marcar como no leído"
-                      : "Marcar como leído"
-                  }
-                  onClick={() => void handleToggleLastMessageRead(message)}
+                  className="inbox-thread-view__utility-button"
+                  aria-label="Más opciones"
+                  aria-expanded={isThreadMenuOpen}
+                  onClick={() => setIsThreadMenuOpen((current) => !current)}
                 >
-                  <span aria-hidden="true">
-                    {(getLastIncomingReply(message)?.readAt ?? message.readAt) ? "◐" : "◉"}
-                  </span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="5" cy="12" r="1.4" />
+                    <circle cx="12" cy="12" r="1.4" />
+                    <circle cx="19" cy="12" r="1.4" />
+                  </svg>
                 </button>
-              ) : null}
-              <button
-                type="button"
-                className="inbox-thread-view__action"
-                aria-label="Ver título"
-                title="Ver título"
-                onClick={() => openMediaDetails(message.item)}
-              >
-                <span aria-hidden="true">↗</span>
-              </button>
-              <button
-                type="button"
-                className="inbox-thread-view__action inbox-thread-view__action--danger"
-                disabled={isPending}
-                aria-label="Eliminar conversación"
-                title="Eliminar conversación"
-                onClick={() => void handleDelete(message)}
-              >
-                <span aria-hidden="true">✕</span>
-              </button>
+                {isThreadMenuOpen ? (
+                  <div className="inbox-thread-view__menu-popover" role="menu">
+                    {isLastMessageIncoming(message) ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={isPending}
+                        onClick={() => {
+                          setIsThreadMenuOpen(false);
+                          void handleToggleLastMessageRead(message);
+                        }}
+                      >
+                        {(getLastIncomingReply(message)?.readAt ?? message.readAt)
+                          ? "Marcar como no leído"
+                          : "Marcar como leído"}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="is-danger"
+                      disabled={isPending}
+                      onClick={() => {
+                        setIsThreadMenuOpen(false);
+                        void handleDelete(message);
+                      }}
+                    >
+                      Eliminar conversación
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -1423,19 +1458,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
         </div>
 
         <div className="inbox-thread-view__composer">
-          <div className="inbox-thread-view__quick-replies">
-            {QUICK_REPLIES.map((quickReply) => (
-              <button
-                key={quickReply}
-                type="button"
-                className="inbox-thread-view__quick-reply"
-                disabled={isPending}
-                onClick={() => void handleReplySubmit(message, quickReply)}
-              >
-                {quickReply}
-              </button>
-            ))}
-          </div>
           <div className="inbox-thread-view__composer-row">
             <input
               id="inbox-reply-composer"
@@ -1453,11 +1475,19 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
             />
             <button
               type="button"
-              className="primary-button"
+              className="primary-button inbox-thread-view__send-button"
               disabled={isPending || !replyDraft.trim()}
               onClick={() => void handleReplySubmit(message, replyDraft)}
+              aria-label={isPending ? "Enviando mensaje" : "Enviar mensaje"}
             >
-              {isPending ? "Enviando..." : "Enviar"}
+              {isPending ? (
+                <span className="inbox-thread-view__send-pending">...</span>
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m21 3-7.4 18-3.8-7.8L3 9.4 21 3Z" />
+                  <path d="m9.8 13.2 4.4-4.4" />
+                </svg>
+              )}
             </button>
           </div>
         </div>

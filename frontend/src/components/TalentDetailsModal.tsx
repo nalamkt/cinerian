@@ -109,7 +109,10 @@ export function TalentDetailsModal({
   );
   const [creditOrder, setCreditOrder] = useState<CreditOrder>(cached?.creditOrder ?? "known");
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
+  const [isBiographyExpanded, setIsBiographyExpanded] = useState(false);
+  const [isBiographyTruncated, setIsBiographyTruncated] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const biographyRef = useRef<HTMLParagraphElement | null>(null);
   const pendingScrollRef = useRef<number | null>(cached?.scrollTop ?? null);
 
   useEffect(() => {
@@ -144,6 +147,8 @@ export function TalentDetailsModal({
     setVisibleActingCredits(nextCached?.visibleActingCredits ?? CREDITS_PAGE_SIZE);
     setVisibleDirectingCredits(nextCached?.visibleDirectingCredits ?? CREDITS_PAGE_SIZE);
     setCreditOrder(nextCached?.creditOrder ?? "known");
+    setIsBiographyExpanded(false);
+    setIsBiographyTruncated(false);
     pendingScrollRef.current = nextCached?.scrollTop ?? 0;
   }, [item?.id]);
 
@@ -201,6 +206,23 @@ export function TalentDetailsModal({
     });
     return () => window.cancelAnimationFrame(rafId);
   }, [details, visibleActingCredits, visibleDirectingCredits]);
+
+  useLayoutEffect(() => {
+    if (!details || isBiographyExpanded || !biographyRef.current) {
+      return;
+    }
+
+    const biography = biographyRef.current;
+    const updateTruncation = () => {
+      setIsBiographyTruncated(biography.scrollHeight > biography.clientHeight + 1);
+    };
+
+    updateTruncation();
+    const observer = new ResizeObserver(updateTruncation);
+    observer.observe(biography);
+
+    return () => observer.disconnect();
+  }, [details?.biography, isBiographyExpanded]);
 
   if (!item) {
     return null;
@@ -342,7 +364,26 @@ export function TalentDetailsModal({
 
                 <section className="media-modal__section">
                   <p className="section-eyebrow">Biografia</p>
-                  <p className="media-modal__overview">{details.biography}</p>
+                  <div className="talent-modal__biography">
+                    <p
+                      ref={biographyRef}
+                      className={`media-modal__overview talent-modal__biography-text${
+                        isBiographyExpanded ? " is-expanded" : ""
+                      }`}
+                    >
+                      {details.biography}
+                    </p>
+                    {isBiographyTruncated ? (
+                      <button
+                        type="button"
+                        className="talent-modal__biography-toggle"
+                        onClick={() => setIsBiographyExpanded((current) => !current)}
+                        aria-expanded={isBiographyExpanded}
+                      >
+                        {isBiographyExpanded ? "Ver menos" : "Ver más"}
+                      </button>
+                    ) : null}
+                  </div>
                 </section>
 
                 {actingCredits.length ? (
