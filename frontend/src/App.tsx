@@ -5,6 +5,7 @@ import { CinerianLogo } from "./components/CinerianLogo";
 import { FeedPanel } from "./components/FeedPanel";
 import { FollowSuggestionsModal } from "./components/FollowSuggestionsModal";
 import { InboxPanel } from "./components/InboxPanel";
+import { LoadingState } from "./components/LoadingState";
 import { MediaDetailsProvider } from "./components/MediaDetailsModal";
 import { ProfilePanel } from "./components/ProfilePanel";
 import { RecommendationPanel } from "./components/RecommendationPanel";
@@ -654,6 +655,18 @@ export default function App() {
           />
         </div>
       </>
+    );
+  }
+
+  // Supabase restaura la sesion desde localStorage al iniciar una pagina nueva.
+  // Mientras esa lectura esta en curso, nunca mostramos el formulario de login:
+  // Safari puede suspender y reconstruir una pestana al volver a la app.
+  if (!session && isLoading && !selectedProfileRoute) {
+    return (
+      <div className="session-restore-gate" role="status" aria-live="polite">
+        <CinerianLogo className="session-restore-gate__logo" />
+        <LoadingState label="Recuperando tu sesión..." />
+      </div>
     );
   }
 

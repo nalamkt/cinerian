@@ -1175,7 +1175,17 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
               className={`inbox-thread-item__arrow ${isSent ? "is-sent" : "is-received"}`}
               aria-label={isSent ? "Enviado" : "Recibido"}
             >
-              {isSent ? "↗" : "↙"}
+              {isSent ? (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 19 19 5" />
+                  <path d="M9 5h10v10" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M19 5 5 19" />
+                  <path d="M5 9v10h10" />
+                </svg>
+              )}
             </span>
             <span className="inbox-thread-item__profile">
               <span className="inbox-thread-item__profile-avatar" aria-hidden="true">
@@ -1255,7 +1265,9 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
                 aria-label="Volver a mensajes"
                 onClick={() => setActiveMessageId(null)}
               >
-                <span aria-hidden="true">←</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
               </button>
             ) : null}
             <button
@@ -1421,29 +1433,33 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
                           {entry.body}
                           <span className="inbox-thread-bubble__time">{timeLabel}</span>
                         </p>
-                        {showSeen ? (
-                          <span className="inbox-thread-bubble__seen">
-                            <span aria-hidden="true">✓✓</span> Visto
-                          </span>
-                        ) : null}
-                        {isLastOwn ? (
-                          <div className="inbox-bubble-actions">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                startEditEntry(entry.id, isRoot ? message.note?.trim() ?? "" : entry.body)
-                              }
-                            >
-                              Editar
-                            </button>
-                            {!isRoot ? (
-                              <button
-                                type="button"
-                                className="inbox-bubble-actions__danger"
-                                onClick={() => void handleDeleteReply(message, entry.id)}
-                              >
-                                Eliminar
-                              </button>
+                        {showSeen || isLastOwn ? (
+                          <div className="inbox-thread-bubble__meta-actions">
+                            {showSeen ? (
+                              <span className="inbox-thread-bubble__seen">
+                                <span aria-hidden="true">✓✓</span> Visto
+                              </span>
+                            ) : null}
+                            {isLastOwn ? (
+                              <div className="inbox-bubble-actions">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    startEditEntry(entry.id, isRoot ? message.note?.trim() ?? "" : entry.body)
+                                  }
+                                >
+                                  Editar
+                                </button>
+                                {!isRoot ? (
+                                  <button
+                                    type="button"
+                                    className="inbox-bubble-actions__danger"
+                                    onClick={() => void handleDeleteReply(message, entry.id)}
+                                  >
+                                    Eliminar
+                                  </button>
+                                ) : null}
+                              </div>
                             ) : null}
                           </div>
                         ) : null}
@@ -1512,7 +1528,12 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
                   <div className={`inbox-thread-column ${isShowingMobileThread ? "is-hidden-mobile" : ""}`}>
                     <div className="inbox-thread-list__header">
                       <label className="inbox-search">
-                        <span aria-hidden="true">⌕</span>
+                        <span aria-hidden="true">
+                          <svg viewBox="0 0 24 24">
+                            <circle cx="10.5" cy="10.5" r="5.5" />
+                            <path d="m15 15 4 4" />
+                          </svg>
+                        </span>
                         <input
                           type="search"
                           value={searchQuery}
@@ -1534,21 +1555,29 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
                             className={`inbox-filter-chip ${unreadOnly ? "is-active" : ""}`}
                             onClick={() => setUnreadOnly(true)}
                           >
-                            No leídos{unreadCount ? ` (${unreadCount})` : ""}
+                            No leídos{unreadCount ? ` · ${unreadCount}` : ""}
                           </button>
                           <button
                             type="button"
-                            className={`inbox-filter-chip ${groupByFriend ? "is-active" : ""}`}
+                            className={`inbox-filter-chip inbox-filter-chip--group ${groupByFriend ? "is-active" : ""}`}
                             aria-pressed={groupByFriend}
+                            aria-label="Agrupar conversaciones por amigo"
+                            title="Agrupar por amigo"
                             onClick={() => setGroupByFriend((current) => !current)}
                           >
-                            Agrupar por amigo
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <circle cx="9" cy="8" r="2.5" />
+                              <path d="M4.5 18v-1.2a4.5 4.5 0 0 1 9 0V18" />
+                              <path d="M16.2 7.1a2.4 2.4 0 0 1 0 4.6" />
+                              <path d="M17.2 13.2a4.1 4.1 0 0 1 3.3 4V18" />
+                            </svg>
+                            <span>Agrupar por amigo</span>
                           </button>
                         </div>
                         {onStartRecommendation ? (
                           <button
                             type="button"
-                            className="inbox-new-recommendation"
+                            className="inbox-new-recommendation inbox-new-recommendation--toolbar"
                             onClick={onStartRecommendation}
                           >
                             <span aria-hidden="true">+</span>
@@ -1606,6 +1635,18 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
             )
           ) : null}
         </div>
+        {!isShowingMobileThread && onStartRecommendation ? (
+          <button
+            type="button"
+            className="inbox-new-recommendation inbox-new-recommendation--fab"
+            onClick={onStartRecommendation}
+            aria-label="Nueva recomendación"
+            title="Nueva recomendación"
+          >
+            <span aria-hidden="true">+</span>
+            <span>Nueva recomendación</span>
+          </button>
+        ) : null}
       </div>
       </section>
       <CommentPostPreviewModal

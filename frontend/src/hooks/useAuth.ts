@@ -106,28 +106,7 @@ export function useAuth() {
       }
     }
 
-    async function recoverSession() {
-      if (!supabase) {
-        return;
-      }
-
-      try {
-        const {
-          data: { session }
-        } = await supabase.auth.getSession();
-
-        if (!session) {
-          return;
-        }
-
-        await supabase.auth.refreshSession();
-      } catch {
-        // Let the regular auth listener and bootstrap flow own visible errors.
-      }
-    }
-
     void bootstrap();
-    void recoverSession();
 
     if (!supabase) {
       return () => {
@@ -138,13 +117,31 @@ export function useAuth() {
     const {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session?.user) {
+      // Un cierre de sesion real es el unico evento que debe sacar al usuario
+      // de la app. INITIAL_SESSION puede llegar mientras Safari rehidrata el
+      // storage, y no debe causar un flash del formulario de acceso.
+      if (event === "SIGNED_OUT") {
         setState({
           session: null,
           profile: null,
           isLoading: false,
           error: null
         });
+        return;
+      }
+
+      if (!session?.user) {
+        return;
+      }
+
+      // Una renovacion conserva el mismo usuario y no necesita volver a
+      // consultar o crear su perfil. Evitamos sumar una segunda operacion de
+      // red cada vez que el navegador despierta una pestana en segundo plano.
+      if (event === "TOKEN_REFRESHED") {
+        setState((current) => ({
+          ...current,
+          session
+        }));
         return;
       }
 
@@ -159,13 +156,6 @@ export function useAuth() {
         */
         isLoading: current.profile === null
       }));
-
-      if (event === "TOKEN_REFRESHED") {
-        setState((current) => ({
-          ...current,
-          session
-        }));
-      }
 
       void establishProfile(session.user)
         .then((profile) => {
@@ -187,30 +177,9 @@ export function useAuth() {
         });
     });
 
-    function handleVisibilityRecovery() {
-      if (document.visibilityState === "visible") {
-        void recoverSession();
-      }
-    }
-
-    function handlePageShowRecovery() {
-      void recoverSession();
-    }
-
-    function handleOnlineRecovery() {
-      void recoverSession();
-    }
-
-    window.addEventListener("pageshow", handlePageShowRecovery);
-    window.addEventListener("online", handleOnlineRecovery);
-    document.addEventListener("visibilitychange", handleVisibilityRecovery);
-
     return () => {
       isMounted = false;
       subscription.unsubscribe();
-      window.removeEventListener("pageshow", handlePageShowRecovery);
-      window.removeEventListener("online", handleOnlineRecovery);
-      document.removeEventListener("visibilitychange", handleVisibilityRecovery);
     };
   }, []);
 
