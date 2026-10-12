@@ -139,6 +139,19 @@ button:disabled {
 }
 
 /*
+  Los navegadores que todavia no entienden las unidades modernas conservan el
+  fallback de WebKit. En Safari actual no se usa: `-webkit-fill-available`
+  puede terminar antes de la barra de URL flotante y deja un corte negro.
+*/
+@supports not (min-height: 100lvh) {
+  html,
+  body,
+  #root {
+    min-height: -webkit-fill-available;
+  }
+}
+
+/*
   Acceso: sin tarjetas. Dos mitades y una sola linea vertical. El peso visual va
   entero al formulario, y el lado izquierdo muestra el producto en vez de
   describirlo con un parrafo.
@@ -6953,10 +6966,11 @@ textarea {
 }
 
 .inbox-thread-item__topline {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .inbox-thread-item__topline span,
@@ -6973,8 +6987,12 @@ textarea {
 }
 
 .inbox-thread-item__topline strong {
+  min-width: 0;
+  overflow: hidden;
   font-size: 1.08rem;
   line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inbox-thread-item__title {
@@ -11494,6 +11512,25 @@ textarea {
 }
 
 @media (max-width: 680px) {
+  /* El fondo base cubre los extremos que Safari puede revelar al contraerse. */
+  html,
+  body,
+  #root,
+  .app-shell--immersive {
+    min-height: 100vh;
+    min-height: 100lvh;
+  }
+
+  html,
+  body {
+    background: var(--app-backdrop-base);
+  }
+
+  /* La misma capa fija se usa en todas las vistas y todos los breakpoints. */
+  body::before {
+    display: block;
+  }
+
   .app-shell {
     width: min(100% - 20px, 1240px);
     padding-top: 18px;

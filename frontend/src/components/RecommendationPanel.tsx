@@ -73,14 +73,14 @@ function itemKey(item: Pick<DiscoveryItem, "id" | "mediaType">) {
   return `${item.mediaType}-${item.id}`;
 }
 
-function preloadPoster(posterUrl: string) {
-  if (!posterUrl || typeof Image === "undefined") {
+function preloadImage(imageUrl: string) {
+  if (!imageUrl || typeof Image === "undefined") {
     return Promise.resolve();
   }
 
   const image = new Image();
   image.decoding = "async";
-  image.src = posterUrl;
+  image.src = imageUrl;
   if (typeof image.decode === "function") {
     return image.decode().catch(() => undefined);
   }
@@ -89,6 +89,17 @@ function preloadPoster(posterUrl: string) {
     image.addEventListener("load", () => resolve(), { once: true });
     image.addEventListener("error", () => resolve(), { once: true });
   });
+}
+
+function preloadRecommendationArtwork(item: Pick<DiscoveryItem, "posterUrl" | "backdropUrl">) {
+  // En mobile se muestra el backdrop y en escritorio el póster. Precargamos
+  // ambos para que el cambio de tarjeta nunca mezcle datos nuevos con el arte
+  // del título anterior mientras Safari resuelve el nuevo src.
+  return Promise.all(
+    [item.posterUrl, item.backdropUrl]
+      .filter((imageUrl): imageUrl is string => Boolean(imageUrl))
+      .map(preloadImage)
+  ).then(() => undefined);
 }
 
 function loadRecommendationPayload(item: DiscoveryItem) {
@@ -315,7 +326,7 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     let isMounted = true;
     const key = itemKey(nextSpotlight);
 
-    void Promise.all([loadRecommendationPayload(nextSpotlight), preloadPoster(nextSpotlight.posterUrl)]).then(
+    void Promise.all([loadRecommendationPayload(nextSpotlight), preloadRecommendationArtwork(nextSpotlight)]).then(
       ([payload]) => {
         if (isMounted) {
           setNextPayload({ key, payload });
@@ -718,18 +729,25 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     const isCurrentCard =
       spotlight?.id === target.id && spotlight.mediaType === target.mediaType;
 
-    // El mazo visual existe solo en mobile. En desktop mantenemos el cambio
-    // inmediato que ya tenia la vista, sin demorar la interaccion.
-    if (!isCurrentCard || !isMobileDiscoverView() || !nextSpotlight) {
+    if (!isCurrentCard || !nextSpotlight) {
       return;
     }
 
     const [payload] = await Promise.all([
       loadRecommendationPayload(nextSpotlight),
-      preloadPoster(nextSpotlight.posterUrl)
+      preloadRecommendationArtwork(nextSpotlight)
     ]);
 
     setNextPayload({ key: itemKey(nextSpotlight), payload });
+
+    // En escritorio no hay mazo visual, pero esperamos el arte igual: evita
+    // que Safari conserve el póster previo mientras ya cambió la ficha.
+    if (!isMobileDiscoverView()) {
+      setSpotlightDetails(payload.details);
+      setWatchOptions(payload.watchOptions);
+      return;
+    }
+
     await waitForNextPaint();
 
     setCardExitDirection("up");
@@ -1217,7 +1235,7 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
               }}
             >
               {spotlight.backdropUrl ? (
-                <picture>
+                <picture key={itemKey(spotlight)}>
                   {/* En mobile preferimos el backdrop horizontal. Desktop
                      mantiene el poster vertical. Si TMDB no mando backdrop
                      para este titulo, cae al poster en ambos lados. */}
@@ -1228,7 +1246,7 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                   <img src={spotlight.posterUrl} alt={spotlight.title} />
                 </picture>
               ) : (
-                <img src={spotlight.posterUrl} alt={spotlight.title} />
+                <img key={itemKey(spotlight)} src={spotlight.posterUrl} alt={spotlight.title} />
               )}
               <span className="discover-card__poster-hint" aria-hidden="true">
                 Ver detalles
