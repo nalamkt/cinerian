@@ -4693,21 +4693,22 @@ textarea {
     display: none;
   }
 
+  /*
+    El body deja de scrollear: cuando la ficha plegada entra, no sobra nada.
+    Cuando la sinopsis se expande, el scroll vive adentro del parrafo (ver
+    .discover-overview) y los botones de accion siguen fijos.
+  */
   .discover-card__body {
     position: static;
     flex: 1;
     min-height: 0;
     grid-row: auto;
     align-self: auto;
-    overflow-y: auto;
-    overscroll-behavior-y: contain;
-    scrollbar-width: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     padding: 12px 4px 8px;
     background: none;
-  }
-
-  .discover-card__body::-webkit-scrollbar {
-    display: none;
   }
 
   /* La ficha ya no scrollea: el degradado que lo insinuaba sobra. */
@@ -4755,12 +4756,34 @@ textarea {
     display: none;
   }
 
+  /*
+    Flex column: el parrafo arriba, "Ver mas/menos" debajo. En plegado tiene
+    alto natural (line-clamp dinamico); en expandido el parrafo gana flex:1 y
+    scrollea solo adentro suyo, mientras los botones de accion y el "Ver
+    menos" quedan quietos.
+  */
   .discover-overview {
-    display: block;
+    display: flex;
+    flex-direction: column;
     margin-top: 16px;
     max-width: none;
     font-size: 0.86rem;
     line-height: 1.5;
+    min-height: 0;
+    flex: 1;
+  }
+
+  .discover-overview p {
+    margin: 0;
+    min-height: 0;
+  }
+
+  /* Expandida: solo el parrafo scrollea. */
+  .discover-card__body.is-overview-open .discover-overview p:not(.discover-overview__text--clamped) {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
   }
 
   /*
@@ -4844,14 +4867,21 @@ textarea {
     white-space: nowrap;
   }
 
+  /*
+    Nuevo layout mobile: "Ya la vi" se transforma en un boton ancho con texto;
+    los secundarios ("No me interesa", "Me interesa") quedan a los costados
+    como iconos chicos. El tamaño refleja la frecuencia esperada — el
+    primario pocas veces por sesion pero es la unica accion que publica en el
+    feed, los otros dos todo el tiempo para avanzar el mazo.
+  */
   .discover-actions {
     margin-top: 0;
-    padding-top: 12px;
-    border-top: 0;
-    gap: 8px;
-    justify-content: space-around;
-    /* Los circulos ya no miden lo mismo: las etiquetas se alinean por abajo. */
-    align-items: flex-end;
+    padding: 10px 10px 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    gap: 10px;
+    align-items: center;
+    justify-content: stretch;
+    background: rgba(255, 255, 255, 0.015);
   }
 
   /* La tarjeta que aparece debajo tiene que reservar la fila de acciones,
@@ -4861,17 +4891,24 @@ textarea {
   }
 
   .discover-action {
-    gap: 6px;
+    gap: 0;
+    flex: none;
+  }
+
+  .discover-action--primary {
+    flex: 1;
+    min-width: 0;
   }
 
   .discover-action__button {
-    width: 50px;
-    height: 50px;
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
   }
 
   .discover-action__button svg {
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
   }
 
   /*
@@ -4882,22 +4919,32 @@ textarea {
     justo cuando el boton invita a marcarla.
   */
   .discover-action__button--primary {
-    width: 58px;
-    height: 58px;
+    width: 100%;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 18px;
+    border-radius: 14px;
   }
 
   .discover-action__button--primary svg {
-    width: 25px;
-    height: 25px;
+    width: 20px;
+    height: 20px;
   }
 
+  /* En mobile los labels de abajo se van; el primario lleva su texto adentro
+     del boton, los secundarios se reconocen por icono + aria-label. */
   .discover-action__label {
-    font-size: 0.7rem;
+    display: none;
   }
 
-  .discover-action--primary .discover-action__label {
-    color: var(--text);
+  .discover-action--primary .discover-action__button-label {
+    display: inline;
+    font-size: 0.92rem;
     font-weight: 700;
+    letter-spacing: 0.01em;
   }
 
   .discover-action--primary {

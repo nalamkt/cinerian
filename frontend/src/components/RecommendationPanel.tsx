@@ -1437,6 +1437,11 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                   <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
                   <circle cx="12" cy="12" r="2.5" />
                 </svg>
+                {/* Label en linea dentro del boton primario. En desktop queda
+                   escondido por CSS y se usa .discover-action__label abajo;
+                   en mobile es al reves para que el boton primario sea mas
+                   grande y lleve su texto a la vista. */}
+                <span className="discover-action__button-label">Ya la vi</span>
               </button>
               <span className="discover-action__label">Ya la vi</span>
               {isQuickRateActive ? (
