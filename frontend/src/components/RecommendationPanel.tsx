@@ -1105,11 +1105,18 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                 </div>
 
                 <div className="discover-card__body">
-                  {nextEntry.rank === null ? (
-                    <p className="discover-rank discover-rank--outside">Fuera de tu círculo</p>
-                  ) : (
-                    <p className="discover-rank">{nextEntry.rank}° · en tu círculo</p>
-                  )}
+                  {(() => {
+                    const nextHasPositive = nextEntry.watchers.some(
+                      (watcher) => watcher.reaction !== "disliked"
+                    );
+                    if (nextEntry.rank !== null) {
+                      return <p className="discover-rank">{nextEntry.rank}° · en tu círculo</p>;
+                    }
+                    if (nextHasPositive) {
+                      return <p className="discover-rank">en tu círculo</p>;
+                    }
+                    return <p className="discover-rank discover-rank--outside">Fuera de tu círculo</p>;
+                  })()}
 
                   <h2 className="discover-title">{nextSpotlight.title}</h2>
 
@@ -1198,13 +1205,15 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
               */}
               <span
                 className={`discover-card__rank-overlay ${
-                  current.rank === null ? "discover-card__rank-overlay--outside" : ""
+                  current.rank === null && !socialLine ? "discover-card__rank-overlay--outside" : ""
                 }`}
                 aria-hidden="true"
               >
-                {current.rank === null
-                  ? "Fuera de tu círculo"
-                  : `${current.rank}° · En tu círculo`}
+                {current.rank !== null
+                  ? `${current.rank}° · En tu círculo`
+                  : socialLine
+                    ? "En tu círculo"
+                    : "Fuera de tu círculo"}
               </span>
               {spotlight.score ? (
                 <span className="discover-card__score-overlay" aria-hidden="true">
@@ -1219,10 +1228,12 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
               }`}
               ref={bodyRef}
             >
-              {current.rank === null ? (
-                <p className="discover-rank discover-rank--outside">Fuera de tu círculo</p>
-              ) : (
+              {current.rank !== null ? (
                 <p className="discover-rank">{current.rank}° · en tu círculo</p>
+              ) : socialLine ? (
+                <p className="discover-rank">en tu círculo</p>
+              ) : (
+                <p className="discover-rank discover-rank--outside">Fuera de tu círculo</p>
               )}
 
               <div className="discover-title-row">
