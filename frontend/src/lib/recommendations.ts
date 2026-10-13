@@ -654,6 +654,21 @@ export async function fetchSocialRecommendations(
       return right.watcherIds.length - left.watcherIds.length;
     });
 
+  /*
+    Mapa titulo -> posicion real en el ranking (1-indexed). Lo usamos abajo
+    para el relleno: si un titulo "popular" tambien tiene senal del circulo,
+    aparecia con rank null (falso "Fuera de tu circulo") aunque Isinerian lo
+    hubiera marcado. Ahora le damos su rank real del ranking total aunque
+    haya entrado por paginacion/filtros desde la pagina equivocada.
+  */
+  const preliminaryRankByKey = new Map<string, number>();
+  preliminary.forEach((candidate, index) => {
+    preliminaryRankByKey.set(
+      candidateKey(candidate.mediaType, candidate.tmdbId),
+      index + 1
+    );
+  });
+
   const offset = Math.max(0, (page - 1) * limit);
   const slice = preliminary.slice(offset, offset + limit);
 
@@ -760,7 +775,8 @@ export async function fetchSocialRecommendations(
   }
 
   const filler = fillerItems.map((item) => {
-    const rawWatchers = watchersByTitle.get(candidateKey(item.mediaType, item.id)) ?? [];
+    const key = candidateKey(item.mediaType, item.id);
+    const rawWatchers = watchersByTitle.get(key) ?? [];
     const watchers = rawWatchers
       .map((watcher) => {
         const profile = profileById.get(watcher.userId);
@@ -769,7 +785,12 @@ export async function fetchSocialRecommendations(
       .filter((watcher): watcher is Watcher => watcher !== null)
       .sort((left, right) => REACTION_WEIGHT[right.reaction] - REACTION_WEIGHT[left.reaction]);
 
-    return { item, rank: null, watchers };
+    // Si el titulo tiene posicion en el ranking real, se la asignamos: evita
+    // mostrarlo como filler cuando en realidad el circulo lo marco. Los que no
+    // tienen posicion (porque nadie del circulo los vio) siguen con rank null.
+    const preliminaryRank = preliminaryRankByKey.get(key) ?? null;
+
+    return { item, rank: preliminaryRank, watchers };
   });
 
   return [...ranked, ...filler];
