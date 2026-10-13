@@ -30,8 +30,6 @@ type InboxPanelProps = {
   onStartRecommendation?: () => void;
 };
 
-const QUICK_REPLIES = ["Ya la vi", "Me la guardo", "La estoy viendo", "No es para mí"];
-
 function formatDaySeparator(isoDate: string): string {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) {
@@ -162,6 +160,8 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
   const [replyDraft, setReplyDraft] = useState("");
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const headerMenuRef = useRef<HTMLDivElement>(null);
   const [commentsByPostId, setCommentsByPostId] = useState<Record<string, FeedComment[]>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -428,7 +428,23 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
     }
     setEditingEntryId(null);
     setEditDraft("");
+    setHeaderMenuOpen(false);
   }, [activeMessage?.id]);
+
+  useEffect(() => {
+    if (!headerMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(event.target as Node)) {
+        setHeaderMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [headerMenuOpen]);
 
   useEffect(() => {
     if (activeMessage && !isMobile) {
@@ -1206,17 +1222,17 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
         onTouchCancel={() => endThreadSwipe()}
       >
         <div className="inbox-thread-view__summary">
-          {isMobile ? (
-            <button
-              type="button"
-              className="inbox-thread-view__back"
-              onClick={() => setActiveMessageId(null)}
-            >
-              <span aria-hidden="true">←</span>
-              <span>Volver</span>
-            </button>
-          ) : null}
           <div className="inbox-thread-view__header">
+            {isMobile ? (
+              <button
+                type="button"
+                className="inbox-thread-view__back"
+                onClick={() => setActiveMessageId(null)}
+                aria-label="Volver"
+              >
+                <span aria-hidden="true">‹</span>
+              </button>
+            ) : null}
             <button
               type="button"
               className="inbox-thread-view__poster-button"
@@ -1230,10 +1246,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
               />
             </button>
             <div className="inbox-thread-view__header-copy">
-              <span className="inbox-thread-view__kicker">
-                {message.item.mediaType === "movie" ? "PELÍCULA" : "SERIE"}
-                {message.item.year ? ` • ${message.item.year}` : ""}
-              </span>
               <button
                 type="button"
                 className="inbox-thread-view__title-button"
@@ -1241,55 +1253,24 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
               >
                 <strong className="inbox-thread-view__title">{message.item.title}</strong>
               </button>
-              <div className="inbox-thread-view__identity">
-                <span className="sidebar-user__avatar inbox-thread-view__avatar" aria-hidden="true">
-                  {counterpart?.avatar_url ? (
-                    <img src={counterpart.avatar_url} alt="" className="sidebar-user__avatar-image" />
-                  ) : (
-                    (counterpart?.display_name ?? "C").slice(0, 1).toUpperCase()
-                  )}
-                </span>
-                <div className="inbox-thread-view__identity-copy">
-                  <button
-                    type="button"
-                    className="timeline-card__author inbox-thread-view__author"
-                    onClick={() =>
-                      counterpart
-                        ? onOpenUserProfile({ userId: counterpart.id, username: counterpart.username })
-                        : undefined
-                    }
-                  >
-                    {counterpart?.display_name ?? "Cineriano"}
-                  </button>
-                  <span>
-                    {isSent ? "Se la mandaste" : "Te la mandó"} • @{counterpart?.username ?? "cineriano"}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="inbox-thread-view__header-side">
-              {isLastMessageIncoming(message) ? (
+              <p className="inbox-thread-view__subtitle">
+                {message.item.mediaType === "movie" ? "Película" : "Serie"}
+                {message.item.year ? ` · ${message.item.year}` : ""} ·{" "}
+                {isSent ? "se la mandaste" : "te la mandó"}{" "}
                 <button
                   type="button"
-                  className="inbox-thread-view__action"
-                  disabled={isPending}
-                  aria-label={
-                    (getLastIncomingReply(message)?.readAt ?? message.readAt)
-                      ? "Marcar como no leído"
-                      : "Marcar como leído"
+                  className="inbox-thread-view__subtitle-user"
+                  onClick={() =>
+                    counterpart
+                      ? onOpenUserProfile({ userId: counterpart.id, username: counterpart.username })
+                      : undefined
                   }
-                  title={
-                    (getLastIncomingReply(message)?.readAt ?? message.readAt)
-                      ? "Marcar como no leído"
-                      : "Marcar como leído"
-                  }
-                  onClick={() => void handleToggleLastMessageRead(message)}
                 >
-                  <span aria-hidden="true">
-                    {(getLastIncomingReply(message)?.readAt ?? message.readAt) ? "◐" : "◉"}
-                  </span>
+                  @{counterpart?.username ?? "cineriano"}
                 </button>
-              ) : null}
+              </p>
+            </div>
+            <div className="inbox-thread-view__header-side">
               <button
                 type="button"
                 className="inbox-thread-view__action"
@@ -1299,19 +1280,51 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
               >
                 <span aria-hidden="true">↗</span>
               </button>
-              <button
-                type="button"
-                className="inbox-thread-view__action inbox-thread-view__action--danger"
-                disabled={isPending}
-                aria-label="Eliminar conversación"
-                title="Eliminar conversación"
-                onClick={() => void handleDelete(message)}
-              >
-                <span aria-hidden="true">✕</span>
-              </button>
+              <div className="inbox-thread-view__menu" ref={headerMenuRef}>
+                <button
+                  type="button"
+                  className="inbox-thread-view__action"
+                  aria-label="Más opciones"
+                  aria-haspopup="menu"
+                  aria-expanded={headerMenuOpen}
+                  onClick={() => setHeaderMenuOpen((current) => !current)}
+                >
+                  <span aria-hidden="true">⋯</span>
+                </button>
+                {headerMenuOpen ? (
+                  <div className="inbox-thread-view__menu-pop" role="menu">
+                    {isLastMessageIncoming(message) ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={isPending}
+                        onClick={() => {
+                          setHeaderMenuOpen(false);
+                          void handleToggleLastMessageRead(message);
+                        }}
+                      >
+                        {(getLastIncomingReply(message)?.readAt ?? message.readAt)
+                          ? "Marcar como no leído"
+                          : "Marcar como leído"}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="inbox-thread-view__menu-danger"
+                      disabled={isPending}
+                      onClick={() => {
+                        setHeaderMenuOpen(false);
+                        void handleDelete(message);
+                      }}
+                    >
+                      Eliminar conversación
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
-
         </div>
 
         <div className="inbox-thread-view__messages">
@@ -1423,19 +1436,6 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
         </div>
 
         <div className="inbox-thread-view__composer">
-          <div className="inbox-thread-view__quick-replies">
-            {QUICK_REPLIES.map((quickReply) => (
-              <button
-                key={quickReply}
-                type="button"
-                className="inbox-thread-view__quick-reply"
-                disabled={isPending}
-                onClick={() => void handleReplySubmit(message, quickReply)}
-              >
-                {quickReply}
-              </button>
-            ))}
-          </div>
           <div className="inbox-thread-view__composer-row">
             <input
               id="inbox-reply-composer"
@@ -1449,15 +1449,22 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
                   void handleReplySubmit(message, replyDraft);
                 }
               }}
-              placeholder='Ej: "ya la vi" o "me la guardo para el finde"'
+              placeholder="Escribí tu mensaje…"
             />
             <button
               type="button"
-              className="primary-button"
+              className="inbox-thread-view__send"
               disabled={isPending || !replyDraft.trim()}
+              aria-label="Enviar"
+              title="Enviar"
               onClick={() => void handleReplySubmit(message, replyDraft)}
             >
-              {isPending ? "Enviando..." : "Enviar"}
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+                <path
+                  d="M3.4 20.4 21 12 3.4 3.6 3 10l12 2-12 2z"
+                  fill="currentColor"
+                />
+              </svg>
             </button>
           </div>
         </div>
@@ -1504,27 +1511,24 @@ export function InboxPanel({ userId, onOpenUserProfile, onStartRecommendation }:
                             className={`inbox-filter-chip ${unreadOnly ? "is-active" : ""}`}
                             onClick={() => setUnreadOnly(true)}
                           >
-                            No leídos{unreadCount ? ` (${unreadCount})` : ""}
-                          </button>
-                          <button
-                            type="button"
-                            className={`inbox-filter-chip ${groupByFriend ? "is-active" : ""}`}
-                            aria-pressed={groupByFriend}
-                            onClick={() => setGroupByFriend((current) => !current)}
-                          >
-                            Agrupar por amigo
+                            No leídos{unreadCount ? ` · ${unreadCount}` : ""}
                           </button>
                         </div>
-                        {onStartRecommendation ? (
-                          <button
-                            type="button"
-                            className="inbox-new-recommendation"
-                            onClick={onStartRecommendation}
-                          >
-                            <span aria-hidden="true">+</span>
-                            <span>Nueva recomendación</span>
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          className={`inbox-group-toggle ${groupByFriend ? "is-active" : ""}`}
+                          aria-pressed={groupByFriend}
+                          aria-label="Agrupar por amigo"
+                          title="Agrupar por amigo"
+                          onClick={() => setGroupByFriend((current) => !current)}
+                        >
+                          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+                            <path
+                              fill="currentColor"
+                              d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-8 2c-2.7 0-6 1.3-6 4v2h8v-2c0-1 .4-1.9 1.1-2.6C10.2 13.3 9 13 8 13Zm8 0c-.3 0-.7 0-1.1.1.7.7 1.1 1.6 1.1 2.9v2h6v-2c0-2.7-3.3-4-6-4Z"
+                            />
+                          </svg>
+                        </button>
                       </div>
                     </div>
                     <div className="inbox-thread-list">
