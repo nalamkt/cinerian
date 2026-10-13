@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { CircleFriendAvatar, useMediaDetails } from "./MediaDetailsModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { LoadingState } from "./LoadingState";
@@ -233,13 +233,6 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
   } | null>(null);
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
   const [isOverviewClamped, setIsOverviewClamped] = useState(false);
-  /*
-    Line-clamp dinamico: medimos cuantas lineas de sinopsis caben en el
-    espacio sobrante de la ficha y lo exponemos como variable CSS. Si el texto
-    es corto o la pantalla es grande, el valor crece y no se desperdicia
-    espacio con un "..." adelantado. Null = usar el fallback del CSS.
-  */
-  const [overviewMaxLines, setOverviewMaxLines] = useState<number | null>(null);
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
   const [isQuickRateActive, setIsQuickRateActive] = useState(false);
   const [quickRateChoice, setQuickRateChoice] = useState<QuickRateChoice | null>(null);
@@ -609,82 +602,28 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     daria "no se corta" y se llevaria puesto el "Ver menos".
   */
   /*
-    useLayoutEffect en vez de useEffect: medimos antes de que el browser pinte
-    para evitar el flash de "3 lineas → N lineas". Si falta algun ref todavia
-    no renderizado, la medida se da por saltada en silencio y vuelve a correr
-    en el proximo ciclo gracias al ResizeObserver.
+    Chequea si la sinopsis se corto para mostrar u ocultar el boton "Ver mas".
+    Line-clamp en CSS la deja a 5 lineas en mobile y 4 en desktop; aca solo
+    comparamos la altura natural contra la altura visible.
   */
   useLayoutEffect(() => {
-    if (isOverviewOpen) {
+    const overview = overviewRef.current;
+    if (!overview || isOverviewOpen) {
       return;
     }
 
-    function resolveLineHeight(overview: HTMLElement): number {
-      const styles = window.getComputedStyle(overview);
-      const raw = styles.lineHeight;
-      const fontSize = Number.parseFloat(styles.fontSize);
-
-      // Caso 1: el browser ya devolvio pixeles (lo normal en Chrome/Safari).
-      const parsed = Number.parseFloat(raw);
-      if (Number.isFinite(parsed) && parsed > 2) {
-        return parsed;
-      }
-
-      // Caso 2: valor unitless (como "1.5") — se multiplica por el font-size.
-      if (Number.isFinite(parsed) && parsed > 0 && Number.isFinite(fontSize)) {
-        return parsed * fontSize;
-      }
-
-      // Caso 3: "normal" o algo imprevisto. Aproximacion segura: 1.3 x font-size.
-      if (Number.isFinite(fontSize) && fontSize > 0) {
-        return fontSize * 1.3;
-      }
-
-      return 0;
-    }
-
     function measure() {
-      const overview = overviewRef.current;
-      const body = bodyRef.current;
-      if (!overview || !body) {
+      const el = overviewRef.current;
+      if (!el) {
         return;
       }
-
-      const lineHeight = resolveLineHeight(overview);
-      if (lineHeight <= 0) {
-        return;
-      }
-
-      const bodyRect = body.getBoundingClientRect();
-      const overviewRect = overview.getBoundingClientRect();
-      const bodyStyles = window.getComputedStyle(body);
-      const paddingBottom = Number.parseFloat(bodyStyles.paddingBottom) || 0;
-      const reserveForMoreButton = 32; // "Ver mas" + su margin-top
-      const available =
-        bodyRect.bottom - overviewRect.top - paddingBottom - reserveForMoreButton;
-
-      if (!Number.isFinite(available) || available <= lineHeight) {
-        return;
-      }
-
-      const nextLines = Math.max(3, Math.floor(available / lineHeight));
-      setOverviewMaxLines((previous) => (previous === nextLines ? previous : nextLines));
-
-      // El overview puede estar clampedo visualmente, pero scrollHeight da el
-      // alto natural igual: si lo que entra en nextLines no cubre el total,
-      // hay algo mas y mostramos el "Ver mas".
-      const naturalHeight = overview.scrollHeight;
-      const clampedHeight = nextLines * lineHeight;
-      setIsOverviewClamped(naturalHeight > clampedHeight + 1);
+      setIsOverviewClamped(el.scrollHeight > el.clientHeight + 1);
     }
 
     measure();
-
     const observer = new ResizeObserver(measure);
-    if (overviewRef.current) observer.observe(overviewRef.current);
-    if (bodyRef.current) observer.observe(bodyRef.current);
+    observer.observe(overview);
 
-    // Font loading puede cambiar line-height a mitad de camino.
     if (typeof document !== "undefined" && document.fonts?.ready) {
       void document.fonts.ready.then(measure).catch(() => {});
     }
@@ -1365,11 +1304,6 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                 <p
                   ref={overviewRef}
                   className={isOverviewOpen ? undefined : "discover-overview__text--clamped"}
-                  style={
-                    overviewMaxLines && !isOverviewOpen
-                      ? ({ "--discover-overview-lines": String(overviewMaxLines) } as CSSProperties)
-                      : undefined
-                  }
                   onClick={() => {
                     if (isOverviewClamped) {
                       setIsOverviewOpen((value) => !value);

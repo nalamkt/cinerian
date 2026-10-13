@@ -4485,10 +4485,16 @@ textarea {
     fondo de la tarjeta y la ficha se apoya encima, asi los tres botones de
     accion quedan siempre a la vista sin pelear por el alto con el texto.
   */
+  /*
+    Resta la altura real del dock al area de Descubri. 100px alcanzaba en
+    telefonos viejos, pero en iPhones con home indicator el dock mide
+    ~105-120px porque suma safe-area-inset-bottom. Antes los botones de
+    accion quedaban tapados por el dock. Ahora sumamos el inset explicitamente.
+  */
   .discover {
     position: relative;
-    height: calc(100vh - 100px);
-    height: calc(100dvh - 100px);
+    height: calc(100vh - 110px - env(safe-area-inset-bottom, 0px));
+    height: calc(100dvh - 110px - env(safe-area-inset-bottom, 0px));
     min-height: 0;
     padding: 4px 0 0;
     gap: 8px;
@@ -4787,15 +4793,13 @@ textarea {
   }
 
   /*
-    El numero de lineas lo setea el panel: mide el espacio real que le queda
-    al parrafo en el dispositivo y pasa `--discover-overview-lines`. El
-    fallback 8 cubre el primer frame y pantallas donde el effect no logre
-    medir — mejor pecar por mostrar demas que por recortar de mas y dejar un
-    hueco negro.
+    Clamp fijo en 5 lineas en mobile. Simplifica el calculo: si el texto cabe
+    en 5 lineas, se ve entero; si no, se corta y aparece "Ver mas". Al tocar
+    "Ver mas" la sinopsis gana scroll propio sin empujar los botones.
   */
   .discover-overview__text--clamped {
-    -webkit-line-clamp: var(--discover-overview-lines, 15);
-    line-clamp: var(--discover-overview-lines, 15);
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
   }
 
   .discover-overview p[role="button"] {
