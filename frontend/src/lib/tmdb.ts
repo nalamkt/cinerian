@@ -1527,7 +1527,41 @@ export type TitleAvailability = {
  * esta cada candidato, y pedirlo aparte duplicaria los pedidos a TMDB por
  * tarjeta. Con append_to_response viene todo junto.
  */
+/*
+  Cache module-level de getTitleAvailability. La funcion se llama varias veces
+  por titulo (una por verificar el ranking, otra al cargar el detalle, otra al
+  armar el modal), y TMDB cuesta ~250ms por llamada. Cacheamos solo las
+  respuestas resueltas (null tambien) para no pedir dos veces lo mismo.
+*/
+const titleAvailabilityCache = new Map<string, Promise<TitleAvailability | null>>();
+
+function titleAvailabilityCacheKey(tmdbId: number, mediaType: MediaType) {
+  return `${mediaType}:${tmdbId}`;
+}
+
+export function clearTitleAvailabilityCache() {
+  titleAvailabilityCache.clear();
+}
+
 export async function getTitleAvailability(
+  tmdbId: number,
+  mediaType: MediaType
+): Promise<TitleAvailability | null> {
+  const cacheKey = titleAvailabilityCacheKey(tmdbId, mediaType);
+  const cached = titleAvailabilityCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = getTitleAvailabilityUncached(tmdbId, mediaType);
+  titleAvailabilityCache.set(cacheKey, promise);
+  // Si la promesa resulta en un error no-recovery, limpiarla para que el
+  // proximo intento pueda reintentar.
+  promise.catch(() => titleAvailabilityCache.delete(cacheKey));
+  return promise;
+}
+
+async function getTitleAvailabilityUncached(
   tmdbId: number,
   mediaType: MediaType
 ): Promise<TitleAvailability | null> {

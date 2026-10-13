@@ -655,52 +655,75 @@ export async function fetchSocialRecommendations(
     });
 
   /*
-    Mapa titulo -> posicion real en el ranking (1-indexed). Lo usamos abajo
-    para el relleno: si un titulo "popular" tambien tiene senal del circulo,
-    aparecia con rank null (falso "Fuera de tu circulo") aunque Isinerian lo
-    hubiera marcado. Ahora le damos su rank real del ranking total aunque
-    haya entrado por paginacion/filtros desde la pagina equivocada.
+    Paginacion del ranking: antes tomabamos un slice fijo del preliminary (12
+    titulos) y verificabamos filtros. Si varios se caian por filtros, la pagina
+    quedaba corta y se completaba con filler. Resultado: el usuario veia 6 del
+    ranking + 6 filler intercalados, aunque hubiera MAS titulos del ranking
+    mas adelante en el preliminary.
+
+    Ahora consumimos el preliminary secuencialmente (en lotes paralelos para
+    no bloquear) y vamos armando el ranking filtrado hasta tener suficientes
+    para esta pagina. El rank es la posicion en el ranking filtrado — sin
+    huecos — asi es consistente entre paginas.
+
+    Cache de getTitleAvailability (en tmdb.ts) evita que la pagina 2 vuelva
+    a verificar los titulos que la pagina 1 ya verifico.
   */
-  const preliminaryRankByKey = new Map<string, number>();
-  preliminary.forEach((candidate, index) => {
-    preliminaryRankByKey.set(
-      candidateKey(candidate.mediaType, candidate.tmdbId),
-      index + 1
-    );
-  });
-
   const offset = Math.max(0, (page - 1) * limit);
-  const slice = preliminary.slice(offset, offset + limit);
+  const wanted = offset + limit;
+  const batchSize = Math.max(limit, 12);
 
-  // 3) Detalle de TMDB solo para los que entran en esta pagina. La misma
-  //    llamada trae plataformas y tipo de serie, que es lo que necesitan los
-  //    filtros: pedirlos aparte duplicaria los pedidos por tarjeta.
-  //
-  //    El puesto se calcula ANTES de filtrar, contra el ranking completo: si un
-  //    titulo se cae por el filtro, los que quedan conservan su numero real en
-  //    vez de correrse, que mentiria sobre su lugar en tu ranking.
-  const detailed = (
-    await Promise.all(
-      slice.map(async (candidate, indexInSlice) => {
+  type FilteredEntry = {
+    item: DiscoveryItem;
+    totalScore: number;
+    watcherIds: ScoredCandidate["watcherIds"];
+  };
+
+  const filtered: FilteredEntry[] = [];
+  const preliminaryRankByKey = new Map<string, number>();
+  let cursor = 0;
+
+  while (filtered.length < wanted && cursor < preliminary.length) {
+    const batch = preliminary.slice(cursor, cursor + batchSize);
+    cursor += batch.length;
+
+    const results = await Promise.all(
+      batch.map(async (candidate) => {
         const availability = await getTitleAvailability(candidate.tmdbId, candidate.mediaType);
         if (!availability || !passesFilters(availability, filters)) {
           return null;
         }
-
         const { item } = availability;
         const genreBonus =
           item.genres.filter((genre) => genreAffinity.has(normalizeGenreLabel(genre))).length *
           GENRE_BONUS_WEIGHT;
-
         return {
-          item,
-          rank: offset + indexInSlice + 1,
-          totalScore: socialScoreOf(candidate) + genreBonus,
-          watcherIds: candidate.watcherIds
+          candidate,
+          entry: {
+            item,
+            totalScore: socialScoreOf(candidate) + genreBonus,
+            watcherIds: candidate.watcherIds
+          } as FilteredEntry
         };
       })
-    )
-  ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    );
+
+    for (const result of results) {
+      if (!result) continue;
+      filtered.push(result.entry);
+      preliminaryRankByKey.set(
+        candidateKey(result.candidate.mediaType, result.candidate.tmdbId),
+        filtered.length
+      );
+    }
+  }
+
+  const detailed = filtered.slice(offset, offset + limit).map((entry, indexInSlice) => ({
+    item: entry.item,
+    rank: offset + indexInSlice + 1,
+    totalScore: entry.totalScore,
+    watcherIds: entry.watcherIds
+  }));
 
   // 4) Los perfiles de quienes vieron algo de esta pagina, en una sola consulta.
   const neededProfileIds = [
