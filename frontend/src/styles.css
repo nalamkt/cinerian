@@ -4793,13 +4793,22 @@ textarea {
   }
 
   /*
+    Sin boton "Ver mas" en mobile: los puntos suspensivos del line-clamp ya
+    indican el corte, y tocar la sinopsis en cualquier palabra la alterna
+    (ya habilitado en el JSX cuando isOverviewClamped es true).
+  */
+  .discover-overview__more {
+    display: none;
+  }
+
+  /*
     Clamp fijo en 5 lineas en mobile. Simplifica el calculo: si el texto cabe
     en 5 lineas, se ve entero; si no, se corta y aparece "Ver mas". Al tocar
     "Ver mas" la sinopsis gana scroll propio sin empujar los botones.
   */
   .discover-overview__text--clamped {
-    -webkit-line-clamp: 5;
-    line-clamp: 5;
+    -webkit-line-clamp: 6;
+    line-clamp: 6;
   }
 
   .discover-overview p[role="button"] {
