@@ -11546,7 +11546,13 @@ textarea {
 
   .app-shell--immersive {
     width: min(100%, calc(100% - 12px));
-    padding: 6px 0 94px;
+    /*
+      El padding-top suma el safe-area-inset-top del iPhone (~47 px en 15/16
+      Pro Max, ~54 en 17 Pro) para que la barra de filtros no quede debajo de
+      la hora y la bateria. En telefonos sin notch (safe-area-inset-top = 0)
+      queda en los 6 px originales.
+    */
+    padding: calc(6px + env(safe-area-inset-top)) 0 94px;
   }
 
   .hero,
