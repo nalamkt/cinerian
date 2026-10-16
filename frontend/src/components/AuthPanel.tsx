@@ -21,6 +21,20 @@ const RESEND_COOLDOWN_SECONDS = 60;
 */
 const OTP_LENGTH = 6;
 
+function getErrorText(error: unknown) {
+  return error instanceof Error ? error.message.toLowerCase() : "";
+}
+
+function isUnknownEmailError(error: unknown) {
+  const message = getErrorText(error);
+  return (
+    message.includes("signups not allowed") ||
+    message.includes("signup is disabled") ||
+    message.includes("user not found") ||
+    message.includes("email not found")
+  );
+}
+
 /*
   Ningun mensaje de Supabase llega crudo al usuario: son en ingles y tecnicos.
   El texto original se manda a la consola para poder diagnosticar.
@@ -32,7 +46,7 @@ function getAuthErrorMessage(error: unknown) {
 
   console.error("[auth]", error.message);
 
-  const normalizedMessage = error.message.toLowerCase();
+  const normalizedMessage = getErrorText(error);
 
   if (normalizedMessage.includes("email rate limit exceeded")) {
     return "Pediste varios emails seguidos. Esperá un minuto y volvé a intentar.";
@@ -40,6 +54,10 @@ function getAuthErrorMessage(error: unknown) {
 
   if (normalizedMessage.includes("user already registered")) {
     return "Ese email ya tiene cuenta. Pedí el link de acceso y entrás igual.";
+  }
+
+  if (isUnknownEmailError(error)) {
+    return "Ese email no tiene una cuenta en Cinerian.";
   }
 
   if (normalizedMessage.includes("expired")) {
@@ -67,6 +85,7 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
   const [message, setMessage] = useState<AuthMessage | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [requiresAccountConfirmation, setRequiresAccountConfirmation] = useState(false);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
   /* El contador ataca la causa del rate limit de Supabase, no el sintoma. */
@@ -85,7 +104,7 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
     }
   }, [step]);
 
-  async function requestEmailSignIn() {
+  async function requestEmailSignIn(shouldCreateUser = false) {
     if (isSubmitting || cooldown > 0) {
       return;
     }
@@ -99,11 +118,12 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
       setIsSubmitting(true);
       setMessage(null);
 
-      const { error } = await sendMagicLink(email);
+      const { error } = await sendMagicLink(email, shouldCreateUser);
       if (error) {
         throw error;
       }
 
+      setRequiresAccountConfirmation(false);
       setStep("verify");
       setCooldown(RESEND_COOLDOWN_SECONDS);
       setMessage({
@@ -111,6 +131,15 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
         text: "Listo, te lo mandamos. Puede tardar un minuto en llegar."
       });
     } catch (error) {
+      if (!shouldCreateUser && isUnknownEmailError(error)) {
+        setRequiresAccountConfirmation(true);
+        setMessage({
+          kind: "error",
+          text: "Este email no existe en Cinerian. Revisá que esté bien escrito antes de crear una cuenta nueva."
+        });
+        return;
+      }
+
       setMessage({ kind: "error", text: getAuthErrorMessage(error) });
     } finally {
       setIsSubmitting(false);
@@ -205,7 +234,10 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
                 autoComplete="email"
                 autoFocus
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setRequiresAccountConfirmation(false);
+                }}
                 placeholder="Tu email"
                 required
                 disabled={isSubmitting}
@@ -218,8 +250,23 @@ export function AuthPanel({ isSupabaseReady }: AuthPanelProps) {
             </button>
 
             <p className="auth-hint">
-              Sin contraseña. ¿Primera vez? Entrás con el mismo link.
+              Sin contraseña. Si es tu primera vez, confirmamos antes de crear tu cuenta.
             </p>
+
+            {requiresAccountConfirmation ? (
+              <div className="auth-account-confirmation">
+                <strong>¿Querés crear una cuenta con {email}?</strong>
+                <p>Te enviaremos un código y un link a ese correo para confirmar que es tuyo.</p>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => void requestEmailSignIn(true)}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? "Enviando..." : "Sí, crear cuenta y enviar código"}
+                </button>
+              </div>
+            ) : null}
           </>
         ) : (
           <>

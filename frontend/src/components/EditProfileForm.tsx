@@ -7,6 +7,7 @@ import {
   type ProfileVisibilitySettings,
   updateProfile
 } from "../lib/auth";
+import { NotificationPreferences } from "./NotificationPreferences";
 
 type EditProfileFormProps = {
   profile: Profile;
@@ -254,6 +255,18 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
           </label>
 
         </div>
+      </div>
+
+      <div className="profile-editor__section">
+        <div className="profile-editor__section-copy">
+          <div className="profile-editor__section-title">
+            <span className="profile-editor__section-number">4</span>
+            <strong>Mantenernos en contacto</strong>
+          </div>
+          <p>Elegí si querés enterarte cuando haya actividad relevante en Cinerian.</p>
+        </div>
+
+        <NotificationPreferences />
       </div>
 
       {error ? <div className="inline-status">{error}</div> : null}

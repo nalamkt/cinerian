@@ -334,7 +334,7 @@ function getAuthRedirectUrl() {
   return "https://cinerian.app";
 }
 
-export async function sendMagicLink(email: string) {
+export async function sendMagicLink(email: string, shouldCreateUser = false) {
   if (!supabase) {
     throw new Error("Supabase no esta configurado.");
   }
@@ -349,7 +349,7 @@ export async function sendMagicLink(email: string) {
   return supabase.auth.signInWithOtp({
     email,
     options: {
-      shouldCreateUser: true,
+      shouldCreateUser,
       emailRedirectTo: getAuthRedirectUrl()
     }
   });

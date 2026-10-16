@@ -22,6 +22,7 @@ import { signOut } from "./lib/auth";
 import { fetchDiscoverFilters } from "./lib/discoverFilters";
 import { fetchUnreadInboxCount, INBOX_UPDATED_EVENT } from "./lib/inbox";
 import { createAndShareInvite, PENDING_INVITE_STORAGE_KEY } from "./lib/invites";
+import { clearOneSignalUser, identifyOneSignalUser } from "./lib/oneSignal";
 import {
   buildSharedProfilePath,
   parseSharedProfilePath,
@@ -143,6 +144,7 @@ export default function App() {
   const [showFollowSuggestions, setShowFollowSuggestions] = useState(false);
   const viewSessionRef = useRef<ViewSessionRef | null>(null);
   const followSuggestionsLoginRef = useRef<string | null>(null);
+  const oneSignalUserRef = useRef<string | null | undefined>(undefined);
   const hasAppliedDefaultViewRef = useRef(false);
   const restoredActiveViewUserRef = useRef<string | null>(null);
   const persistedActiveViewUserRef = useRef<string | null>(null);
@@ -222,6 +224,29 @@ export default function App() {
   useEffect(() => {
     setLocalProfile(profile);
   }, [profile]);
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    if (!sessionUserId) {
+      if (oneSignalUserRef.current !== null) {
+        oneSignalUserRef.current = null;
+        void clearOneSignalUser().catch(() => undefined);
+      }
+      return;
+    }
+
+    if (oneSignalUserRef.current === sessionUserId) {
+      return;
+    }
+
+    oneSignalUserRef.current = sessionUserId;
+    void identifyOneSignalUser(sessionUserId).catch(() => {
+      // OneSignal no debe impedir el uso de Cinerian si la red o el SDK fallan.
+    });
+  }, [isLoading, sessionUserId]);
 
   useEffect(() => {
     let isMounted = true;

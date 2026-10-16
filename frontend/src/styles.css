@@ -767,6 +767,26 @@ textarea {
   line-height: 1.45;
 }
 
+.auth-account-confirmation {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(252, 195, 95, 0.34);
+  border-radius: var(--radius-md);
+  background: rgba(252, 195, 95, 0.08);
+}
+
+.auth-account-confirmation strong {
+  color: var(--text);
+}
+
+.auth-account-confirmation p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .auth-sent-to {
   color: var(--muted);
   font-size: 0.92rem;
@@ -3786,9 +3806,8 @@ textarea {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(8, 10, 14, 0.96);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* El loading comparte el canvas de Descubri: solo cambia el contenido. */
+  background: transparent;
 }
 
 .discover-loading-gate__card {
@@ -4431,6 +4450,10 @@ textarea {
 .discover-action__button--primary svg {
   width: 30px;
   height: 30px;
+}
+
+.discover-action__button-label {
+  display: none;
 }
 
 .discover-action__label {
