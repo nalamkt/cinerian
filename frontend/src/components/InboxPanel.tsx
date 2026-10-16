@@ -1289,9 +1289,7 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
                 <strong className="inbox-thread-view__title">{message.item.title}</strong>
               </button>
               <span className="inbox-thread-view__meta">
-                {message.item.mediaType === "movie" ? "Película" : "Serie"}
-                {message.item.year ? ` · ${message.item.year}` : ""}
-                {` · ${isSent ? "Se la mandaste a" : "Te la mandó"} @${counterpart?.username ?? "cineriano"}`}
+                @{counterpart?.username ?? "cineriano"}
               </span>
             </div>
             <div className="inbox-thread-view__header-side">

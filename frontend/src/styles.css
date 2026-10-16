@@ -7201,9 +7201,10 @@ textarea {
 }
 
 .inbox-thread-view__title-button {
-  display: inline-block;
-  width: fit-content;
-  max-width: 100%;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 0;
   border: 0;
   background: transparent;
@@ -7224,6 +7225,7 @@ textarea {
   display: grid;
   gap: 2px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .inbox-thread-view__kicker {
@@ -7234,8 +7236,12 @@ textarea {
 }
 
 .inbox-thread-view__title {
+  display: block;
+  overflow: hidden;
   font-size: clamp(1.1rem, 2vw, 1.35rem);
   line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inbox-thread-view__meta {
@@ -7283,7 +7289,7 @@ textarea {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  min-width: 0;
+  flex: 0 0 auto;
 }
 
 .inbox-thread-view__utility-button {
@@ -12983,6 +12989,69 @@ textarea {
     padding: 18px 18px 20px;
   }
 
+  /*
+    La ficha de talento es "public" por el flujo de navegacion, pero en la
+    PWA tambien es una pantalla modal. Antes quedaba afuera de las reglas de
+    pantalla completa y su toolbar conservaba el margen negativo de desktop:
+    al desplazarse, la unica salida podia desaparecer. El backdrop no scrollea
+    y la ficha pasa a ser el unico dueño del scroll.
+  */
+  .media-modal__backdrop--talent {
+    overflow: hidden;
+  }
+
+  .talent-modal--page {
+    width: 100%;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .talent-modal--page .media-modal__toolbar {
+    top: 0;
+    z-index: 12;
+    min-height: calc(max(12px, env(safe-area-inset-top, 0px) + 12px) + 56px);
+    padding: max(12px, calc(env(safe-area-inset-top, 0px) + 12px)) 18px 12px;
+    margin-bottom: 0;
+  }
+
+  .talent-modal--page .media-modal__hero {
+    /* La toolbar ocupa espacio real antes de la foto, tambien al abrir. */
+    padding: 18px 18px 20px;
+  }
+
+  /*
+    En estas tarjetas el contenedor entero puede desplazarse. El cierre deja
+    de ser absoluto para formar parte del flujo y queda sticky dentro de su
+    propio scroll, siempre por debajo de la safe area de la PWA.
+  */
+  .follow-suggestions__close,
+  .title-reactions__close,
+  .review-modal > .review-modal__close {
+    position: sticky;
+    top: max(12px, calc(env(safe-area-inset-top, 0px) + 12px));
+    right: auto;
+    z-index: 12;
+    display: grid;
+    margin: 0 0 12px auto;
+  }
+
+  /*
+    Este cierre vive dentro de un header que tambien se desplaza; por eso no
+    puede usar sticky. Se ancla a su backdrop de pantalla completa.
+  */
+  .send-modal .review-modal__close {
+    position: fixed;
+    top: max(12px, calc(env(safe-area-inset-top, 0px) + 12px));
+    right: 18px;
+    z-index: 62;
+  }
+
+  .send-modal__header > div {
+    padding-right: 50px;
+  }
+
   .media-modal__section {
     padding: 22px 18px;
   }
@@ -13987,6 +14056,15 @@ textarea {
 
   .episode-modal__title {
     font-size: 1.4rem;
+  }
+
+  /* El episodio desplaza el backdrop, no el panel: el cierre debe anclarse
+     al viewport para que nunca desaparezca durante un scroll largo. */
+  .episode-modal__close {
+    position: fixed;
+    top: max(12px, calc(env(safe-area-inset-top, 0px) + 12px));
+    right: 18px;
+    z-index: 62;
   }
 }
 
