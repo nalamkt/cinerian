@@ -4486,15 +4486,21 @@ textarea {
     accion quedan siempre a la vista sin pelear por el alto con el texto.
   */
   /*
-    Resta la altura real del dock al area de Descubri. 100px alcanzaba en
-    telefonos viejos, pero en iPhones con home indicator el dock mide
-    ~105-120px porque suma safe-area-inset-bottom. Antes los botones de
-    accion quedaban tapados por el dock. Ahora sumamos el inset explicitamente.
+    Altura calculada contra lo que REALMENTE le queda al area de Descubri.
+    Antes solo restaba el safe-area-inset-bottom, pero el app-shell agrega
+    tambien un padding-top con el safe-area-inset-top. Resultado: la tarjeta
+    se desbordaba por el fondo y la pagina scrolleaba.
+
+    Ahora restamos todo lo que esta por fuera del area util del .discover:
+    - safe-area-inset-top (notch/dynamic island del iPhone)
+    - 6px: padding-top del app-shell en mobile
+    - 110px: alto del dock + su hueco interior
+    - safe-area-inset-bottom (home indicator)
   */
   .discover {
     position: relative;
-    height: calc(100vh - 110px - env(safe-area-inset-bottom, 0px));
-    height: calc(100dvh - 110px - env(safe-area-inset-bottom, 0px));
+    height: calc(100vh - 116px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    height: calc(100dvh - 116px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     min-height: 0;
     padding: 4px 0 0;
     gap: 8px;
@@ -12843,10 +12849,15 @@ textarea {
   }
 
   .media-modal__toolbar {
-    /* El modal es fijo y no hereda el safe area del shell de la app. */
-    top: max(12px, calc(env(safe-area-inset-top) + 12px));
+    /*
+      El modal es fijo y no hereda el safe area del shell. En iOS la barra
+      de estado tapaba el boton de volver cuando el panel ocupa toda la
+      pantalla: compensamos con el safe-area-inset-top (y max() para
+      conservar al menos 12px cuando el inset no esta disponible).
+    */
+    top: max(12px, calc(env(safe-area-inset-top, 0px) + 12px));
     padding: 0 18px;
-    margin-bottom: -60px;
+    margin-bottom: calc(-60px - env(safe-area-inset-top, 0px));
   }
 
   .media-modal__back {
