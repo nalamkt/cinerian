@@ -603,7 +603,7 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
   */
   /*
     Chequea si la sinopsis se corto para mostrar u ocultar el boton "Ver mas".
-    Line-clamp en CSS la deja a 5 lineas en mobile y 4 en desktop; aca solo
+    Line-clamp en CSS la deja a 3 lineas en mobile y 4 en desktop; aca solo
     comparamos la altura natural contra la altura visible.
   */
   useLayoutEffect(() => {

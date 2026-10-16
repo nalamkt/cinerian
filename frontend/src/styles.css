@@ -4480,27 +4480,12 @@ textarea {
 
 @media (max-width: 680px) {
   /*
-    En mobile la pantalla entra entera y no scrollea: alto fijo de viewport
-    menos el dock (que es fixed y no ocupa flujo). El poster pasa a ser el
-    fondo de la tarjeta y la ficha se apoya encima, asi los tres botones de
-    accion quedan siempre a la vista sin pelear por el alto con el texto.
-  */
-  /*
-    Altura calculada contra lo que REALMENTE le queda al area de Descubri.
-    Antes solo restaba el safe-area-inset-bottom, pero el app-shell agrega
-    tambien un padding-top con el safe-area-inset-top. Resultado: la tarjeta
-    se desbordaba por el fondo y la pagina scrolleaba.
-
-    Ahora restamos todo lo que esta por fuera del area util del .discover:
-    - safe-area-inset-top (notch/dynamic island del iPhone)
-    - 6px: padding-top del app-shell en mobile
-    - 110px: alto del dock + su hueco interior
-    - safe-area-inset-bottom (home indicator)
+    El alto util viene del shell activo de Descubrí, que ya reserva el dock y
+    las safe areas. La ficha no vuelve a restarlos por su cuenta.
   */
   .discover {
     position: relative;
-    height: calc(100vh - 116px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    height: calc(100dvh - 116px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    height: 100%;
     min-height: 0;
     padding: 4px 0 0;
     gap: 8px;
@@ -4783,6 +4768,7 @@ textarea {
     line-height: 1.5;
     min-height: 0;
     flex: 1;
+    overflow: hidden;
   }
 
   .discover-overview p {
@@ -4795,26 +4781,29 @@ textarea {
     flex: 1;
     overflow-y: auto;
     overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
   }
 
   /*
-    Sin boton "Ver mas" en mobile: los puntos suspensivos del line-clamp ya
-    indican el corte, y tocar la sinopsis en cualquier palabra la alterna
-    (ya habilitado en el JSX cuando isOverviewClamped es true).
+    El control siempre queda visible cuando la sinopsis se corta. Asi la
+    expansion no depende de descubrir que el texto es interactivo.
   */
   .discover-overview__more {
-    display: none;
+    display: inline-flex;
+    flex: none;
+    align-self: flex-start;
+    align-items: center;
   }
 
   /*
-    Clamp fijo en 5 lineas en mobile. Simplifica el calculo: si el texto cabe
-    en 5 lineas, se ve entero; si no, se corta y aparece "Ver mas". Al tocar
+    Clamp fijo en tres lineas en mobile. Si el texto cabe, se ve entero; si
+    no, se corta y aparece "Ver mas". Al tocar
     "Ver mas" la sinopsis gana scroll propio sin empujar los botones.
   */
   .discover-overview__text--clamped {
-    -webkit-line-clamp: 6;
-    line-clamp: 6;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
   }
 
   .discover-overview p[role="button"] {
@@ -11950,6 +11939,50 @@ textarea {
 
   .dock {
     order: 2;
+  }
+
+  /*
+    Descubrí es una pantalla cerrada: el shell reserva el hueco del dock y la
+    ficha usa exclusivamente ese alto. No hay un segundo padding inferior ni
+    alto calculado con viewport que pueda crear scroll en el documento.
+  */
+  html.discover-mobile-lock,
+  body.discover-mobile-lock {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .app-shell--discover {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .app-shell--discover .workspace-grid {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .app-shell--discover .workspace-content--recommendations {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+
+  .app-shell--discover .workspace-content--recommendations > div:not([hidden]) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-shell--discover .discover {
+    height: 100%;
+    min-height: 0;
   }
 
   .admin-nav {

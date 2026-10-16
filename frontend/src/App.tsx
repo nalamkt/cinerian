@@ -159,6 +159,7 @@ export default function App() {
     () => dockItems.filter((item) => accessControl.canAccessView(item.id)),
     [accessControl]
   );
+  const isDiscoverActive = activeView === "recommendations" && !selectedProfileRoute;
 
   useEffect(() => {
     function dismissTopmostPopup(event: KeyboardEvent) {
@@ -333,6 +334,28 @@ export default function App() {
       // La navegacion sigue funcionando aunque el navegador bloquee el almacenamiento local.
     }
   }, [activeView, isActiveViewRestored, selectedProfileRoute, sessionUserId]);
+
+  useEffect(() => {
+    const lockClass = "discover-mobile-lock";
+    const root = document.documentElement;
+    const body = document.body;
+
+    if (!isDiscoverActive) {
+      root.classList.remove(lockClass);
+      body.classList.remove(lockClass);
+      return;
+    }
+
+    // Descubrí administra el espacio interno de la ficha; la página no debe desplazarse.
+    window.scrollTo(0, 0);
+    root.classList.add(lockClass);
+    body.classList.add(lockClass);
+
+    return () => {
+      root.classList.remove(lockClass);
+      body.classList.remove(lockClass);
+    };
+  }, [isDiscoverActive]);
 
   const ownProfileAction = useMemo(() => {
     return (
@@ -725,7 +748,7 @@ export default function App() {
         <FollowSuggestionsModal userId={session.user.id} onClose={() => setShowFollowSuggestions(false)} />
       ) : null}
 
-      <div className="app-shell app-shell--immersive">
+      <div className={`app-shell app-shell--immersive${isDiscoverActive ? " app-shell--discover" : ""}`}>
         {error ? <div className="app-alert app-alert--floating">{error}</div> : null}
         {isLoading ? <div className="app-alert app-alert--session-status">Cargando sesión...</div> : null}
 
