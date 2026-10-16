@@ -1325,6 +1325,7 @@ function MediaDetailsModal({
           }}
         >
           <MediaDetailsSheet
+            key={`${item.mediaType}-${item.id}`}
             item={item}
             details={details}
             feedPosts={feedPosts}

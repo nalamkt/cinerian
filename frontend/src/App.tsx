@@ -23,6 +23,7 @@ import { fetchDiscoverFilters } from "./lib/discoverFilters";
 import { fetchUnreadInboxCount, INBOX_UPDATED_EVENT } from "./lib/inbox";
 import { createAndShareInvite, PENDING_INVITE_STORAGE_KEY } from "./lib/invites";
 import { clearOneSignalUser, identifyOneSignalUser } from "./lib/oneSignal";
+import { recordNotificationActivity } from "./lib/pushNotifications";
 import {
   buildSharedProfilePath,
   parseSharedProfilePath,
@@ -49,6 +50,11 @@ function getStoredActiveView(userId: string) {
   } catch {
     return null;
   }
+}
+
+function getRequestedView() {
+  const view = new URLSearchParams(window.location.search).get("view");
+  return isAppView(view) ? view : null;
 }
 
 function DockIcon({ id, badgeCount = 0 }: { id: AppView; badgeCount?: number }) {
@@ -249,6 +255,27 @@ export default function App() {
   }, [isLoading, sessionUserId]);
 
   useEffect(() => {
+    if (!sessionUserId) {
+      return;
+    }
+    const currentUserId = sessionUserId;
+
+    function recordActivityIfVisible() {
+      if (document.visibilityState !== "hidden") {
+        void recordNotificationActivity(currentUserId);
+      }
+    }
+
+    recordActivityIfVisible();
+    document.addEventListener("visibilitychange", recordActivityIfVisible);
+    window.addEventListener("focus", recordActivityIfVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", recordActivityIfVisible);
+      window.removeEventListener("focus", recordActivityIfVisible);
+    };
+  }, [sessionUserId]);
+
+  useEffect(() => {
     let isMounted = true;
 
     if (!sessionUserId) {
@@ -274,7 +301,7 @@ export default function App() {
     hasAppliedDefaultViewRef.current = false;
 
     if (!selectedProfileRoute) {
-      setActiveView(getStoredActiveView(userId) ?? defaultView);
+      setActiveView(getRequestedView() ?? getStoredActiveView(userId) ?? defaultView);
       restoredActiveViewUserRef.current = userId;
       setIsActiveViewRestored(true);
       if (window.location.pathname !== "/") {
@@ -324,8 +351,11 @@ export default function App() {
       return;
     }
 
+    const requestedView = getRequestedView();
     const storedView = sessionUserId ? getStoredActiveView(sessionUserId) : null;
-    const initialView = storedView && accessControl.canAccessView(storedView)
+    const initialView = requestedView && accessControl.canAccessView(requestedView)
+      ? requestedView
+      : storedView && accessControl.canAccessView(storedView)
       ? storedView
       : accessControl.canAccessView(defaultView)
         ? defaultView

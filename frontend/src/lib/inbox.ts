@@ -1,6 +1,7 @@
 import { getTitleById } from "./tmdb";
 import { listProfiles, type Profile } from "./auth";
 import { trackProductEvent } from "./analytics";
+import { queueInboxPushNotification } from "./pushNotifications";
 import { supabase } from "./supabase";
 import type {
   CommentInboxNotification,
@@ -301,16 +302,20 @@ export async function sendRecommendationMessage(input: {
     return;
   }
 
-  const { error } = await supabase.from("recommendation_messages").insert({
-    sender_id: input.senderId,
-    recipient_id: input.recipientId,
-    tmdb_id: input.item.id,
-    media_type: input.item.mediaType,
-    title: input.item.title,
-    poster_url: input.item.posterUrl,
-    year: input.item.year,
-    note: input.note?.trim() || null
-  });
+  const { data, error } = await supabase
+    .from("recommendation_messages")
+    .insert({
+      sender_id: input.senderId,
+      recipient_id: input.recipientId,
+      tmdb_id: input.item.id,
+      media_type: input.item.mediaType,
+      title: input.item.title,
+      poster_url: input.item.posterUrl,
+      year: input.item.year,
+      note: input.note?.trim() || null
+    })
+    .select("id")
+    .single();
 
   if (error) {
     throw error;
@@ -326,6 +331,10 @@ export async function sendRecommendationMessage(input: {
       mediaType: input.item.mediaType
     }
   });
+
+  if (data?.id) {
+    void queueInboxPushNotification({ type: "recommendation", messageId: data.id });
+  }
 
   dispatchInboxUpdate(input.senderId);
   dispatchInboxUpdate(input.recipientId);
@@ -580,27 +589,44 @@ export async function sendRecommendationReply(input: {
     return;
   }
 
-  const primaryResult = await supabase.from("recommendation_message_replies").insert({
-    message_id: input.messageId,
-    sender_id: input.senderId,
-    recipient_id: input.recipientId,
-    body: input.body.trim()
-  });
+  let replyId: string | null = null;
+  const primaryResult = await supabase
+    .from("recommendation_message_replies")
+    .insert({
+      message_id: input.messageId,
+      sender_id: input.senderId,
+      recipient_id: input.recipientId,
+      body: input.body.trim()
+    })
+    .select("id")
+    .single();
 
   if (primaryResult.error) {
     if (!isMissingReplyActivityColumns(primaryResult.error)) {
       throw primaryResult.error;
     }
 
-    const { error: legacyError } = await supabase.from("recommendation_message_replies").insert({
-      message_id: input.messageId,
-      sender_id: input.senderId,
-      body: input.body.trim()
-    });
+    const { data: legacyReply, error: legacyError } = await supabase
+      .from("recommendation_message_replies")
+      .insert({
+        message_id: input.messageId,
+        sender_id: input.senderId,
+        body: input.body.trim()
+      })
+      .select("id")
+      .single();
 
     if (legacyError) {
       throw legacyError;
     }
+
+    replyId = legacyReply?.id ?? null;
+  } else {
+    replyId = primaryResult.data?.id ?? null;
+  }
+
+  if (replyId) {
+    void queueInboxPushNotification({ type: "reply", replyId });
   }
 
   dispatchInboxUpdate(input.senderId);

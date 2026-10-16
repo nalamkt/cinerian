@@ -42,6 +42,13 @@ type ProfileTabsProps = {
 
 type TabId = "watched" | "watchlist" | "mutual-likes" | "watching" | "posts" | "ranking";
 
+function requestedProfileTab(): TabId {
+  const tab = new URLSearchParams(window.location.search).get("tab");
+  return tab === "watchlist" || tab === "mutual-likes" || tab === "watching" || tab === "posts" || tab === "ranking"
+    ? tab
+    : "watched";
+}
+
 /** Cuantos puestos del ranking traemos por tanda. */
 const RANKING_PAGE_SIZE = 20;
 
@@ -184,7 +191,7 @@ export function ProfileTabs({
   onProfileUpdated
 }: ProfileTabsProps) {
   const { openMediaDetails } = useMediaDetails();
-  const [activeTab, setActiveTab] = useState<TabId>("watched");
+  const [activeTab, setActiveTab] = useState<TabId>(requestedProfileTab);
   const [reactions, setReactions] = useState<StoredReaction[]>([]);
   const [viewerReactions, setViewerReactions] = useState<StoredReaction[]>([]);
   const [titles, setTitles] = useState<Record<string, DiscoveryItem>>({});

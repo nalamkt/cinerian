@@ -12907,16 +12907,17 @@ textarea {
     border-radius: 0;
   }
 
-  .media-modal__toolbar {
+  .media-modal:not(.media-modal--public) .media-modal__toolbar {
     /*
-      El modal es fijo y no hereda el safe area del shell. En iOS la barra
-      de estado tapaba el boton de volver cuando el panel ocupa toda la
-      pantalla: compensamos con el safe-area-inset-top (y max() para
-      conservar al menos 12px cuando el inset no esta disponible).
+      La cabecera ocupa espacio real al abrir la ficha: safe area, flecha y
+      separacion antes del poster. Al desplazar, sticky la mantiene arriba y
+      el contenido pasa por debajo sin taparla.
     */
-    top: max(12px, calc(env(safe-area-inset-top, 0px) + 12px));
-    padding: 0 18px;
-    margin-bottom: calc(-60px - env(safe-area-inset-top, 0px));
+    top: 0;
+    z-index: 12;
+    min-height: calc(max(12px, env(safe-area-inset-top, 0px) + 12px) + 56px);
+    padding: max(12px, calc(env(safe-area-inset-top, 0px) + 12px)) 18px 12px;
+    margin-bottom: 0;
   }
 
   .media-modal__back {
@@ -12935,8 +12936,9 @@ textarea {
     font-size: 0.84rem;
   }
 
-  .media-modal__hero {
-    padding: 66px 18px 20px;
+  .media-modal:not(.media-modal--public) .media-modal__hero {
+    /* El toolbar ya reservo la altura superior; el poster arranca despues. */
+    padding: 18px 18px 20px;
   }
 
   .media-modal__section {
