@@ -12843,8 +12843,8 @@ textarea {
   }
 
   .media-modal__toolbar {
-    /* Alineado con el padding lateral del hero para que no baile. */
-    top: 12px;
+    /* El modal es fijo y no hereda el safe area del shell de la app. */
+    top: max(12px, calc(env(safe-area-inset-top) + 12px));
     padding: 0 18px;
     margin-bottom: -60px;
   }
