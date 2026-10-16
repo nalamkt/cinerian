@@ -8740,12 +8740,6 @@ textarea {
   pointer-events: auto;
 }
 
-/* En escritorio la toolbar vive antes del hero. En mobile se usa su gemela
-   dentro del hero para que el backdrop continue por detras de la flecha. */
-.media-modal__toolbar--mobile {
-  display: none;
-}
-
 .media-modal__back {
   width: 52px;
   height: 52px;
@@ -12943,21 +12937,6 @@ textarea {
     margin-bottom: 0;
   }
 
-  .media-modal:not(.media-modal--public) .media-modal__toolbar--desktop {
-    display: none;
-  }
-
-  .media-modal:not(.media-modal--public) .media-modal__toolbar--mobile {
-    position: fixed;
-    top: max(12px, calc(env(safe-area-inset-top, 0px) + 12px));
-    right: 0;
-    left: 0;
-    z-index: 14;
-    min-height: 44px;
-    padding: 0 18px;
-    margin: 0;
-  }
-
   .media-modal__back {
     width: 44px;
     height: 44px;
@@ -12975,8 +12954,21 @@ textarea {
   }
 
   .media-modal:not(.media-modal--public) .media-modal__hero {
-    /* La flecha esta sobre el hero; este espacio conserva el aire previo. */
-    padding: calc(max(12px, env(safe-area-inset-top, 0px) + 12px) + 74px) 18px 20px;
+    /* El toolbar reserva la altura superior antes del poster. */
+    padding: 18px 18px 20px;
+  }
+
+  /*
+    La flecha sigue en su propia capa clickeable, pero el mismo backdrop del
+    hero continua por detras. Esto evita que la cabecera parezca un bloque
+    oscuro separado sin meter el control dentro de una capa que lo tape.
+  */
+  .media-modal:not(.media-modal--public).media-modal--has-backdrop .media-modal__toolbar {
+    background-image:
+      linear-gradient(180deg, rgba(11, 10, 8, 0.22), rgba(11, 10, 8, 0.5)),
+      var(--media-modal-toolbar-backdrop);
+    background-position: center top;
+    background-size: cover;
   }
 
   /*

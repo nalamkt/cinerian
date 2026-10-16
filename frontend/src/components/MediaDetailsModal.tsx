@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { EpisodeDetailsModal } from "./EpisodeDetailsModal";
 import { SeasonsSection } from "./SeasonsSection";
 import { SendRecommendationModal } from "./SendRecommendationModal";
@@ -610,8 +610,12 @@ export function MediaDetailsSheet({
     return null;
   }
 
-  const renderToolbar = (variant?: "desktop" | "mobile") => (
-    <div className={`media-modal__toolbar${variant ? ` media-modal__toolbar--${variant}` : ""}`}>
+  const toolbarBackdropStyle = details?.backdropUrl
+    ? ({ "--media-modal-toolbar-backdrop": `url("${details.backdropUrl}")` } as CSSProperties)
+    : undefined;
+
+  const renderToolbar = () => (
+    <div className="media-modal__toolbar">
       {onClose ? (
         <button
           type="button"
@@ -645,8 +649,13 @@ export function MediaDetailsSheet({
   );
 
   return (
-    <div className={`media-modal ${publicMode ? "media-modal--public" : ""}`} role="dialog" aria-modal={!publicMode}>
-      {isLoading || !details || publicMode ? renderToolbar() : renderToolbar("desktop")}
+    <div
+      className={`media-modal ${publicMode ? "media-modal--public" : ""}${details?.backdropUrl ? " media-modal--has-backdrop" : ""}`}
+      style={toolbarBackdropStyle}
+      role="dialog"
+      aria-modal={!publicMode}
+    >
+      {renderToolbar()}
 
       {isLoading ? (
         <div className="media-modal__loading">Cargando detalles...</div>
@@ -668,7 +677,6 @@ export function MediaDetailsSheet({
                 : undefined
             }
           >
-            {!publicMode ? renderToolbar("mobile") : null}
             <div className="media-modal__hero-inner">
               <img src={details.posterUrl} alt={details.title} className="media-modal__poster" />
               <div className="media-modal__hero-copy">
