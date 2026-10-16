@@ -11582,9 +11582,14 @@ textarea {
   html,
   body,
   #root,
+  /*
+    100dvh en vez de 100lvh. Con 100lvh el shell exigia el alto maximo del
+    viewport (URL bar oculta) y, cuando la URL bar de Safari estaba visible,
+    el shell era mas alto que el viewport real y el body scrolleaba para
+    mostrar ese excedente. 100dvh sigue al viewport actual.
+  */
   .app-shell--immersive {
-    min-height: 100vh;
-    min-height: 100lvh;
+    min-height: 100dvh;
   }
 
   html,
