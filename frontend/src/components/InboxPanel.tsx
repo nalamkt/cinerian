@@ -1631,18 +1631,6 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
             )
           ) : null}
         </div>
-        {!isShowingMobileThread && onStartRecommendation ? (
-          <button
-            type="button"
-            className="inbox-new-recommendation inbox-new-recommendation--fab"
-            onClick={onStartRecommendation}
-            aria-label="Nueva recomendación"
-            title="Nueva recomendación"
-          >
-            <span aria-hidden="true">+</span>
-            <span>Nueva recomendación</span>
-          </button>
-        ) : null}
       </div>
       </section>
       <CommentPostPreviewModal

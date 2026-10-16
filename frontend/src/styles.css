@@ -6810,10 +6810,6 @@ textarea {
   line-height: 1;
 }
 
-.inbox-new-recommendation--fab {
-  display: none;
-}
-
 .inbox-friend-group + .inbox-friend-group {
   border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
@@ -8094,33 +8090,6 @@ textarea {
     display: none;
   }
 
-  .inbox-new-recommendation--fab {
-    position: fixed;
-    right: max(18px, env(safe-area-inset-right));
-    bottom: calc(18px + env(safe-area-inset-bottom));
-    z-index: 18;
-    width: 62px;
-    height: 62px;
-    display: grid;
-    place-items: center;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #f4bf52, #ffd982);
-    color: #261809;
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
-  }
-
-  .inbox-new-recommendation--fab span:first-child {
-    font-size: 2.5rem;
-    font-weight: 300;
-    line-height: 1;
-  }
-
-  .inbox-new-recommendation--fab span:last-child {
-    display: none;
-  }
-
   .inbox-thread-list {
     max-height: none;
     height: 100%;
@@ -8769,6 +8738,12 @@ textarea {
 
 .media-modal__toolbar > * {
   pointer-events: auto;
+}
+
+/* En escritorio la toolbar vive antes del hero. En mobile se usa su gemela
+   dentro del hero para que el backdrop continue por detras de la flecha. */
+.media-modal__toolbar--mobile {
+  display: none;
 }
 
 .media-modal__back {
@@ -12968,6 +12943,21 @@ textarea {
     margin-bottom: 0;
   }
 
+  .media-modal:not(.media-modal--public) .media-modal__toolbar--desktop {
+    display: none;
+  }
+
+  .media-modal:not(.media-modal--public) .media-modal__toolbar--mobile {
+    position: fixed;
+    top: max(12px, calc(env(safe-area-inset-top, 0px) + 12px));
+    right: 0;
+    left: 0;
+    z-index: 14;
+    min-height: 44px;
+    padding: 0 18px;
+    margin: 0;
+  }
+
   .media-modal__back {
     width: 44px;
     height: 44px;
@@ -12985,8 +12975,8 @@ textarea {
   }
 
   .media-modal:not(.media-modal--public) .media-modal__hero {
-    /* El toolbar ya reservo la altura superior; el poster arranca despues. */
-    padding: 18px 18px 20px;
+    /* La flecha esta sobre el hero; este espacio conserva el aire previo. */
+    padding: calc(max(12px, env(safe-area-inset-top, 0px) + 12px) + 74px) 18px 20px;
   }
 
   /*

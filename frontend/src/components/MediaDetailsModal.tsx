@@ -610,39 +610,43 @@ export function MediaDetailsSheet({
     return null;
   }
 
+  const renderToolbar = (variant?: "desktop" | "mobile") => (
+    <div className={`media-modal__toolbar${variant ? ` media-modal__toolbar--${variant}` : ""}`}>
+      {onClose ? (
+        <button
+          type="button"
+          className="media-modal__back"
+          onClick={onClose}
+          aria-label="Volver"
+          data-escape-dismiss
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+      ) : (
+        <div />
+      )}
+
+      {onShare && publicMode ? (
+        <button type="button" className="media-modal__share" onClick={onShare}>
+          {shareLabel ?? "Compartir"}
+        </button>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className={`media-modal ${publicMode ? "media-modal--public" : ""}`} role="dialog" aria-modal={!publicMode}>
-      <div className="media-modal__toolbar">
-        {onClose ? (
-          <button
-            type="button"
-            className="media-modal__back"
-            onClick={onClose}
-            aria-label="Volver"
-            data-escape-dismiss
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-          </button>
-        ) : (
-          <div />
-        )}
-
-        {onShare && publicMode ? (
-          <button type="button" className="media-modal__share" onClick={onShare}>
-            {shareLabel ?? "Compartir"}
-          </button>
-        ) : null}
-      </div>
+      {isLoading || !details || publicMode ? renderToolbar() : renderToolbar("desktop")}
 
       {isLoading ? (
         <div className="media-modal__loading">Cargando detalles...</div>
@@ -664,6 +668,7 @@ export function MediaDetailsSheet({
                 : undefined
             }
           >
+            {!publicMode ? renderToolbar("mobile") : null}
             <div className="media-modal__hero-inner">
               <img src={details.posterUrl} alt={details.title} className="media-modal__poster" />
               <div className="media-modal__hero-copy">
