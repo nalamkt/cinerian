@@ -5,7 +5,9 @@ import {
   type OneSignalPushStatus
 } from "../lib/oneSignal";
 
-function statusCopy(status: OneSignalPushStatus) {
+type NotificationStatus = OneSignalPushStatus | "setup-error";
+
+function statusCopy(status: NotificationStatus, origin: string) {
   if (status === "subscribed") {
     return "Vas a recibir avisos cuando haya novedades relevantes para vos.";
   }
@@ -18,33 +20,47 @@ function statusCopy(status: OneSignalPushStatus) {
     return "Este navegador no permite notificaciones. En iPhone y iPad, instalá Cinerian en la pantalla de inicio y abrila desde ahí.";
   }
 
+  if (status === "setup-error") {
+    return `No pudimos conectar las notificaciones con ${origin}. Confirmá que OneSignal esté configurado para esta URL exacta y probá de nuevo.`;
+  }
+
   return "Recibí avisos de respuestas, recomendaciones y novedades de tu círculo.";
 }
 
+async function readPushStatus(): Promise<NotificationStatus> {
+  try {
+    return await getOneSignalPushStatus();
+  } catch {
+    return "setup-error";
+  }
+}
+
 export function NotificationPreferences() {
-  const [status, setStatus] = useState<OneSignalPushStatus | null>(null);
+  const [status, setStatus] = useState<NotificationStatus | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const origin = window.location.origin;
 
   useEffect(() => {
     let isMounted = true;
 
-    void getOneSignalPushStatus()
-      .then((nextStatus) => {
-        if (isMounted) {
-          setStatus(nextStatus);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setStatus("unsupported");
-        }
-      });
+    void readPushStatus().then((nextStatus) => {
+      if (isMounted) {
+        setStatus(nextStatus);
+      }
+    });
 
     return () => {
       isMounted = false;
     };
   }, []);
+
+  async function handleRetry() {
+    setIsUpdating(true);
+    setError(null);
+    setStatus(await readPushStatus());
+    setIsUpdating(false);
+  }
 
   async function handleEnablePush() {
     if (status !== "ready") {
@@ -67,10 +83,15 @@ export function NotificationPreferences() {
   return (
     <div className="profile-editor__field">
       <span>Notificaciones</span>
-      <p>{status ? statusCopy(status) : "Preparando tus notificaciones..."}</p>
+      <p>{status ? statusCopy(status, origin) : "Preparando tus notificaciones..."}</p>
       {status === "ready" ? (
         <button type="button" className="profile-follow-button" onClick={() => void handleEnablePush()} disabled={isUpdating}>
           {isUpdating ? "Activando..." : "Activar notificaciones"}
+        </button>
+      ) : null}
+      {status === "setup-error" ? (
+        <button type="button" className="profile-follow-button" onClick={() => void handleRetry()} disabled={isUpdating}>
+          {isUpdating ? "Reintentando..." : "Reintentar"}
         </button>
       ) : null}
       {error ? <small>{error}</small> : null}

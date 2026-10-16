@@ -1,7 +1,7 @@
 import OneSignal from "react-onesignal";
 
 const ONE_SIGNAL_APP_ID = import.meta.env.VITE_ONESIGNAL_APP_ID ?? "47939fb0-3234-4852-a5da-1ac4ec3d4f5a";
-const SERVICE_WORKER_PATH = "push/onesignal/OneSignalSDKWorker.js";
+const SERVICE_WORKER_PATH = "/push/onesignal/OneSignalSDKWorker.js";
 const SERVICE_WORKER_SCOPE = "/push/onesignal/";
 
 export type OneSignalPushStatus = "unsupported" | "denied" | "ready" | "subscribed";

@@ -11786,18 +11786,16 @@ textarea {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    /*
+      En la PWA de iOS el inset puede reportarse con una altura mayor a la
+      zona segura real. Lo acotamos para que el dock nunca se eleve fuera de
+      la parte baja de la pantalla.
+    */
+    bottom: clamp(18px, env(safe-area-inset-bottom, 0px), 34px);
     top: auto;
     z-index: 35;
     height: auto;
-    /*
-      max() y no calc(): sin viewport-fit=cover en el meta viewport, iOS
-      resuelve env(safe-area-inset-bottom) en 0, y sumarle 8px dejaba la
-      capsula pegada al borde con el borde de abajo comido por el indicador
-      de home. Con max() siempre hay hueco, y el dia que el meta cambie toma
-      solo el inset real, que es mas grande.
-    */
-    padding: 0 12px max(18px, env(safe-area-inset-bottom));
+    padding: 0 12px;
     /* El hueco alrededor de la capsula no tiene que robarle toques al contenido. */
     pointer-events: none;
   }
@@ -14051,5 +14049,33 @@ textarea {
   .media-modal__next-episode-still {
     width: 104px;
     height: 64px;
+  }
+
+  /* Los controles nativos de iOS (sobre todo date) no deben ensanchar el modal. */
+  .profile-editor-modal,
+  .profile-editor-modal .profile-editor,
+  .profile-editor__section,
+  .profile-editor__section-copy,
+  .profile-editor__field,
+  .profile-editor__visibility,
+  .profile-editor__toggle {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .profile-editor-modal .profile-editor {
+    overflow-x: clip;
+  }
+
+  .profile-editor__field input,
+  .profile-editor__field textarea {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .profile-editor__section-copy p,
+  .profile-editor__toggle span {
+    overflow-wrap: anywhere;
   }
 }
