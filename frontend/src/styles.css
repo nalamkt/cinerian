@@ -4510,7 +4510,8 @@ textarea {
     position: relative;
     height: 100%;
     min-height: 0;
-    padding: 4px 0 0;
+    /* Aire extra entre la isla de estado de la PWA y los controles. */
+    padding: 14px 0 0;
     gap: 8px;
     overflow: hidden;
   }
@@ -4552,7 +4553,7 @@ textarea {
 
   .discover:not(.is-filtered) .discover-filterbar__button {
     position: absolute;
-    top: 22px;
+    top: 32px;
     left: 18px;
     z-index: 4;
   }
@@ -7943,6 +7944,41 @@ textarea {
     overflow: hidden;
   }
 
+  /*
+    Un hilo abierto ocupa el viewport visible completo. El dock esta oculto en
+    este estado, asi que no se reserva su hueco ni se suma el padding del shell:
+    de otro modo el compositor queda por debajo del borde de la PWA.
+  */
+  body.inbox-mobile-thread-open,
+  body.inbox-mobile-thread-open #root,
+  body.inbox-mobile-thread-open .app-shell--immersive {
+    height: var(--inbox-visible-height, 100dvh);
+    min-height: var(--inbox-visible-height, 100dvh);
+  }
+
+  body.inbox-mobile-thread-open .app-shell--immersive {
+    padding-bottom: 0;
+  }
+
+  body.inbox-mobile-thread-open .workspace-grid,
+  body.inbox-mobile-thread-open .workspace-content,
+  body.inbox-mobile-thread-open .workspace-content--inbox,
+  body.inbox-mobile-thread-open .workspace-content--inbox > div:not([hidden]) {
+    height: 100%;
+    min-height: 0;
+  }
+
+  body.inbox-mobile-thread-open .workspace-content--inbox,
+  body.inbox-mobile-thread-open .workspace-content--inbox > div:not([hidden]) {
+    display: flex;
+    padding-bottom: 0;
+  }
+
+  body.inbox-mobile-thread-open .workspace-content--inbox > div:not([hidden]) {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
   .inbox-shell,
   .inbox-main,
   .inbox-body,
@@ -8392,8 +8428,8 @@ textarea {
   }
 
   .inbox-shell.is-thread-open-mobile {
-    min-height: var(--inbox-visible-height, 100dvh);
-    height: var(--inbox-visible-height, 100dvh);
+    min-height: 0;
+    height: 100%;
     padding-bottom: 0;
   }
 
@@ -8654,6 +8690,10 @@ textarea {
 
 .media-modal__backdrop--talent.is-above-media {
   z-index: 46;
+}
+
+.media-modal__backdrop--profile-editor {
+  z-index: 200;
 }
 
 .media-modal__frame {
@@ -11628,6 +11668,9 @@ textarea {
   }
 
   .app-shell--immersive {
+    /* Medidas compartidas por todas las vistas de la PWA. */
+    --mobile-app-top-space: calc(6px + env(safe-area-inset-top, 0px));
+    --mobile-dock-reserve: calc(96px + env(safe-area-inset-bottom, 0px));
     width: min(100%, calc(100% - 12px));
     /*
       El padding-top suma el safe-area-inset-top del iPhone (~47 px en 15/16
@@ -11635,7 +11678,7 @@ textarea {
       la hora y la bateria. En telefonos sin notch (safe-area-inset-top = 0)
       queda en los 6 px originales.
     */
-    padding: calc(6px + env(safe-area-inset-top)) 0 94px;
+    padding: var(--mobile-app-top-space) 0 94px;
   }
 
   .hero,
@@ -11895,7 +11938,7 @@ textarea {
 
   /* La capsula flota encima del contenido: hay que dejarle lugar al final. */
   .workspace-content {
-    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    padding-bottom: var(--mobile-dock-reserve, calc(96px + env(safe-area-inset-bottom, 0px)));
   }
 
   /*
@@ -11963,31 +12006,30 @@ textarea {
   }
 
   /*
-    Descubrí es una pantalla cerrada: el shell reserva el hueco del dock y la
-    ficha usa exclusivamente ese alto. No hay un segundo padding inferior ni
-    alto calculado con viewport que pueda crear scroll en el documento.
+    Descubrí es una pantalla cerrada. Bloqueamos el scroll del documento, pero
+    no cambiamos el alto del shell ni el anclaje global del dock: en PWA eso
+    hacia que la barra de navegacion se elevara respecto del resto de la app.
   */
   html.discover-mobile-lock,
   body.discover-mobile-lock {
-    height: 100%;
-    min-height: 0;
     overflow: hidden;
     overscroll-behavior: none;
   }
 
   .app-shell--discover {
-    height: 100dvh;
-    min-height: 100dvh;
-    overflow: hidden;
+    height: auto;
+    overflow: visible;
   }
 
   .app-shell--discover .workspace-grid {
-    height: 100%;
+    height: auto;
     min-height: 0;
   }
 
   .app-shell--discover .workspace-content--recommendations {
-    flex: 1 1 auto;
+    /* La ficha termina antes del dock fijo sin mover nunca el propio dock. */
+    flex: none;
+    height: calc(100dvh - var(--mobile-app-top-space) - var(--mobile-dock-reserve));
     min-height: 0;
     overflow: hidden;
     padding-bottom: 0;
@@ -13203,7 +13245,7 @@ textarea {
   */
   .profile-editor-modal .profile-editor {
     gap: 16px;
-    padding: 62px 18px 28px;
+    padding: 16px 18px 28px;
   }
 
   .profile-editor__header h3 {

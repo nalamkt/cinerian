@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowerCount, fetchFollowerUserIds, fetchFollowingUserIds } from "../lib/follows";
 import { fetchStoredReactions, isRatedReaction, REACTIONS_UPDATED_EVENT } from "../lib/reactions";
@@ -280,50 +281,53 @@ export function ProfilePanel({
       ) : null}
 
       {isOwnProfile && profile && onProfileUpdated && isEditing ? (
-        <div
-          className="media-modal__backdrop"
-          role="presentation"
-          onClick={() => setIsEditing(false)}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setIsEditing(false);
-            }
-          }}
-        >
+        createPortal(
           <div
-            className="media-modal__frame"
+            className="media-modal__backdrop media-modal__backdrop--profile-editor"
             role="presentation"
+            onClick={() => setIsEditing(false)}
             onMouseDown={(event) => {
               if (event.target === event.currentTarget) {
                 setIsEditing(false);
               }
             }}
           >
-            <div className="media-modal__panel" role="presentation" onClick={(event) => event.stopPropagation()}>
-              <div className="media-modal profile-editor-modal" role="dialog" aria-modal="true">
-                <div className="media-modal__toolbar">
-                  <button
-                    type="button"
-                    className="media-modal__back"
-                    onClick={() => setIsEditing(false)}
-                    aria-label="Cerrar editor"
-                    data-escape-dismiss
-                  >
-                    ×
-                  </button>
+            <div
+              className="media-modal__frame"
+              role="presentation"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  setIsEditing(false);
+                }
+              }}
+            >
+              <div className="media-modal__panel" role="presentation" onClick={(event) => event.stopPropagation()}>
+                <div className="media-modal profile-editor-modal" role="dialog" aria-modal="true">
+                  <div className="media-modal__toolbar">
+                    <button
+                      type="button"
+                      className="media-modal__back"
+                      onClick={() => setIsEditing(false)}
+                      aria-label="Cerrar editor"
+                      data-escape-dismiss
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <EditProfileForm
+                    profile={profile}
+                    onCancel={() => setIsEditing(false)}
+                    onSaved={(nextProfile) => {
+                      onProfileUpdated(nextProfile);
+                      setIsEditing(false);
+                    }}
+                  />
                 </div>
-                <EditProfileForm
-                  profile={profile}
-                  onCancel={() => setIsEditing(false)}
-                  onSaved={(nextProfile) => {
-                    onProfileUpdated(nextProfile);
-                    setIsEditing(false);
-                  }}
-                />
               </div>
             </div>
-          </div>
-        </div>
+          </div>,
+          document.body
+        )
       ) : null}
 
       <ProfileTabs

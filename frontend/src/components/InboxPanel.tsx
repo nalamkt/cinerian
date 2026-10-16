@@ -521,13 +521,11 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
     // iOS Safari does not always update `dvh` while its keyboard animates.
     // Keep the thread sized to the actual visible viewport instead.
     const syncVisibleViewport = () => {
-      // Safari can pan the visual viewport upward for a focused input. Its
-      // height alone then leaves the composer too high; the visible bottom is
-      // the viewport height plus its position within the document.
-      const visibleBottom = Math.round(
-        viewport ? viewport.height + viewport.pageTop : window.innerHeight
-      );
-      document.documentElement.style.setProperty("--inbox-visible-height", `${visibleBottom}px`);
+      // The thread itself is anchored at the document origin. Adding pageTop
+      // made its height grow again when Safari panned for the keyboard, which
+      // pushed the composer below the actual visible viewport.
+      const visibleHeight = Math.round(viewport ? viewport.height : window.innerHeight);
+      document.documentElement.style.setProperty("--inbox-visible-height", `${visibleHeight}px`);
 
       if (frameId !== undefined) {
         window.cancelAnimationFrame(frameId);
