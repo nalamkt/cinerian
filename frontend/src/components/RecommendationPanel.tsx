@@ -1262,10 +1262,6 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                     <span className="discover-circle__label">de tu círculo</span>
                   </div>
                 </div>
-              ) : current.rank === null ? (
-                <p className="discover-circle-empty">
-                  Nadie de tu círculo la vio todavía. La sumamos porque es popular ahora.
-                </p>
               ) : null}
 
               {primaryFacts.length ? (
