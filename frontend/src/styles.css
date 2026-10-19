@@ -8459,9 +8459,21 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
   color: var(--muted);
-  font-size: 1.15rem;
-  line-height: 1;
+  /* grid + place-items centra el SVG sin depender del baseline tipografico
+     del caracter × que estaba antes. */
+  display: grid;
+  place-items: center;
+  padding: 0;
   cursor: pointer;
+}
+
+.review-modal__close svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
 }
 
 .review-modal__close:hover {
