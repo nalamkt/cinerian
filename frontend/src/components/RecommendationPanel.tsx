@@ -612,12 +612,46 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
       return;
     }
 
+    /*
+      scrollHeight no es confiable con -webkit-line-clamp: en iOS Safari (y
+      otros) devuelve el clientHeight recortado en vez de la altura natural
+      del texto. Resultado: para algunas pelis "Ver mas" no aparecia aunque
+      la sinopsis estuviera recortada. Fix: clonar el <p> SIN clamp
+      off-screen, medir su altura real y compararla con la visible.
+    */
     function measure() {
       const el = overviewRef.current;
-      if (!el) {
+      if (!el || !el.parentElement) {
         return;
       }
-      setIsOverviewClamped(el.scrollHeight > el.clientHeight + 1);
+
+      const visibleRect = el.getBoundingClientRect();
+      const visibleHeight = visibleRect.height;
+      const width = visibleRect.width;
+      if (!width || !visibleHeight) {
+        return;
+      }
+
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.removeAttribute("class");
+      clone.style.position = "absolute";
+      clone.style.visibility = "hidden";
+      clone.style.pointerEvents = "none";
+      clone.style.left = "-9999px";
+      clone.style.top = "0";
+      clone.style.height = "auto";
+      clone.style.maxHeight = "none";
+      clone.style.width = `${width}px`;
+      clone.style.display = "block";
+      clone.style.overflow = "visible";
+      clone.style.setProperty("-webkit-line-clamp", "unset");
+      clone.style.setProperty("line-clamp", "unset");
+
+      el.parentElement.appendChild(clone);
+      const naturalHeight = clone.getBoundingClientRect().height;
+      clone.remove();
+
+      setIsOverviewClamped(naturalHeight > visibleHeight + 1);
     }
 
     // El `-webkit-line-clamp` recien afecta a `scrollHeight` despues del
