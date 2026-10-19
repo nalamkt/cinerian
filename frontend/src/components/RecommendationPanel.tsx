@@ -620,7 +620,18 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
       setIsOverviewClamped(el.scrollHeight > el.clientHeight + 1);
     }
 
+    // El `-webkit-line-clamp` recien afecta a `scrollHeight` despues del
+    // primer paint. Si medimos sincronicamente al cambiar de tarjeta,
+    // scrollHeight suele devolver == clientHeight y el boton "Ver mas" nunca
+    // aparece aunque visualmente el texto este cortado. Diferimos la medicion
+    // un par de frames para que el browser termine de aplicar el clamp.
     measure();
+    const rafOne = window.requestAnimationFrame(() => {
+      measure();
+    });
+    const rafTwo = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(measure);
+    });
     const observer = new ResizeObserver(measure);
     observer.observe(overview);
 
@@ -628,7 +639,11 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
       void document.fonts.ready.then(measure).catch(() => {});
     }
 
-    return () => observer.disconnect();
+    return () => {
+      window.cancelAnimationFrame(rafOne);
+      window.cancelAnimationFrame(rafTwo);
+      observer.disconnect();
+    };
   }, [spotlight, isOverviewOpen]);
 
   /*
