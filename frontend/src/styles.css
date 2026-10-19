@@ -12959,17 +12959,12 @@ textarea {
   }
 
   /*
-    La flecha sigue en su propia capa clickeable, pero el mismo backdrop del
-    hero continua por detras. Esto evita que la cabecera parezca un bloque
-    oscuro separado sin meter el control dentro de una capa que lo tape.
+    No pintamos el backdrop detras del toolbar: haciendolo con su propio
+    `background-size: cover` sobre una banda chica se ve un crop que no cuadra
+    con el del hero y aparece una segunda copia del fondo con un corte visible.
+    El boton de volver ya tiene su propia capa translucida con blur, asi que
+    queda legible sobre cualquier contenido.
   */
-  .media-modal:not(.media-modal--public).media-modal--has-backdrop .media-modal__toolbar {
-    background-image:
-      linear-gradient(180deg, rgba(11, 10, 8, 0.22), rgba(11, 10, 8, 0.5)),
-      var(--media-modal-toolbar-backdrop);
-    background-position: center top;
-    background-size: cover;
-  }
 
   /*
     La ficha de talento es "public" por el flujo de navegacion, pero en la
