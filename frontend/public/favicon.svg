@@ -16,7 +16,7 @@
   </defs>
   <rect width="1024" height="1024" fill="url(#app-base)" />
   <rect width="1024" height="1024" fill="url(#app-glow)" />
-  <text x="497" y="512" dominant-baseline="central" text-anchor="middle"
-    font-family="Trebuchet MS, Avenir Next, sans-serif" font-size="1152" font-weight="900"
+  <text x="499" y="512" dominant-baseline="central" text-anchor="middle"
+    font-family="Trebuchet MS, Avenir Next, sans-serif" font-size="1014" font-weight="900"
     fill="url(#letter)">C</text>
 </svg>
