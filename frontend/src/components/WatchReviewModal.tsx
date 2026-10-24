@@ -6,6 +6,7 @@ type WatchReviewModalProps = {
   item: DiscoveryItem | null;
   initialReaction?: RatedReaction | null;
   isSaving?: boolean;
+  topAlignedOnMobile?: boolean;
   onClose: () => void;
   onSubmit: (input: { reaction: RatedReaction; comment: string }) => void;
 };
@@ -36,6 +37,7 @@ export function WatchReviewModal({
   item,
   initialReaction = null,
   isSaving = false,
+  topAlignedOnMobile = false,
   onClose,
   onSubmit
 }: WatchReviewModalProps) {
@@ -60,7 +62,11 @@ export function WatchReviewModal({
   const hasComment = comment.trim().length > 0;
 
   return (
-    <div className="review-modal__backdrop" role="presentation" onClick={onClose}>
+    <div
+      className={`review-modal__backdrop${topAlignedOnMobile ? " review-modal__backdrop--top-mobile" : ""}`}
+      role="presentation"
+      onClick={onClose}
+    >
       <div
         className="review-modal"
         role="dialog"

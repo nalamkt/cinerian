@@ -19,6 +19,9 @@ const backdropBase = "https://image.tmdb.org/t/p/original";
 const backdropListingBase = "https://image.tmdb.org/t/p/w780";
 const profileBase = "https://image.tmdb.org/t/p/w300";
 const WATCH_REGION = "AR";
+// Ordenar solo por promedio sin muestra devuelve muchos 10.0 con una o dos
+// opiniones. Este piso mantiene Descubrí en títulos con una nota representativa.
+const MIN_RECOMMENDATION_VOTE_COUNT = 50;
 
 const MOVIE_GENRE_LABELS: Record<number, string> = {
   12: "Aventura",
@@ -979,7 +982,8 @@ export async function getRecommendationTitlesByPage(
     url.searchParams.set("api_key", apiKey as string);
     url.searchParams.set("include_adult", "false");
     url.searchParams.set("language", "es-MX");
-    url.searchParams.set("sort_by", "popularity.desc");
+    url.searchParams.set("sort_by", "vote_average.desc");
+    url.searchParams.set("vote_count.gte", String(MIN_RECOMMENDATION_VOTE_COUNT));
     url.searchParams.set("page", String(page));
 
     // Descubri es regional: solo parte de titulos incluidos con suscripcion
@@ -1054,12 +1058,16 @@ export async function getRecommendationTitlesByPage(
   // Con un solo tipo pedido, esa lista se lleva todos los lugares del mazo.
   const perList = responses.length > 1 ? 8 : 16;
 
-  return responses.flatMap((response) =>
-    response.results
-      .filter(isSupportedDiscoverResult)
-      .slice(0, perList)
-      .map((item) => normalizeItem({ ...item, media_type: response.mediaType }))
-  );
+  return responses
+    .flatMap((response) =>
+      response.results
+        .filter(isSupportedDiscoverResult)
+        .slice(0, perList)
+        .map((item) => normalizeItem({ ...item, media_type: response.mediaType }))
+    )
+    // TMDB ordena películas y series por separado. Unificamos ambas listas
+    // antes de devolverlas para que el mazo conserve la nota descendente.
+    .sort((left, right) => right.score - left.score);
 }
 
 async function fetchCatalogCollection(

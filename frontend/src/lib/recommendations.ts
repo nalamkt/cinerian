@@ -107,6 +107,17 @@ function candidateKey(mediaType: MediaType, tmdbId: number) {
   return `${mediaType}-${tmdbId}`;
 }
 
+function sortByTmdbScore(items: DiscoveryItem[]) {
+  return [...items].sort((left, right) => {
+    const scoreDifference = right.score - left.score;
+    if (scoreDifference !== 0) {
+      return scoreDifference;
+    }
+
+    return left.title.localeCompare(right.title, "es");
+  });
+}
+
 function normalizeGenreLabel(value: string) {
   return value.trim().toLowerCase();
 }
@@ -248,10 +259,12 @@ async function collectFillerTitles(
   }
 
   if (picked.length === 0 && tmdbFilteredFallback.length) {
-    return tmdbFilteredFallback.slice(0, needed);
+    return sortByTmdbScore(tmdbFilteredFallback).slice(0, needed);
   }
 
-  return picked;
+  // El relleno de TMDB es el tramo "Fuera de tu círculo": no compite con el
+  // ranking social y se entrega siempre de mayor a menor calificación.
+  return sortByTmdbScore(picked);
 }
 
 type ScoredCandidate = {
@@ -680,7 +693,6 @@ export async function fetchSocialRecommendations(
   };
 
   const filtered: FilteredEntry[] = [];
-  const preliminaryRankByKey = new Map<string, number>();
   let cursor = 0;
 
   while (filtered.length < wanted && cursor < preliminary.length) {
@@ -711,12 +723,29 @@ export async function fetchSocialRecommendations(
     for (const result of results) {
       if (!result) continue;
       filtered.push(result.entry);
-      preliminaryRankByKey.set(
-        candidateKey(result.candidate.mediaType, result.candidate.tmdbId),
-        filtered.length
-      );
     }
   }
+
+  // El bonus de género se calculaba, pero la lista conservaba el orden social
+  // preliminar. Reordenar acá le da un efecto real y acotado (0.4 por género
+  // compartido) sin permitir que tape una recomendación fuerte del círculo.
+  filtered.sort((left, right) => {
+    const scoreDifference = right.totalScore - left.totalScore;
+    if (scoreDifference !== 0) {
+      return scoreDifference;
+    }
+
+    const watcherDifference = right.watcherIds.length - left.watcherIds.length;
+    if (watcherDifference !== 0) {
+      return watcherDifference;
+    }
+
+    return right.item.score - left.item.score;
+  });
+
+  const preliminaryRankByKey = new Map(
+    filtered.map((entry, index) => [candidateKey(entry.item.mediaType, entry.item.id), index + 1])
+  );
 
   const detailed = filtered.slice(offset, offset + limit).map((entry, indexInSlice) => ({
     item: entry.item,

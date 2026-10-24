@@ -97,6 +97,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [activeTab, setActiveTab] = useState<SearchTab>("all");
   const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches(userId));
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const reactionsRequestRef = useRef(0);
   const { results, isLoading, error } = useDiscovery(query);
 
@@ -338,6 +339,10 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
     const key = `${item.mediaType}-${item.id}`;
     const currentReaction = reactionMap[key];
 
+    if (document.activeElement === searchInputRef.current) {
+      searchInputRef.current?.blur();
+    }
+
     // Una calificacion anterior se puede reemplazar directamente: no hace
     // falta borrarla para volver a elegir entre "me gustó" y "me encantó".
     setReviewInitialReaction(isWatchedReaction(currentReaction) ? currentReaction : null);
@@ -393,20 +398,38 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
 
   return (
     <section className="panel search-panel">
-      <label className="input-stack search-panel__input search-panel__input--glass">
+      <div className="input-stack search-panel__input search-panel__input--glass">
         <svg className="search-panel__input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.5-3.5" strokeLinecap="round" />
         </svg>
         <input
+          ref={searchInputRef}
           type="search"
+          aria-label="Buscar películas, series, usuarios o actores"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onFocus={() => setIsInputFocused(true)}
-          onBlur={() => window.setTimeout(() => setIsInputFocused(false), 150)}
+          onBlur={() => window.setTimeout(() => setIsInputFocused(document.activeElement === searchInputRef.current), 150)}
           placeholder="Peliculas, series, usuarios o actores"
         />
-      </label>
+        {query ? (
+          <button
+            type="button"
+            className="search-panel__input-clear"
+            aria-label="Borrar búsqueda"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              setQuery("");
+              searchInputRef.current?.focus();
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : null}
+      </div>
 
       {(isInputFocused || hasQuery) ? (
         <div className="search-panel__tabs" role="tablist">
@@ -715,6 +738,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         item={reviewItem}
         isSaving={isSyncing}
         initialReaction={reviewInitialReaction}
+        topAlignedOnMobile
         onClose={() => {
           setReviewItem(null);
           setReviewInitialReaction(null);
