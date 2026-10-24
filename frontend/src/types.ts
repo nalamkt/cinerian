@@ -66,6 +66,8 @@ export type DiscoveryItem = {
   genres: string[];
   providers: string[];
   score: number;
+  /** Cantidad de votos en TMDB; solo se usa para ordenar internamente. */
+  voteCount?: number;
   /**
    * El `type` de TMDB en series: "Miniseries", "Scripted", "Documentary"...
    * Solo viene de los endpoints de detalle; en los listados (discover, search)

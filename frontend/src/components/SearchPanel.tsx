@@ -7,6 +7,9 @@ import { getRatedReactionLabel, RatedReactionIcon } from "./RatedReactionIcon";
 import { useDiscovery } from "../hooks/useDiscovery";
 import { createFeedPost, removeFeedEvent } from "../lib/feed";
 import { listProfiles, type Profile } from "../lib/auth";
+import { DISCOVER_FILTERS_UPDATED_EVENT } from "../lib/discoverFilters";
+import { fetchForYouTitles } from "../lib/personalizedTitles";
+import { preloadPosters } from "../lib/posterPreload";
 import {
   fetchStoredReactions,
   getReactionSaveErrorMessage,
@@ -78,6 +81,10 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [query, setQuery] = useState("");
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
+  const [areReactionsReady, setAreReactionsReady] = useState(false);
+  const [forYouTitles, setForYouTitles] = useState<DiscoveryItem[]>([]);
+  const [isForYouLoading, setIsForYouLoading] = useState(false);
+  const [filtersVersion, setFiltersVersion] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
@@ -144,6 +151,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         const response = await fetchStoredReactions(userId);
         if (requestId === reactionsRequestRef.current) {
           setStoredReactions(response);
+          setAreReactionsReady(true);
         }
       } catch {
         if (requestId === reactionsRequestRef.current) {
@@ -162,12 +170,50 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
     }
 
     void loadStoredReactions();
+    setAreReactionsReady(false);
     window.addEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
 
     return () => {
       window.removeEventListener(REACTIONS_UPDATED_EVENT, handleReactionsUpdated as EventListener);
     };
   }, [userId]);
+
+  useEffect(() => {
+    function handleFiltersUpdated(event: Event) {
+      const updatedUserId = (event as CustomEvent<{ userId?: string }>).detail?.userId;
+      if (updatedUserId === userId) setFiltersVersion((version) => version + 1);
+    }
+
+    window.addEventListener(DISCOVER_FILTERS_UPDATED_EVENT, handleFiltersUpdated);
+    return () => window.removeEventListener(DISCOVER_FILTERS_UPDATED_EVENT, handleFiltersUpdated);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!areReactionsReady || query.trim()) return;
+    if (!storedReactions.some((entry) => entry.reaction === "liked" || entry.reaction === "superliked")) {
+      setForYouTitles([]);
+      setIsForYouLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsForYouLoading(true);
+    void fetchForYouTitles(userId, storedReactions)
+      .then(async (items) => {
+        await preloadPosters(items);
+        if (isMounted) setForYouTitles(items);
+      })
+      .catch(() => {
+        if (isMounted) setForYouTitles([]);
+      })
+      .finally(() => {
+        if (isMounted) setIsForYouLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [areReactionsReady, query, storedReactions, userId, filtersVersion]);
 
   useEffect(() => {
     void listProfiles()
@@ -316,6 +362,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         item,
         reaction
       });
+      replaceStoredReaction(item, reaction);
 
       if (reaction === "watchlist") {
         await createFeedPost({
@@ -327,7 +374,6 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         });
       }
 
-      replaceStoredReaction(item, reaction);
     } catch (error) {
       setSyncMessage(getReactionSaveErrorMessage(error));
     } finally {
@@ -362,6 +408,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         item: reviewItem,
         reaction: input.reaction
       });
+      replaceStoredReaction(reviewItem, input.reaction);
       if (input.comment.trim()) {
         await createFeedPost({
           userId,
@@ -383,7 +430,6 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         });
       }
 
-      replaceStoredReaction(reviewItem, input.reaction);
       setReviewItem(null);
     } catch (error) {
       setSyncMessage(getReactionSaveErrorMessage(error));
@@ -669,7 +715,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
           ) : null}
         </div>
       ) : (
-        <div className="search-browse" aria-busy={isBrowseLoading}>
+        <div className="search-browse" aria-busy={isBrowseLoading || isForYouLoading}>
           {isBrowseLoading ? <p className="inline-status">Cargando para explorar...</p> : null}
           {topCinerianTitles.length ? (
             <BrowseTitleRail
@@ -679,6 +725,27 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
               items={topCinerianTitles}
               onOpen={openMediaDetails}
               ranked
+            />
+          ) : null}
+          {isForYouLoading ? (
+            <section className="search-browse__section search-browse__section--pending">
+              <div className="search-browse__heading">
+                <div>
+                  <p className="section-eyebrow">Elegido para vos</p>
+                  <h2>Para vos</h2>
+                </div>
+              </div>
+              <p className="inline-status">Buscando títulos parecidos a los que te gustaron...</p>
+            </section>
+          ) : forYouTitles.length ? (
+            <BrowseTitleRail
+              title="Para vos"
+              description="Historias similares a las que te encantaron y te gustaron"
+              eyebrow="Elegido para vos"
+              items={forYouTitles}
+              onOpen={openMediaDetails}
+              ranked
+              showTmdbScore
             />
           ) : null}
           {trendingTitles.length ? (
@@ -761,7 +828,8 @@ function BrowseTitleRail({
   items,
   onOpen,
   eyebrow = "Para explorar",
-  ranked = false
+  ranked = false,
+  showTmdbScore = false
 }: {
   title: string;
   description: string;
@@ -769,6 +837,7 @@ function BrowseTitleRail({
   onOpen: (item: DiscoveryItem) => void;
   eyebrow?: string;
   ranked?: boolean;
+  showTmdbScore?: boolean;
 }) {
   return (
     <section className="search-browse__section">
@@ -797,7 +866,7 @@ function BrowseTitleRail({
               </span>
             ) : null}
             <strong>{item.title}</strong>
-            <span>{item.year}</span>
+            <span>{item.year}{showTmdbScore ? ` · TMDB ${item.score.toFixed(1)}` : ""}</span>
           </button>
         ))}
       </div>

@@ -11,6 +11,7 @@ import type {
   TalentSearchItem
 } from "../types";
 import { demoDiscovery } from "../data/demoData";
+import { compareByWeightedTmdbScore } from "./titleRanking";
 
 const apiKey = import.meta.env.VITE_TMDB_API_KEY;
 const baseUrl = "https://api.themoviedb.org/3";
@@ -484,6 +485,7 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
     genres,
     providers: [],
     score: typeof item.vote_average === "number" ? Number(item.vote_average.toFixed(1)) : 0,
+    voteCount: typeof item.vote_count === "number" ? item.vote_count : 0,
     // Los listados de TMDB no mandan `type`: ahi queda null y el filtro de
     // miniseries simplemente no matchea, que es lo correcto.
     seriesType: typeof item.type === "string" ? item.type : null
@@ -1065,9 +1067,9 @@ export async function getRecommendationTitlesByPage(
         .slice(0, perList)
         .map((item) => normalizeItem({ ...item, media_type: response.mediaType }))
     )
-    // TMDB ordena películas y series por separado. Unificamos ambas listas
-    // antes de devolverlas para que el mazo conserve la nota descendente.
-    .sort((left, right) => right.score - left.score);
+    // TMDB pagina peliculas y series por separado. Reordenamos el lote
+    // combinado con la misma confianza estadistica que usa Descubri.
+    .sort(compareByWeightedTmdbScore);
 }
 
 async function fetchCatalogCollection(
@@ -1256,28 +1258,40 @@ export async function getNowPlayingTitles(): Promise<DiscoveryItem[]> {
   return movieItems.slice(0, 6);
 }
 
-export async function getSimilarTitles(tmdbId: number, mediaType: MediaType): Promise<DiscoveryItem[]> {
+const similarTitlesCache = new Map<string, Promise<DiscoveryItem[]>>();
+
+export async function getSimilarTitles(
+  tmdbId: number,
+  mediaType: MediaType,
+  limit = 6
+): Promise<DiscoveryItem[]> {
   if (!apiKey) {
     return demoDiscovery
       .filter((item) => !(item.id === tmdbId && item.mediaType === mediaType))
-      .slice(0, 6);
+      .slice(0, limit);
   }
 
-  const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}/similar`);
-  url.searchParams.set("api_key", apiKey);
-  url.searchParams.set("language", "es-MX");
-  url.searchParams.set("page", "1");
+  const cacheKey = `${mediaType}-${tmdbId}`;
+  let pending = similarTitlesCache.get(cacheKey);
+  if (!pending) {
+    pending = (async () => {
+      const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}/similar`);
+      url.searchParams.set("api_key", apiKey);
+      url.searchParams.set("language", "es-MX");
+      url.searchParams.set("page", "1");
 
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    throw new Error("No pude traer titulos similares.");
+      const response = await fetch(url.toString());
+      if (!response.ok) throw new Error("No pude traer titulos similares.");
+
+      const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+      return (payload.results ?? [])
+        .filter(isSupportedDiscoverResult)
+        .map((item) => normalizeItem({ ...item, media_type: mediaType }));
+    })();
+    similarTitlesCache.set(cacheKey, pending);
+    pending.catch(() => similarTitlesCache.delete(cacheKey));
   }
-
-  const payload = (await response.json()) as { results?: Record<string, unknown>[] };
-  return (payload.results ?? [])
-    .filter(isSupportedCatalogResult)
-    .slice(0, 6)
-    .map((item) => normalizeItem({ ...item, media_type: mediaType }));
+  return (await pending).slice(0, limit);
 }
 
 export type WatchProvider = StreamingProvider;

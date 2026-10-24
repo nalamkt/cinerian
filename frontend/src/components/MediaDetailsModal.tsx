@@ -10,6 +10,8 @@ import { fetchProfileSummaries, type ProfileSummary } from "../lib/auth";
 import { createFeedPost, fetchFeedPosts, removeFeedEvent } from "../lib/feed";
 import { fetchFollowingUserIds } from "../lib/follows";
 import { getProviderSearchUrl } from "../lib/providerLinks";
+import { fetchSavedTitleSuggestions } from "../lib/personalizedTitles";
+import { preloadPosters } from "../lib/posterPreload";
 import { buildSharedProfilePath } from "../lib/profileShare";
 import {
   fetchTitleReactionSummary,
@@ -19,7 +21,8 @@ import {
   removeStoredRatedReaction,
   removeStoredReaction,
   saveStoredReaction,
-  type RatedReaction
+  type RatedReaction,
+  type StoredReaction
 } from "../lib/reactions";
 import { buildWatchedPostBody } from "../lib/reviews";
 import { buildSharedMediaUrl, shareMediaLink } from "../lib/share";
@@ -431,6 +434,11 @@ type MediaDetailsSheetProps = {
   shareLabel?: string;
   onSave?: () => void;
   saveLabel?: string;
+  isSaved?: boolean;
+  isSaveBusy?: boolean;
+  isReactionLoading?: boolean;
+  similarTitles?: DiscoveryItem[];
+  isSimilarLoading?: boolean;
   onWatched?: () => void;
   watchedLabel?: string;
   watchedReaction?: RatedReaction | null;
@@ -458,6 +466,11 @@ export function MediaDetailsSheet({
   shareLabel,
   onSave,
   saveLabel,
+  isSaved = false,
+  isSaveBusy = false,
+  isReactionLoading = false,
+  similarTitles = [],
+  isSimilarLoading = false,
   onWatched,
   watchedLabel,
   watchedReaction,
@@ -733,6 +746,7 @@ export function MediaDetailsSheet({
                         watchedReaction ? "recommendation-action-button--primary" : ""
                       }`}
                       onClick={onWatched}
+                      disabled={isReactionLoading}
                       data-tooltip={watchedLabel ?? "Ya la vi"}
                       aria-label={watchedLabel ?? "Ya la vi"}
                     >
@@ -746,9 +760,10 @@ export function MediaDetailsSheet({
                     <button
                       type="button"
                       className={`recommendation-action-button ${
-                        saveLabel === "Guardado" ? "recommendation-action-button--primary" : ""
+                        isSaved ? "recommendation-action-button--primary" : ""
                       }`}
                       onClick={onSave}
+                      disabled={isSaveBusy}
                       data-tooltip={saveLabel ?? "Guardar"}
                       aria-label={saveLabel ?? "Guardar"}
                     >
@@ -777,6 +792,32 @@ export function MediaDetailsSheet({
                   </div>
                 ) : null}
               </div>
+            </section>
+          ) : null}
+
+          {isSaved && (isSimilarLoading || similarTitles.length > 0) ? (
+            <section className="media-modal__section media-modal__section--suggestions">
+              <p className="section-eyebrow">También te puede gustar</p>
+              {isSimilarLoading ? (
+                <div className="media-modal__suggestions-loading">Buscando títulos similares...</div>
+              ) : (
+                <div className="media-modal__related-carousel" aria-label="Títulos similares">
+                  {similarTitles.map((similar) => (
+                    <button
+                      type="button"
+                      className="media-modal__related-card"
+                      key={`${similar.mediaType}-${similar.id}`}
+                      onClick={() => onOpenMedia?.(similar)}
+                      disabled={!onOpenMedia}
+                      aria-label={`Ver ${similar.title}`}
+                    >
+                      <img src={similar.posterUrl} alt="" />
+                      <strong>{similar.title}</strong>
+                      <span>{similar.year} · TMDB {similar.score.toFixed(1)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </section>
           ) : null}
 
@@ -1091,6 +1132,13 @@ function MediaDetailsModal({
   const socialSummary = useTitleSocialSummary(item, userId);
   const [shareLabel, setShareLabel] = useState("Compartir");
   const [saveLabel, setSaveLabel] = useState("Guardar");
+  const [savedItemKey, setSavedItemKey] = useState<string | null>(null);
+  const isSaved = Boolean(item && savedItemKey === `${item.mediaType}-${item.id}`);
+  const [isSaveBusy, setIsSaveBusy] = useState(false);
+  const [isReactionLoading, setIsReactionLoading] = useState(true);
+  const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
+  const [similarTitles, setSimilarTitles] = useState<DiscoveryItem[]>([]);
+  const [isSimilarLoading, setIsSimilarLoading] = useState(false);
   const [watchedLabel, setWatchedLabel] = useState("Ya la vi");
   const [watchedReaction, setWatchedReaction] = useState<RatedReaction | null>(null);
   const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
@@ -1113,12 +1161,18 @@ function MediaDetailsModal({
   useEffect(() => {
     if (!item || !userId) {
       setSaveLabel("Guardar");
+      setSavedItemKey(null);
+      setStoredReactions([]);
+      setIsReactionLoading(false);
       setWatchedLabel("Ya la vi");
       setWatchedReaction(null);
       return;
     }
 
     let isMounted = true;
+    setIsReactionLoading(true);
+    setSavedItemKey(null);
+    setSimilarTitles([]);
 
     void fetchStoredReactions(userId)
       .then((reactions) => {
@@ -1139,6 +1193,8 @@ function MediaDetailsModal({
             isRatedReaction(entry.reaction)
         )?.reaction;
 
+        setStoredReactions(reactions);
+        setSavedItemKey(isSaved ? `${item.mediaType}-${item.id}` : null);
         setSaveLabel(isSaved ? "Guardado" : "Guardar");
         setWatchedReaction(ratedReaction && isRatedReaction(ratedReaction) ? ratedReaction : null);
         setWatchedLabel(
@@ -1150,15 +1206,46 @@ function MediaDetailsModal({
       .catch(() => {
         if (isMounted) {
           setSaveLabel("Guardar");
+          setSavedItemKey(null);
           setWatchedLabel("Ya la vi");
           setWatchedReaction(null);
         }
+      })
+      .finally(() => {
+        if (isMounted) setIsReactionLoading(false);
       });
 
     return () => {
       isMounted = false;
     };
   }, [item, userId]);
+
+  useEffect(() => {
+    if (!item || !userId || !isSaved) {
+      setSimilarTitles([]);
+      setIsSimilarLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsSimilarLoading(true);
+    const currentItem = item;
+    void fetchSavedTitleSuggestions(userId, currentItem, storedReactions)
+      .then(async (items) => {
+        await preloadPosters(items);
+        if (isMounted) setSimilarTitles(items);
+      })
+      .catch(() => {
+        if (isMounted) setSimilarTitles([]);
+      })
+      .finally(() => {
+        if (isMounted) setIsSimilarLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [item, userId, isSaved, storedReactions]);
 
   async function handleShare() {
     if (!item) {
@@ -1184,6 +1271,7 @@ function MediaDetailsModal({
     }
 
     try {
+      setIsSaveBusy(true);
       const normalizedItem = {
         id: item.id,
         mediaType: item.mediaType,
@@ -1196,10 +1284,13 @@ function MediaDetailsModal({
         score: details?.score ?? 0
       };
 
-      if (saveLabel === "Guardado") {
+      if (isSaved) {
         await removeStoredReaction(userId, normalizedItem, "watchlist");
-        setSaveLabel("Quitado");
-        window.setTimeout(() => setSaveLabel("Guardar"), 1800);
+        setSavedItemKey(null);
+        setStoredReactions((current) => current.filter(
+          (entry) => entry.tmdbId !== item.id || entry.mediaType !== item.mediaType
+        ));
+        setSaveLabel("Guardar");
         return;
       }
 
@@ -1208,10 +1299,17 @@ function MediaDetailsModal({
         item: normalizedItem,
         reaction: "watchlist"
       });
+      setSavedItemKey(`${item.mediaType}-${item.id}`);
+      setStoredReactions((current) => [
+        { tmdbId: item.id, mediaType: item.mediaType, reaction: "watchlist", createdAt: new Date().toISOString() },
+        ...current.filter((entry) => entry.tmdbId !== item.id || entry.mediaType !== item.mediaType)
+      ]);
       setSaveLabel("Guardado");
     } catch {
-      setSaveLabel(saveLabel === "Guardado" ? "No pude quitar" : "No pude guardar");
-      window.setTimeout(() => setSaveLabel("Guardar"), 1800);
+      setSaveLabel(isSaved ? "No pude quitar" : "No pude guardar");
+      window.setTimeout(() => setSaveLabel(isSaved ? "Guardado" : "Guardar"), 1800);
+    } finally {
+      setIsSaveBusy(false);
     }
   }
 
@@ -1263,6 +1361,13 @@ function MediaDetailsModal({
         item: reviewItem,
         reaction: input.reaction
       });
+      setWatchedReaction(input.reaction);
+      setSavedItemKey(null);
+      setStoredReactions((current) => [
+        { tmdbId: reviewItem.id, mediaType: reviewItem.mediaType, reaction: input.reaction, createdAt: new Date().toISOString() },
+        ...current.filter((entry) => entry.tmdbId !== reviewItem.id || entry.mediaType !== reviewItem.mediaType)
+      ]);
+      setSaveLabel("Guardar");
       if (input.comment.trim()) {
         await createFeedPost({
           userId,
@@ -1283,7 +1388,6 @@ function MediaDetailsModal({
           mediaType: reviewItem.mediaType
         });
       }
-      setWatchedReaction(input.reaction);
       setWatchedLabel(getRatedReactionLabel(input.reaction));
       setReviewItem(null);
       void refreshFeedPosts();
@@ -1350,6 +1454,11 @@ function MediaDetailsModal({
             shareLabel={shareLabel === "Compartir" ? "Enviar" : shareLabel}
             onSave={handleSave}
             saveLabel={saveLabel}
+            isSaved={isSaved}
+            isSaveBusy={isSaveBusy || isReactionLoading}
+            isReactionLoading={isReactionLoading}
+            similarTitles={similarTitles}
+            isSimilarLoading={isSimilarLoading}
             onWatched={handleWatched}
             watchedLabel={watchedLabel}
             watchedReaction={watchedReaction}

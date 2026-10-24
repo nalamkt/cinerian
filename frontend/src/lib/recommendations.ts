@@ -14,6 +14,7 @@ import {
   type DiscoverFilters
 } from "./tmdb";
 import type { DiscoveryItem, MediaType } from "../types";
+import { compareByWeightedTmdbScore } from "./titleRanking";
 
 const REACTION_WEIGHT: Record<RatedReaction, number> = {
   superliked: 6,
@@ -108,14 +109,7 @@ function candidateKey(mediaType: MediaType, tmdbId: number) {
 }
 
 function sortByTmdbScore(items: DiscoveryItem[]) {
-  return [...items].sort((left, right) => {
-    const scoreDifference = right.score - left.score;
-    if (scoreDifference !== 0) {
-      return scoreDifference;
-    }
-
-    return left.title.localeCompare(right.title, "es");
-  });
+  return [...items].sort(compareByWeightedTmdbScore);
 }
 
 function normalizeGenreLabel(value: string) {
@@ -191,30 +185,19 @@ async function collectFillerTitles(
 ): Promise<DiscoveryItem[]> {
   const picked: DiscoveryItem[] = [];
   const seen = new Set(alreadyPicked);
-  const tmdbFilteredFallback: DiscoveryItem[] = [];
-  let successfulCatalogPages = 0;
-  let failedCatalogPages = 0;
+  const pages = await Promise.allSettled(
+    Array.from({ length: MAX_BACKFILL_PAGES }, (_, offset) =>
+      getRecommendationTitlesByPage(startPage + offset, filters)
+    )
+  );
+  if (pages.every((page) => page.status === "rejected")) {
+    throw new Error("TMDB no pudo cargar paginas del catalogo.");
+  }
 
-  // El buscador de TMDB acota pero no garantiza: aplica proveedor y tipo de
-  // monetizacion por separado, asi que puede colar un titulo sin suscripcion
-  // real en Argentina. Verificamos siempre antes de mostrarlo.
-  const needsVerification = true;
-
-  for (let offset = 0; offset < MAX_BACKFILL_PAGES && picked.length < needed; offset += 1) {
-    let batch: DiscoveryItem[];
-    try {
-      batch = await getRecommendationTitlesByPage(startPage + offset, filters);
-      successfulCatalogPages += 1;
-    } catch {
-      // Una pagina puntual de TMDB no debe cancelar el resto del catalogo.
-      failedCatalogPages += 1;
-      continue;
-    }
-    if (!batch.length) {
-      break;
-    }
-
-    const fresh = batch.filter((item) => {
+  // TMDB pagina por promedio bruto. Primero juntamos el bloque completo y
+  // despues lo ordenamos por nota ponderada para comparar muestras distintas.
+  const candidates = sortByTmdbScore(
+    pages.flatMap((page) => page.status === "fulfilled" ? page.value : []).filter((item) => {
       const key = candidateKey(item.mediaType, item.id);
       if (excludedKeys.has(key) || seen.has(key)) {
         return false;
@@ -222,24 +205,16 @@ async function collectFillerTitles(
 
       seen.add(key);
       return true;
-    });
+    })
+  );
 
-    // Esta lista ya viene de `discover` con región, plataforma y flatrate.
-    // Solo se usa si la verificación detallada no pudo validar NI una carta:
-    // así una respuesta incompleta/rate-limit de fichas no convierte miles de
-    // resultados válidos de TMDB en un mazo vacío.
-    tmdbFilteredFallback.push(...fresh);
-
-    if (!needsVerification) {
-      picked.push(...fresh.slice(0, needed - picked.length));
-      continue;
-    }
-
+  // Discover de TMDB aproxima la disponibilidad: comprobamos los proveedores
+  // argentinos reales en tandas acotadas antes de ofrecer cada titulo.
+  const verificationLimit = Math.min(candidates.length, Math.max(needed * 8, 48));
+  for (let offset = 0; offset < verificationLimit && picked.length < needed; offset += 12) {
     const checked = await Promise.all(
-      fresh.slice(0, (needed - picked.length) * 2).map(async (item) => {
+      candidates.slice(offset, offset + 12).map(async (item) => {
         const availability = await getTitleAvailability(item.id, item.mediaType);
-        // Si no se pudo verificar, se descarta: mostrar algo que quiza no este
-        // en tus plataformas es peor que buscar en la pagina siguiente.
         return availability && passesFilters(availability, filters) ? availability.item : null;
       })
     );
@@ -254,16 +229,13 @@ async function collectFillerTitles(
     }
   }
 
-  if (successfulCatalogPages === 0 && failedCatalogPages > 0) {
-    throw new Error("TMDB no pudo cargar paginas del catalogo.");
+  if (picked.length === 0 && candidates.length) {
+    // Conserva el fallback regional ya acotado por TMDB si fallaron todas las
+    // verificaciones individuales; evita declarar vacio un catalogo grande.
+    return candidates.slice(0, needed);
   }
 
-  if (picked.length === 0 && tmdbFilteredFallback.length) {
-    return sortByTmdbScore(tmdbFilteredFallback).slice(0, needed);
-  }
-
-  // El relleno de TMDB es el tramo "Fuera de tu círculo": no compite con el
-  // ranking social y se entrega siempre de mayor a menor calificación.
+  // El relleno no compite con el ranking social.
   return sortByTmdbScore(picked);
 }
 

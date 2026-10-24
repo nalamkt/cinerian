@@ -8148,6 +8148,18 @@ textarea {
   -webkit-overflow-scrolling: touch;
 }
 
+.media-modal__section--suggestions {
+  min-height: 292px;
+}
+
+.media-modal__suggestions-loading {
+  min-height: 218px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .media-modal__related-card {
   width: 142px;
   flex: 0 0 142px;
@@ -9900,6 +9912,11 @@ textarea {
   display: grid;
   gap: 16px;
   min-width: 0;
+}
+
+.search-browse__section--pending {
+  min-height: 318px;
+  align-content: start;
 }
 
 .search-browse__heading {
