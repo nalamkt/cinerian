@@ -923,7 +923,7 @@ export function MediaDetailsSheet({
                 <iframe
                   src={details.trailerUrl}
                   title={`Trailer de ${details.title}`}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                   allowFullScreen
                 />
               </div>

@@ -11,6 +11,16 @@ import "./styles.css";
 const sharedRoute = parseSharedMediaPath(window.location.pathname);
 const isAdminPanelRoute = window.location.pathname === "/panel" || window.location.pathname.startsWith("/panel/");
 
+document.addEventListener("fullscreenchange", () => {
+  const orientation = window.screen.orientation;
+  if (typeof orientation?.lock !== "function") return;
+
+  const isTrailerFullscreen = document.fullscreenElement?.matches(".media-modal__trailer iframe") ?? false;
+  void orientation.lock(isTrailerFullscreen ? "any" : "portrait").catch(() => {
+    // El manifest y el aviso horizontal cubren navegadores que rechazan el bloqueo.
+  });
+});
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {sharedRoute ? (

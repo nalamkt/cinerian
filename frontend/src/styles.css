@@ -13122,3 +13122,55 @@ textarea {
     overflow-wrap: anywhere;
   }
 }
+.orientation-guard {
+  display: none;
+}
+
+@media (orientation: landscape) and (max-height: 1024px) and (pointer: coarse) {
+  body {
+    overflow: hidden;
+  }
+
+  .orientation-guard {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+      max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+    background: #0d1017;
+    color: #f6f0e6;
+    text-align: center;
+  }
+
+  .orientation-guard__content {
+    max-width: 370px;
+  }
+
+  .orientation-guard__icon {
+    display: block;
+    width: 35px;
+    height: 54px;
+    margin: 0 auto 24px;
+    border: 3px solid #ffc765;
+    border-radius: 9px;
+    transform: rotate(-90deg);
+  }
+
+  .orientation-guard strong {
+    display: block;
+    font-size: 1.6rem;
+  }
+
+  .orientation-guard p {
+    margin: 12px 0 0;
+    color: #b9b5b0;
+    line-height: 1.5;
+  }
+
+  body:has(.media-modal__trailer iframe:fullscreen) .orientation-guard {
+    display: none;
+  }
+}

@@ -4,6 +4,7 @@
   "description": "Cinerian, la red social para descubrir, registrar y compartir peliculas y series.",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#121419",
   "theme_color": "#121419",
   "icons": [
