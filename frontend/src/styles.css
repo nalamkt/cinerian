@@ -249,19 +249,19 @@ button:disabled {
   padding: 0;
   list-style: none;
   width: 100%;
-  gap: clamp(11px, 2.2vh, 18px);
+  gap: clamp(13px, 2.8vh, 24px);
 }
 
 .auth-step {
   display: grid;
-  grid-template-columns: clamp(30px, 4.4vh, 36px) minmax(0, 1fr);
-  gap: clamp(11px, 1.8vh, 14px);
+  grid-template-columns: clamp(34px, 5.6vh, 48px) minmax(0, 1fr);
+  gap: clamp(12px, 2.2vh, 18px);
   align-items: start;
 }
 
 .auth-step__icon {
-  width: clamp(30px, 4.4vh, 36px);
-  height: clamp(30px, 4.4vh, 36px);
+  width: clamp(34px, 5.6vh, 48px);
+  height: clamp(34px, 5.6vh, 48px);
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -270,8 +270,8 @@ button:disabled {
 }
 
 .auth-step__icon svg {
-  width: clamp(14px, 2.1vh, 17px);
-  height: clamp(14px, 2.1vh, 17px);
+  width: clamp(16px, 2.7vh, 23px);
+  height: clamp(16px, 2.7vh, 23px);
   color: var(--accent);
 }
 
@@ -281,13 +281,13 @@ button:disabled {
 }
 
 .auth-step__copy b {
-  font-size: clamp(0.88rem, 1.9vh, 0.95rem);
+  font-size: clamp(0.94rem, 2.2vh, 1.18rem);
   font-weight: 700;
 }
 
 .auth-step__copy > span {
-  font-size: clamp(0.78rem, 1.7vh, 0.84rem);
-  line-height: 1.38;
+  font-size: clamp(0.82rem, 1.95vh, 1.04rem);
+  line-height: 1.36;
   color: var(--muted);
 }
 
@@ -10768,11 +10768,6 @@ textarea {
     align-content: center;
   }
 
-  .auth-intro {
-    gap: 20px;
-    padding: 30px 22px 10px;
-  }
-
   .auth-intro__body {
     gap: 0;
   }
@@ -10810,25 +10805,43 @@ textarea {
     telefono alto y se desbordaba en uno chico; asi se comprime sola y el minimo
     del clamp es el piso de legibilidad, no un numero elegido para que cierre.
   */
+  /*
+    El margen de arriba arranca DESPUES del area del sistema. Desde que el meta
+    viewport lleva viewport-fit=cover, la pantalla empieza en el cero absoluto y
+    un padding fijo deja el logo abajo del reloj: en un 16 Pro Max esa franja
+    mide 59px. En un telefono sin notch env() vale 0 y queda como antes.
+  */
   .auth-intro {
-    padding: clamp(18px, 3.4vh, 30px) 22px clamp(6px, 1.2vh, 12px);
-    gap: clamp(10px, 2vh, 18px);
+    padding:
+      calc(clamp(16px, 2.6vh, 26px) + env(safe-area-inset-top, 0px))
+      22px
+      clamp(6px, 1.2vh, 12px);
+    gap: clamp(12px, 2.2vh, 20px);
   }
 
   .auth-intro__body {
-    gap: clamp(16px, 3vh, 26px);
+    gap: clamp(18px, 3.4vh, 30px);
     align-content: start;
     justify-items: stretch;
   }
 
-  .auth-intro h1 {
-    font-size: clamp(1.32rem, min(5.6vw, 3.4vh), 2.1rem);
-    line-height: 1.16;
-    max-width: 18ch;
+  /*
+    Logo y titular centrados: el bloque gana eje propio y se separa de la lista.
+    La lista NO se centra, porque es texto para leer de corrido y centrarlo le
+    saca al ojo el punto de arranque de cada renglon.
+  */
+  .auth-logo {
+    width: clamp(118px, min(42vw, 19vh), 168px);
+    margin-inline: auto;
   }
 
-  .auth-logo {
-    width: clamp(104px, 15vh, 124px);
+  .auth-intro h1 {
+    font-size: clamp(1.5rem, min(6.8vw, 4vh), 2.3rem);
+    line-height: 1.14;
+    max-width: 15ch;
+    margin-inline: auto;
+    text-align: center;
+    text-wrap: balance;
   }
 
   .auth-shell__form {
