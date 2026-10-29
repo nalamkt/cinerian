@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowingUserIds } from "../lib/follows";
 import { sendRecommendationMessage } from "../lib/inbox";
@@ -110,8 +111,8 @@ export function SendRecommendationModal({
     return null;
   }
 
-  return (
-    <div className="review-modal__backdrop" role="presentation" onClick={onClose}>
+  return createPortal(
+    <div className="review-modal__backdrop send-modal__backdrop" role="presentation" onClick={onClose}>
       <div className="send-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <div className="send-modal__header">
           <div>
@@ -175,6 +176,7 @@ export function SendRecommendationModal({
 
         {status ? <div className="inline-status">{status}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -106,7 +106,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches(userId));
   const searchInputRef = useRef<HTMLInputElement>(null);
   const reactionsRequestRef = useRef(0);
-  const { results, isLoading, error } = useDiscovery(query);
+  const { results, isLoading, error } = useDiscovery(activeTab === "all" ? query : "");
 
   useEffect(() => {
     setRecentSearches(loadRecentSearches(userId));
@@ -294,28 +294,39 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   }, []);
 
   useEffect(() => {
-    const trimmed = query.trim();
+    const trimmed = activeTab === "actors" ? query.trim() : "";
+    setTalentResults([]);
+    setTalentError(null);
+    setIsTalentLoading(Boolean(trimmed));
+
     if (!trimmed) {
-      setTalentResults([]);
-      setTalentError(null);
       return;
     }
 
+    let isCurrent = true;
     const timeoutId = window.setTimeout(async () => {
       try {
-        setIsTalentLoading(true);
-        setTalentError(null);
-        setTalentResults(await searchTalent(trimmed));
+        const talents = await searchTalent(trimmed);
+        if (isCurrent) {
+          setTalentResults(talents);
+        }
       } catch {
-        setTalentError("No pude traer actores y directores ahora.");
-        setTalentResults([]);
+        if (isCurrent) {
+          setTalentError("No pude traer actores y directores ahora.");
+          setTalentResults([]);
+        }
       } finally {
-        setIsTalentLoading(false);
+        if (isCurrent) {
+          setIsTalentLoading(false);
+        }
       }
     }, 250);
 
-    return () => window.clearTimeout(timeoutId);
-  }, [query]);
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeTab, query]);
 
   const reactionMap = useMemo(
     () =>
@@ -342,7 +353,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   }, [profiles, query, userId]);
 
   const hasQuery = Boolean(query.trim());
-  const isSearching = isLoading || isTalentLoading;
+  const isSearching = activeTab === "all" ? isLoading : activeTab === "actors" ? isTalentLoading : false;
 
   function replaceStoredReaction(item: DiscoveryItem, reaction: StoredReaction["reaction"]) {
     setStoredReactions((current) => [
@@ -496,7 +507,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
       ) : null}
 
       <div className="inline-status">
-        {syncMessage ?? (hasQuery && isSearching ? "Buscando en titulos, personas y talentos..." : null)}
+        {syncMessage ?? (hasQuery && isSearching ? activeTab === "actors" ? "Buscando actores y directores..." : "Buscando títulos..." : null)}
       </div>
 
       {!hasQuery && isInputFocused && recentSearches.length ? (
@@ -545,8 +556,8 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
 
       {hasQuery ? (
         <div className="search-result-sections">
-          {error ? <p className="inline-status">{error}</p> : null}
-          {talentError ? <p className="inline-status">{talentError}</p> : null}
+          {activeTab === "all" && error && !results.length ? <p className="inline-status">{error}</p> : null}
+          {activeTab === "actors" && talentError && !talentResults.length ? <p className="inline-status">{talentError}</p> : null}
           {activeTab === "all" && results.length ? (
             <section className="search-result-section">
               <div className="search-result-section__heading">
@@ -706,7 +717,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
             </section>
           ) : null}
 
-          {!isSearching && (
+          {!isSearching && !((activeTab === "all" && error) || (activeTab === "actors" && talentError)) && (
             (activeTab === "all" && !results.length) ||
             (activeTab === "users" && !profileResults.length) ||
             (activeTab === "actors" && !talentResults.length)

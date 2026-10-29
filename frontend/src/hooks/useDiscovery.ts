@@ -4,34 +4,44 @@ import { searchTitles } from "../lib/tmdb";
 import type { DiscoveryItem } from "../types";
 
 export function useDiscovery(query: string) {
-  const [results, setResults] = useState<DiscoveryItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const currentQuery = query.trim();
+  const [search, setSearch] = useState<{
+    query: string;
+    results: DiscoveryItem[];
+    isLoading: boolean;
+    error: string | null;
+  }>({ query: "", results: demoDiscovery, isLoading: false, error: null });
 
   useEffect(() => {
     const trimmed = query.trim();
 
     if (!trimmed) {
-      setResults(demoDiscovery);
-      setError(null);
+      setSearch({ query: "", results: demoDiscovery, isLoading: false, error: null });
       return;
     }
 
+    let isCurrent = true;
+    setSearch({ query: trimmed, results: [], isLoading: true, error: null });
     const timeoutId = window.setTimeout(async () => {
       try {
-        setIsLoading(true);
-        setError(null);
-        setResults(await searchTitles(trimmed));
-      } catch (caughtError) {
-        setError("No pude traer resultados en este momento.");
-        setResults([]);
-      } finally {
-        setIsLoading(false);
+        const results = await searchTitles(trimmed);
+        if (isCurrent) {
+          setSearch({ query: trimmed, results, isLoading: false, error: null });
+        }
+      } catch {
+        if (isCurrent) {
+          setSearch({ query: trimmed, results: [], isLoading: false, error: "No pude traer resultados en este momento." });
+        }
       }
     }, 300);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timeoutId);
+    };
   }, [query]);
 
-  return { results, isLoading, error };
+  return search.query === currentQuery
+    ? { results: search.results, isLoading: search.isLoading, error: search.error }
+    : { results: [], isLoading: Boolean(currentQuery), error: null };
 }
