@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowingUserIds } from "../lib/follows";
@@ -25,6 +25,17 @@ export function SendRecommendationModal({
   const [isSendingTo, setIsSendingTo] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [shareLabel, setShareLabel] = useState("Compartir link");
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!item || !dialog) return;
+
+    if (!dialog.open) dialog.showModal();
+    return () => {
+      if (dialog.open) dialog.close();
+    };
+  }, [item]);
 
   useEffect(() => {
     if (!item) {
@@ -112,8 +123,19 @@ export function SendRecommendationModal({
   }
 
   return createPortal(
-    <div className="review-modal__backdrop send-modal__backdrop" role="presentation" onClick={onClose}>
-      <div className="send-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+    <dialog
+      ref={dialogRef}
+      className="send-modal__dialog"
+      aria-label={`Enviar ${item.title}`}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="send-modal">
         <div className="send-modal__header">
           <div>
             <p className="section-eyebrow">Enviar recomendacion</p>
@@ -176,7 +198,7 @@ export function SendRecommendationModal({
 
         {status ? <div className="inline-status">{status}</div> : null}
       </div>
-    </div>,
+    </dialog>,
     document.body
   );
 }

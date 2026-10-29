@@ -5984,13 +5984,32 @@ textarea {
   box-shadow: var(--shadow);
 }
 
-.send-modal__backdrop {
+.send-modal__dialog {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 24px;
+  border: 0;
+  color: var(--text);
+  background: rgba(7, 6, 5, 0.76);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.send-modal__dialog[open] {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  z-index: 70;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+}
+
+.send-modal__dialog::backdrop {
+  background: transparent;
 }
 
 .send-modal__header {
@@ -11858,15 +11877,14 @@ textarea {
     max-height: calc(100dvh - var(--review-modal-top-gap) - var(--review-modal-bottom-gap));
   }
 
-  .send-modal__backdrop {
+  .send-modal__dialog {
     --send-modal-top-gap: max(16px, calc(env(safe-area-inset-top, 0px) + 12px));
     --send-modal-bottom-gap: max(16px, env(safe-area-inset-bottom, 0px));
-    height: 100dvh;
     padding-top: var(--send-modal-top-gap);
     padding-bottom: var(--send-modal-bottom-gap);
   }
 
-  .send-modal__backdrop .send-modal {
+  .send-modal__dialog .send-modal {
     max-height: calc(100dvh - var(--send-modal-top-gap) - var(--send-modal-bottom-gap));
   }
 
