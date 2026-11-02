@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { RatedReaction } from "../lib/reactions";
 import type { DiscoveryItem } from "../types";
 
@@ -55,13 +56,30 @@ export function WatchReviewModal({
     setIsCommentOpen(false);
   }, [item, initialReaction]);
 
-  if (!item) {
+  useEffect(() => {
+    if (!item || typeof document === "undefined") {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const previousScrollY = window.scrollY;
+    document.body.style.overflow = "hidden";
+
+    // Ancla al top del viewport para que el modal (que es fixed al centro)
+    // quede siempre a la vista, sin importar el scroll previo de la pagina.
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.scrollTo(0, previousScrollY);
+    };
+  }, [item]);
+
+  if (!item || typeof document === "undefined") {
     return null;
   }
 
   const hasComment = comment.trim().length > 0;
 
-  return (
+  return createPortal(
     <div
       className={`review-modal__backdrop${topAlignedOnMobile ? " review-modal__backdrop--top-mobile" : ""}`}
       role="presentation"
@@ -151,6 +169,7 @@ export function WatchReviewModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
