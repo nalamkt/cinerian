@@ -613,15 +613,25 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     }
 
     /*
-      scrollHeight no es confiable con -webkit-line-clamp: en iOS Safari (y
-      otros) devuelve el clientHeight recortado en vez de la altura natural
-      del texto. Resultado: para algunas pelis "Ver mas" no aparecia aunque
-      la sinopsis estuviera recortada. Fix: clonar el <p> SIN clamp
-      off-screen, medir su altura real y compararla con la visible.
+      Deteccion robusta de recorte. Problemas pasados:
+      - scrollHeight no es confiable con -webkit-line-clamp (iOS Safari puede
+        devolver el clientHeight recortado).
+      - Clonar el <p> dentro del parentElement heredaba `flex: 1; overflow:
+        hidden` del contenedor y la medida del clone quedaba limitada por el
+        padre.
+
+      Ahora construyo un elemento proxy off-DOM, le copio los estilos
+      computados que afectan el line-wrap (font, line-height, letter-spacing,
+      word-spacing, white-space, hyphens) y lo meto en el body, lejos de la
+      cascada de flex/overflow del contenedor real. Mido su altura natural
+      ahi y la comparo con la del elemento real.
+
+      Tambien chequeo scrollHeight como fallback: si cualquiera de las dos
+      senales dice "hay recorte", mostramos "Ver mas".
     */
     function measure() {
       const el = overviewRef.current;
-      if (!el || !el.parentElement) {
+      if (!el) {
         return;
       }
 
@@ -632,26 +642,40 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
         return;
       }
 
-      const clone = el.cloneNode(true) as HTMLElement;
-      clone.removeAttribute("class");
-      clone.style.position = "absolute";
-      clone.style.visibility = "hidden";
-      clone.style.pointerEvents = "none";
-      clone.style.left = "-9999px";
-      clone.style.top = "0";
-      clone.style.height = "auto";
-      clone.style.maxHeight = "none";
-      clone.style.width = `${width}px`;
-      clone.style.display = "block";
-      clone.style.overflow = "visible";
-      clone.style.setProperty("-webkit-line-clamp", "unset");
-      clone.style.setProperty("line-clamp", "unset");
+      const computed = window.getComputedStyle(el);
+      const proxy = document.createElement("p");
+      proxy.textContent = el.textContent ?? "";
+      proxy.style.position = "absolute";
+      proxy.style.left = "-99999px";
+      proxy.style.top = "0";
+      proxy.style.visibility = "hidden";
+      proxy.style.pointerEvents = "none";
+      proxy.style.width = `${width}px`;
+      proxy.style.margin = "0";
+      proxy.style.padding = "0";
+      proxy.style.border = "0";
+      proxy.style.display = "block";
+      proxy.style.overflow = "visible";
+      proxy.style.whiteSpace = computed.whiteSpace;
+      proxy.style.wordBreak = computed.wordBreak;
+      proxy.style.wordSpacing = computed.wordSpacing;
+      proxy.style.letterSpacing = computed.letterSpacing;
+      proxy.style.hyphens = computed.hyphens;
+      proxy.style.fontSize = computed.fontSize;
+      proxy.style.fontFamily = computed.fontFamily;
+      proxy.style.fontStyle = computed.fontStyle;
+      proxy.style.fontWeight = computed.fontWeight;
+      proxy.style.lineHeight = computed.lineHeight;
 
-      el.parentElement.appendChild(clone);
-      const naturalHeight = clone.getBoundingClientRect().height;
-      clone.remove();
+      document.body.appendChild(proxy);
+      const naturalHeight = proxy.getBoundingClientRect().height;
+      proxy.remove();
 
-      setIsOverviewClamped(naturalHeight > visibleHeight + 1);
+      // Fallback: si scrollHeight dio una señal clara, tambien contamos como clamp.
+      const scrollSignal = el.scrollHeight > el.clientHeight + 1;
+      const clonedSignal = naturalHeight > visibleHeight + 1;
+
+      setIsOverviewClamped(scrollSignal || clonedSignal);
     }
 
     // El `-webkit-line-clamp` recien afecta a `scrollHeight` despues del
@@ -1387,7 +1411,7 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                   tabIndex={isOverviewClamped ? 0 : undefined}
                   aria-expanded={isOverviewClamped ? isOverviewOpen : undefined}
                 >
-                  {(spotlight.overview ?? "").replace(/(?:\.{3,}|…)\s*$/u, "").trim()}
+                  {spotlight.overview}
                 </p>
                 {isOverviewClamped ? (
                   <button
