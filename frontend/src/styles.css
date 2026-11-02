@@ -4470,13 +4470,25 @@ textarea {
     min-height: 0;
   }
 
-  /* Expandida: solo el parrafo scrollea. */
+  /*
+    Expandida: el parrafo toma su alto natural (flex: 0 1 auto). Si el texto
+    es corto, el parrafo mide poco y el "Ver menos" queda pegado al final.
+    Si es largo, flex-shrink + overflow siguen scrolleando dentro del
+    parrafo. Antes con flex: 1 el parrafo crecia a llenar el contenedor y
+    dejaba un hueco entre el final del texto y el "Ver menos".
+  */
   .discover-card__body.is-overview-open .discover-overview p:not(.discover-overview__text--clamped) {
-    flex: 1;
+    flex: 0 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
+  }
+
+  /* Overview expandida tampoco crece: su alto es parrafo + boton, nada mas. */
+  .discover-card__body.is-overview-open .discover-overview {
+    flex: 0 1 auto;
   }
 
   /*
