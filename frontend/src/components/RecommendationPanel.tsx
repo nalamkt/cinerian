@@ -1387,7 +1387,7 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                   tabIndex={isOverviewClamped ? 0 : undefined}
                   aria-expanded={isOverviewClamped ? isOverviewOpen : undefined}
                 >
-                  {spotlight.overview}
+                  {(spotlight.overview ?? "").replace(/(?:\.{3,}|…)\s*$/u, "").trim()}
                 </p>
                 {isOverviewClamped ? (
                   <button
