@@ -666,6 +666,15 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     const rafTwo = window.requestAnimationFrame(() => {
       window.requestAnimationFrame(measure);
     });
+    /*
+      Timeouts defensivos para la PRIMERA tarjeta: el browser puede haber
+      arrancado sin la fuente cargada y los rAF corren antes de que el metric
+      correcto este disponible. Re-medimos a 100, 300 y 600ms para capturar
+      font loading tardio sin impactar performance.
+    */
+    const timeoutOne = window.setTimeout(measure, 100);
+    const timeoutTwo = window.setTimeout(measure, 300);
+    const timeoutThree = window.setTimeout(measure, 600);
     const observer = new ResizeObserver(measure);
     observer.observe(overview);
 
@@ -676,6 +685,9 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     return () => {
       window.cancelAnimationFrame(rafOne);
       window.cancelAnimationFrame(rafTwo);
+      window.clearTimeout(timeoutOne);
+      window.clearTimeout(timeoutTwo);
+      window.clearTimeout(timeoutThree);
       observer.disconnect();
     };
   }, [spotlight, isOverviewOpen]);
