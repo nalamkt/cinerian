@@ -695,7 +695,7 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
       window.clearTimeout(timeoutThree);
       observer.disconnect();
     };
-  }, [spotlight, isOverviewOpen]);
+  }, [spotlight, spotlightDetails, isOverviewOpen, isInitialCardReady]);
 
   /*
     El degradado del fondo insinua que hay mas para scrollear, pero estaba
