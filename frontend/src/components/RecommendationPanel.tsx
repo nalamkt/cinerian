@@ -613,69 +613,50 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     }
 
     /*
-      Deteccion robusta de recorte. Problemas pasados:
-      - scrollHeight no es confiable con -webkit-line-clamp (iOS Safari puede
-        devolver el clientHeight recortado).
-      - Clonar el <p> dentro del parentElement heredaba `flex: 1; overflow:
-        hidden` del contenedor y la medida del clone quedaba limitada por el
-        padre.
+      Deteccion de recorte sincronica, dentro del useLayoutEffect: el browser
+      NO pinta entre el start y el fin del effect, asi que puedo quitar la
+      clase del clamp, medir la altura natural del elemento REAL, y restaurar
+      la clase sin que el usuario vea ningun flash.
 
-      Ahora construyo un elemento proxy off-DOM, le copio los estilos
-      computados que afectan el line-wrap (font, line-height, letter-spacing,
-      word-spacing, white-space, hyphens) y lo meto en el body, lejos de la
-      cascada de flex/overflow del contenedor real. Mido su altura natural
-      ahi y la comparo con la del elemento real.
+      Approaches anteriores fallaron:
+      - scrollHeight > clientHeight: iOS Safari devuelve clientHeight recortado.
+      - Clonar el <p>: heredaba el flex/overflow del padre y la medida era
+        poco confiable.
+      - Proxy off-DOM: no reproducia fielmente el flujo de texto porque los
+        estilos computados no cubren todos los factores de line-wrap.
 
-      Tambien chequeo scrollHeight como fallback: si cualquiera de las dos
-      senales dice "hay recorte", mostramos "Ver mas".
+      Esta version mide el elemento REAL, en su contexto real, sin paint
+      intermedio. Es lo mas fiel al DOM.
     */
+    const CLAMPED_CLASS = "discover-overview__text--clamped";
+
     function measure() {
       const el = overviewRef.current;
       if (!el) {
         return;
       }
 
-      const visibleRect = el.getBoundingClientRect();
-      const visibleHeight = visibleRect.height;
-      const width = visibleRect.width;
-      if (!width || !visibleHeight) {
+      const hadClamp = el.classList.contains(CLAMPED_CLASS);
+      if (!hadClamp) {
+        // Sin clamp no hay recorte posible.
+        setIsOverviewClamped(false);
         return;
       }
 
-      const computed = window.getComputedStyle(el);
-      const proxy = document.createElement("p");
-      proxy.textContent = el.textContent ?? "";
-      proxy.style.position = "absolute";
-      proxy.style.left = "-99999px";
-      proxy.style.top = "0";
-      proxy.style.visibility = "hidden";
-      proxy.style.pointerEvents = "none";
-      proxy.style.width = `${width}px`;
-      proxy.style.margin = "0";
-      proxy.style.padding = "0";
-      proxy.style.border = "0";
-      proxy.style.display = "block";
-      proxy.style.overflow = "visible";
-      proxy.style.whiteSpace = computed.whiteSpace;
-      proxy.style.wordBreak = computed.wordBreak;
-      proxy.style.wordSpacing = computed.wordSpacing;
-      proxy.style.letterSpacing = computed.letterSpacing;
-      proxy.style.hyphens = computed.hyphens;
-      proxy.style.fontSize = computed.fontSize;
-      proxy.style.fontFamily = computed.fontFamily;
-      proxy.style.fontStyle = computed.fontStyle;
-      proxy.style.fontWeight = computed.fontWeight;
-      proxy.style.lineHeight = computed.lineHeight;
+      const clampedHeight = el.getBoundingClientRect().height;
+      if (clampedHeight <= 0) {
+        return;
+      }
 
-      document.body.appendChild(proxy);
-      const naturalHeight = proxy.getBoundingClientRect().height;
-      proxy.remove();
-
-      // Fallback: si scrollHeight dio una señal clara, tambien contamos como clamp.
-      const scrollSignal = el.scrollHeight > el.clientHeight + 1;
-      const clonedSignal = naturalHeight > visibleHeight + 1;
-
-      setIsOverviewClamped(scrollSignal || clonedSignal);
+      try {
+        el.classList.remove(CLAMPED_CLASS);
+        // Forzar reflow sincronico leyendo una propiedad de layout.
+        const naturalHeight = el.getBoundingClientRect().height;
+        setIsOverviewClamped(naturalHeight > clampedHeight + 1);
+      } finally {
+        // Siempre restaurar la clase, incluso si algo falla.
+        el.classList.add(CLAMPED_CLASS);
+      }
     }
 
     // El `-webkit-line-clamp` recien afecta a `scrollHeight` despues del
