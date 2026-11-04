@@ -3077,7 +3077,12 @@ textarea {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 0 4px 2px;
+  /*
+    Alineado con el padding interno de .discover-card (30px): los chips
+    arrancan donde arranca el poster y el boton de filtros termina donde
+    termina la ficha. Mobile lo overridea a un padding mas chico.
+  */
+  padding: 0 30px 2px;
 }
 
 .discover-filterbar__chips {
@@ -4314,6 +4319,7 @@ textarea {
   }
 
   .discover-filterbar {
+    padding: 0 4px 2px;
     justify-content: flex-end;
   }
 
