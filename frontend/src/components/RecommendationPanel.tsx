@@ -1018,17 +1018,15 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
     ? preparedNextPayload.details.genres
     : nextSpotlight?.genres ?? [];
   /*
-    Primero "año · géneros" y despues, en su propia linea, TMDB. La duracion
-    (solo peliculas) se suma a la linea de TMDB — no la mostramos aparte
-    porque no aporta jerarquia propia, pero tampoco la queremos perder.
+    Ficha tecnica unificada: año, generos, duracion y rating en una sola
+    linea. Antes estaba partida en dos — ojo salta entre renglones. El ★
+    antes del rating le da peso sin necesidad del "TMDB".
   */
   const primaryFacts = [
     spotlight?.year || null,
-    ...(genres.length ? [genres.join(" · ")] : [])
-  ].filter((fact): fact is string => Boolean(fact));
-  const scoreFacts = [
-    spotlightDetails?.runtimeLabel,
-    spotlight?.score ? `TMDB ${spotlight.score}` : null
+    ...(genres.length ? [genres.join(" · ")] : []),
+    spotlightDetails?.runtimeLabel || null,
+    spotlight?.score ? `★ ${spotlight.score}` : null
   ].filter((fact): fact is string => Boolean(fact));
 
   const activeFilterCount = countActiveFilters(filters);
@@ -1325,16 +1323,12 @@ export function RecommendationPanel({ userId, onOpenUserProfile }: Recommendatio
                       A <strong>{socialLine.first.displayName}</strong>
                       {socialLine.others} {socialLine.verb}
                     </p>
-                    <span className="discover-circle__label">de tu círculo</span>
                   </div>
                 </div>
               ) : null}
 
               {primaryFacts.length ? (
                 <p className="discover-facts">{primaryFacts.join(" · ")}</p>
-              ) : null}
-              {scoreFacts.length ? (
-                <p className="discover-facts discover-facts--quiet">{scoreFacts.join(" · ")}</p>
               ) : null}
 
               {watchOptions.flatrate.length || watchOptions.hasRentOrBuy ? (

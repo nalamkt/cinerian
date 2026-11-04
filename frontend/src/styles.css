@@ -3963,70 +3963,75 @@ textarea {
   detalle) y un rotulo "de tu circulo" para que quede claro de donde sale la
   recomendacion.
 */
+/*
+  Chip ajustado al contenido: ya no es un bloque full-width.
+  width: max-content + align-self: flex-start para que no estire con el
+  parent (el card__body es flex-column). max-width: 100% como tope para
+  que en mobile angosto el texto trunque con ellipsis en vez de romper
+  el layout.
+*/
 .discover-circle {
   margin-top: 12px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(252, 195, 95, 0.24);
-  background: rgba(252, 195, 95, 0.06);
+  gap: 8px;
+  width: max-content;
+  max-width: 100%;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  padding: 5px 14px 5px 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(252, 195, 95, 0.28);
+  background: rgba(252, 195, 95, 0.08);
 }
 
 .discover-circle__copy {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
   min-width: 0;
 }
 
 .discover-circle__copy p {
   margin: 0;
-  font-size: 0.98rem;
+  font-size: 0.9rem;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .discover-circle__copy strong {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 700;
 }
 
-.discover-circle__label {
-  font-size: 0.76rem;
-  color: var(--muted);
-  letter-spacing: 0.02em;
+/* Avatares mas chicos: el chip es compacto, no un bloque con header. */
+.discover-circle .media-modal__friend-link--avatar,
+.discover-circle .media-modal__friend-avatar {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
 }
 
-/*
-  Mobile: el bloque social se compacta. Padding mas chico, texto en una sola
-  linea cuando entra, y la etiqueta "de tu circulo" se oculta — el borde ambar
-  ya marca la pertenencia al circulo.
-*/
 @media (max-width: 680px) {
   .discover-circle {
-    margin-top: 16px;
-    padding: 9px 12px;
-    gap: 10px;
+    margin-top: 14px;
+    padding: 4px 12px 4px 4px;
+    gap: 7px;
   }
 
   .discover-circle__copy p {
-    font-size: 0.92rem;
+    font-size: 0.86rem;
     line-height: 1.3;
-  }
-
-  .discover-circle__label {
-    display: none;
   }
 
   .discover-circle .media-modal__friend-link--avatar,
   .discover-circle .media-modal__friend-avatar {
-    width: 34px;
-    height: 34px;
-    flex-basis: 34px;
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
   }
   .discover-circle .media-modal__friend-link--avatar {
-    margin-left: -8px;
+    margin-left: -6px;
   }
   .discover-circle .media-modal__friend-link--avatar:first-child {
     margin-left: 0;
@@ -4035,15 +4040,8 @@ textarea {
 
 .discover-facts {
   margin: 12px 0 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.discover-facts--quiet {
-  margin-top: 3px;
+  font-size: 0.95rem;
   font-weight: 500;
-  font-size: 0.92rem;
   color: var(--muted);
 }
 
@@ -4204,13 +4202,39 @@ textarea {
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+  /*
+    La vuelta al estado normal tiene un pequeño delay — esto hace que el
+    feedback de :active sea perceptible incluso en un click rapido (sino se
+    dispararia y se iria en menos de 100ms, invisible al ojo).
+  */
+  transition: transform 220ms ease 60ms, border-color 220ms ease 60ms, background 220ms ease 60ms;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .discover-action__button:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: rgba(255, 255, 255, 0.4);
   background: rgba(255, 255, 255, 0.05);
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+/*
+  Feedback sutil al apretar: el boton se achica un cachito y el fondo se
+  aclara. Nada de halos ni colores — solo confirma que el toque registro.
+  La transicion de ida es rapida (80ms); la vuelta usa la del estado base,
+  que tiene delay, para que el eco quede visible.
+*/
+.discover-action__button:active:not(:disabled) {
+  transform: scale(0.94);
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.36);
+  transition: transform 80ms ease, background 80ms ease, border-color 80ms ease;
+}
+
+.discover-action__button--primary:active:not(:disabled) {
+  transform: scale(0.94);
+  background: rgba(252, 195, 95, 0.12);
+  border-color: var(--accent);
 }
 
 /*
@@ -4568,12 +4592,6 @@ textarea {
     color: var(--muted);
   }
 
-  /* La duracion y la nota de TMDB compiten con nuestro propio ranking en una
-     pantalla chica; la sinopsis se conserva debajo, plegada a tres lineas. */
-  .discover-facts--quiet {
-    display: none;
-  }
-
   /*
     Flex column: el parrafo arriba, "Ver mas/menos" debajo. En plegado tiene
     alto natural (line-clamp dinamico); en expandido el parrafo gana flex:1 y
@@ -4722,7 +4740,6 @@ textarea {
     gap: 10px;
     align-items: center;
     justify-content: stretch;
-    background: rgba(255, 255, 255, 0.015);
   }
 
   /* La tarjeta que aparece debajo tiene que reservar la fila de acciones,
