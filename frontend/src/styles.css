@@ -3682,8 +3682,11 @@ textarea {
 
 /*
   El stack ocupa todo el alto disponible del .discover (que a su vez es 100vh
-  - padding). flex: 1 + min-height: 0 lo hacen flex-shrinkeable; display:flex
-  centra la card interior sin que se escape por abajo.
+  - padding). flex: 1 + min-height: 0 lo hacen flex-shrinkeable. Sin
+  align-self: stretch — con ese estilo el stack crecia al ancho del padre y
+  en monitores grandes salia de los 1220px, desalineandose de la filterbar.
+  El width: min(100%, 1220px) + el align-items: center del .discover lo
+  centran al ancho correcto.
 */
 .discover-card-stack {
   width: min(100%, 1220px);
@@ -3691,7 +3694,6 @@ textarea {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  align-self: stretch;
 }
 
 .discover-card-stack > .discover-card {
