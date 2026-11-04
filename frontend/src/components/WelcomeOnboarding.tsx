@@ -48,32 +48,37 @@ export function WelcomeOnboarding({ profile, onComplete }: WelcomeOnboardingProp
     };
   }, [profile.id]);
 
+  /*
+    Solo filtra: el orden es el del catalogo, que getProviderCatalog ya devuelve
+    por display_priority de TMDB, o sea por popularidad en la region. Antes esto
+    reordenaba para subir las elegidas al tope, y eso movia la lista bajo el
+    dedo justo cuando la persona estaba tocando.
+  */
   const visibleProviders = useMemo(() => {
     const query = normalizeForSearch(providerQuery.trim());
-    const matchingProviders = query
-      ? providers.filter((provider) => normalizeForSearch(provider.name).includes(query))
-      : providers;
+    if (!query) {
+      return providers;
+    }
 
-    // Selected services stay together at the top, newest selection first.
-    return [...matchingProviders].sort((left, right) => {
-      const leftIndex = providerIds.indexOf(left.id);
-      const rightIndex = providerIds.indexOf(right.id);
-      const leftSelected = leftIndex !== -1;
-      const rightSelected = rightIndex !== -1;
+    return providers.filter((provider) => normalizeForSearch(provider.name).includes(query));
+  }, [providerQuery, providers]);
 
-      if (leftSelected !== rightSelected) {
-        return leftSelected ? -1 : 1;
-      }
-
-      return leftSelected ? leftIndex - rightIndex : 0;
-    });
-  }, [providerIds, providerQuery, providers]);
+  /* Lo elegido, en el orden en que se fue eligiendo, para la fila de arriba. */
+  const selectedProviders = useMemo(
+    () =>
+      providerIds
+        .map((id) => providers.find((provider) => provider.id === id))
+        .filter((provider): provider is ProviderOption => Boolean(provider)),
+    [providerIds, providers]
+  );
 
   function toggleProvider(providerId: number) {
     setProviderIds((current) =>
       current.includes(providerId)
         ? current.filter((entry) => entry !== providerId)
-        : [providerId, ...current]
+        : // Al final y no al principio: en la fila de arriba, lo que ya estaba
+          // elegido se queda donde esta en vez de correrse un lugar.
+          [...current, providerId]
     );
   }
 
@@ -103,6 +108,47 @@ export function WelcomeOnboarding({ profile, onComplete }: WelcomeOnboardingProp
           <p className="welcome-onboarding__intro">
             Elegí tus servicios para mostrarte contenido disponible en ellos.
           </p>
+          {/*
+            El resumen que antes intentaba dar el reordenamiento, pero sin mover
+            nada: los logos de lo elegido en una fila fija. Tocar uno lo saca.
+          */}
+          <div className="welcome-onboarding__picked">
+            <div className="welcome-onboarding__picked-head">
+              <span>Tus plataformas</span>
+              <span>
+                {selectedProviders.length === 0
+                  ? "ninguna todavía"
+                  : selectedProviders.length === 1
+                    ? "1 elegida"
+                    : `${selectedProviders.length} elegidas`}
+              </span>
+            </div>
+            <div className="welcome-onboarding__picked-row">
+              {selectedProviders.length === 0 ? (
+                <p className="welcome-onboarding__picked-empty">
+                  Tocá las que uses y van a aparecer acá.
+                </p>
+              ) : (
+                selectedProviders.map((provider) => (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    className="welcome-onboarding__chip"
+                    onClick={() => toggleProvider(provider.id)}
+                    aria-label={`Sacar ${provider.name}`}
+                    title={`Sacar ${provider.name}`}
+                  >
+                    {provider.logoUrl ? (
+                      <img src={provider.logoUrl} alt="" />
+                    ) : (
+                      <span className="welcome-onboarding__provider-logo" />
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
           <label className="welcome-onboarding__search">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="11" cy="11" r="6.5" />

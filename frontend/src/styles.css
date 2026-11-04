@@ -2801,6 +2801,100 @@ textarea {
   font: inherit;
 }
 
+/*
+  La fila de plataformas elegidas. Reemplaza al reordenamiento: muestra de un
+  vistazo lo que se lleva marcado sin que la lista de abajo se mueva.
+*/
+.welcome-onboarding__picked {
+  display: grid;
+  gap: 9px;
+  padding: 13px 14px;
+  border: 1px solid rgba(252, 195, 95, 0.22);
+  border-radius: var(--radius-sm);
+  background: rgba(252, 195, 95, 0.05);
+}
+
+.welcome-onboarding__picked-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.welcome-onboarding__picked-head span:last-child {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.welcome-onboarding__picked-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  /* Reserva el alto de una fila de chips: sin esto el bloque salta de alto
+     cuando entra la primera plataforma. */
+  min-height: 38px;
+}
+
+.welcome-onboarding__picked-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.welcome-onboarding__chip {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.welcome-onboarding__chip img,
+.welcome-onboarding__chip .welcome-onboarding__provider-logo {
+  width: 100%;
+  height: 100%;
+  border-radius: 11px;
+  object-fit: cover;
+  display: block;
+}
+
+/* La cruz de sacar va afuera del logo, para no taparlo. */
+.welcome-onboarding__chip::after {
+  content: "\00d7";
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(246, 241, 232, 0.22);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 15px;
+}
+
+.welcome-onboarding__chip:hover::after {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #15181d;
+}
+
 .welcome-onboarding__providers {
   display: grid;
   gap: 10px;
