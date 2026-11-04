@@ -3675,12 +3675,25 @@ textarea {
   backdrop-filter: none;
 }
 
+/*
+  El stack ocupa todo el alto disponible del .discover (que a su vez es 100vh
+  - padding). flex: 1 + min-height: 0 lo hacen flex-shrinkeable; display:flex
+  centra la card interior sin que se escape por abajo.
+*/
 .discover-card-stack {
   width: min(100%, 1220px);
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
 }
 
 .discover-card-stack > .discover-card {
   width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
 }
 
 /* En escritorio solo se muestra la ficha actual. El mazo se revela en mobile,
@@ -13324,5 +13337,122 @@ textarea {
 
   body:has(.media-modal__trailer iframe:fullscreen) .orientation-guard {
     display: none;
+  }
+}
+
+/* ---------- Aviso: un amigo se sumo con tu invitacion ---------- */
+
+.invite-joins {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.invite-join {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(252, 195, 95, 0.28);
+  background: rgba(252, 195, 95, 0.08);
+}
+
+.invite-join__avatar {
+  width: 44px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.invite-join__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.invite-join__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.invite-join__title,
+.invite-join__meta {
+  margin: 0;
+}
+
+.invite-join__title {
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.invite-join__meta {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.invite-join__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.invite-join__follow {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 0;
+  background: linear-gradient(135deg, var(--accent), #ffd66a);
+  color: #201507;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.invite-join__dismiss {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.invite-join__dismiss:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+@media (max-width: 680px) {
+  .invite-join {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .invite-join__avatar {
+    width: 38px;
+  }
+
+  /* Los botones bajan a su propia fila: al costado dejaban el texto en una
+     columna de ~90px. */
+  .invite-join__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .invite-join__follow {
+    flex: 1;
   }
 }
