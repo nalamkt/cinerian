@@ -280,7 +280,11 @@ export function TalentDetailsModal({
       return;
     }
 
+    // En el buscador este modal se monta local (no via detailStack), asi que
+    // openMediaDetails abre la pelicula POR DEBAJO y el talento queda tapando.
+    // Cerramos el talento para que la ficha de la pelicula pase al frente.
     openMediaDetails(media);
+    onClose();
   }
 
   const modal = (
