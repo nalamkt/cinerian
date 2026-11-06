@@ -8,6 +8,10 @@ viajan al navegador.
 
 - Una recomendación nueva o respuesta en Inbox se entrega en el momento.
 - Una serie en `Viendo` avisa cuando TMDB cambia su estado o próximo episodio.
+- Si TMDB marca un episodio para hoy en Argentina, avisa ese mismo día con la
+  temporada y el número de capítulo. También comprueba el último episodio
+  emitido por si TMDB ya avanzó al siguiente. Cada estreno se envía una sola
+  vez por usuario y episodio.
 - `Mi Ranking` resume la primera variación concreta del día y cuenta cambios extra.
 - Después de cinco días sin abrir Cinerian, se envía una sola invitación si el
   círculo marcó títulos mientras la persona estuvo ausente.
@@ -51,8 +55,9 @@ todos los días a las `13:00 UTC` (10:00 en Argentina). Vercel protege la
 invocación con `Authorization: Bearer $CRON_SECRET`.
 
 En Vercel Hobby el cron es diario y puede ejecutarse durante la hora elegida;
-los avisos de series, ranking e inactividad son deliberadamente resúmenes
-diarios. Los mensajes de Inbox no esperan al cron.
+el aviso de estreno llega en esa corrida, no a la hora exacta de emisión. Si
+una serie se agrega a `Viendo` después de la corrida, el aviso de ese día no
+se recupera. Los mensajes de Inbox no esperan al cron.
 
 ## Prueba de punta a punta
 

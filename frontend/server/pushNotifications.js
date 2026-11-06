@@ -154,6 +154,16 @@ export async function selectRows(config, table, params) {
   return Array.isArray(result) ? result : [];
 }
 
+async function selectAllRows(config, table, params) {
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await selectRows(config, table, { ...params, limit: pageSize, offset });
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}
+
 export async function selectSingleById(config, table, id, select) {
   const rows = await selectRows(config, table, {
     select,
@@ -281,6 +291,38 @@ function seriesStateFromTmdb(tmdbId, payload) {
   };
 }
 
+function argentinaDate(now) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(now);
+  const value = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+export function episodesAiringToday(payload, now = new Date()) {
+  const today = argentinaDate(now);
+  const seen = new Set();
+  return [payload?.next_episode_to_air, payload?.last_episode_to_air]
+    .filter((episode) => episode && episode.air_date === today)
+    .map((episode) => ({
+      id: Number(episode.id),
+      seasonNumber: Number(episode.season_number),
+      episodeNumber: Number(episode.episode_number),
+      name: typeof episode.name === "string" ? episode.name : null,
+      airDate: today
+    }))
+    .filter((episode) => Number.isInteger(episode.seasonNumber) && Number.isInteger(episode.episodeNumber))
+    .filter((episode) => {
+      const key = `${episode.seasonNumber}:${episode.episodeNumber}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 async function fetchTmdbItem(config, tmdbId, mediaType) {
   if (!config.tmdbApiKey) {
     return null;
@@ -336,42 +378,48 @@ function seriesUpdateCopy(previous, current) {
     : "Cambió el estado de esta serie.";
 }
 
-export async function syncSeriesNotifications(config) {
+export async function syncSeriesNotifications(config, now = new Date()) {
   const [profiles, previousStates] = await Promise.all([
-    selectRows(config, "profiles", { select: "id,current_watching" }),
-    selectRows(config, "series_notification_states", {
-      select: "user_id,tmdb_show_id,title,status,next_episode_id,next_episode_name,next_episode_date,next_season_number,next_episode_number,fingerprint"
+    selectAllRows(config, "profiles", { select: "id,current_watching", order: "id.asc" }),
+    selectAllRows(config, "series_notification_states", {
+      select: "user_id,tmdb_show_id,title,status,next_episode_id,next_episode_name,next_episode_date,next_season_number,next_episode_number,fingerprint",
+      order: "user_id.asc,tmdb_show_id.asc"
     })
   ]);
   const watchedByUser = profiles.flatMap((profile) => {
     const currentWatching = Array.isArray(profile.current_watching) ? profile.current_watching : [];
     return currentWatching
       .map((entry) => Number(entry?.tmdbId))
-      .filter(Number.isFinite)
+      .filter((tmdbId) => Number.isInteger(tmdbId) && tmdbId > 0)
       .map((tmdbId) => ({ userId: profile.id, tmdbId }));
   });
   const uniqueIds = [...new Set(watchedByUser.map((entry) => entry.tmdbId))];
   const tmdbEntries = await mapWithConcurrency(uniqueIds, async (tmdbId) => {
     const payload = await fetchTmdbItem(config, tmdbId, "tv");
-    return payload ? seriesStateFromTmdb(tmdbId, payload) : null;
+    return payload ? {
+      state: seriesStateFromTmdb(tmdbId, payload),
+      todayEpisodes: episodesAiringToday(payload, now)
+    } : null;
   });
   const stateByShowId = new Map(
-    tmdbEntries.filter(Boolean).map((entry) => [entry.tmdb_show_id, entry])
+    tmdbEntries.filter(Boolean).map((entry) => [entry.state.tmdb_show_id, entry])
   );
   const previousByUserShow = new Map(
     previousStates.map((entry) => [`${entry.user_id}:${entry.tmdb_show_id}`, entry])
   );
   let sent = 0;
   let changed = 0;
+  let releasedToday = 0;
 
   for (const watched of watchedByUser) {
-    const current = stateByShowId.get(watched.tmdbId);
-    if (!current) {
+    const show = stateByShowId.get(watched.tmdbId);
+    if (!show) {
       continue;
     }
+    const { state: current, todayEpisodes } = show;
 
     const previous = previousByUserShow.get(`${watched.userId}:${watched.tmdbId}`);
-    if (previous && previous.fingerprint !== current.fingerprint) {
+    if (previous && previous.fingerprint !== current.fingerprint && !todayEpisodes.length) {
       changed += 1;
       const result = await deliverPush(config, {
         recipientUserId: watched.userId,
@@ -387,6 +435,29 @@ export async function syncSeriesNotifications(config) {
       }
     }
 
+    for (const episode of todayEpisodes) {
+      const episodeCode = `T${episode.seasonNumber}E${episode.episodeNumber}`;
+      const result = await deliverPush(config, {
+        recipientUserId: watched.userId,
+        eventKey: `series-release:${watched.userId}:${watched.tmdbId}:${episodeCode}:${episode.airDate}`,
+        notificationType: "series_update",
+        title: "Nuevo capítulo hoy",
+        body: truncate(`Hoy se estrena el capítulo ${episodeCode} de ${current.title}${episode.name ? `: ${episode.name}` : ""}.`, 180),
+        targetPath: "/?view=user&tab=watching",
+        metadata: {
+          type: "episode_release",
+          tmdbId: watched.tmdbId,
+          mediaType: "tv",
+          seasonNumber: episode.seasonNumber,
+          episodeNumber: episode.episodeNumber
+        }
+      });
+      if (result.status === "sent") {
+        sent += 1;
+        releasedToday += 1;
+      }
+    }
+
     await supabaseRest(
       config,
       restPath("series_notification_states", { on_conflict: "user_id,tmdb_show_id" }),
@@ -398,7 +469,7 @@ export async function syncSeriesNotifications(config) {
     );
   }
 
-  return { watched: watchedByUser.length, changed, sent };
+  return { watched: watchedByUser.length, changed, releasedToday, sent };
 }
 
 function rankingEntriesForUser(followingIds, reactions) {

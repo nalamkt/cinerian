@@ -813,88 +813,6 @@ function normalizeCredit(item: Record<string, unknown>): TalentCredit | null {
   };
 }
 
-function creditNumber(item: Record<string, unknown>, key: string): number {
-  const value = item[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-function optionalCreditNumber(item: Record<string, unknown>, key: string): number | null {
-  const value = item[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function creditEpisodeCount(item: Record<string, unknown>): number {
-  return creditNumber(item, "episode_count") || creditNumber(item, "total_episode_count");
-}
-
-function isMarginalTalentAppearance(item: Record<string, unknown>): boolean {
-  const role = typeof item.character === "string" ? item.character.trim().toLowerCase() : "";
-  if (!role) {
-    return false;
-  }
-
-  const isGuest = /\b(guest|guest star|special guest|invitad[oa]|aparici[oó]n especial|cameo)\b/i.test(role);
-  if (isGuest) {
-    return true;
-  }
-
-  // "Self" es una participacion puntual salvo que la recurrencia deje claro
-  // que es el rol principal del programa (por ejemplo, su conductor/a).
-  const isSelfAppearance = /\b(self|himself|herself|themselves|mismo|misma)\b/i.test(role);
-  return isSelfAppearance && creditEpisodeCount(item) <= 3;
-}
-
-function creditProminence(item: Record<string, unknown>): number {
-  const billingOrder = optionalCreditNumber(item, "order");
-  const billingScore = billingOrder === null ? 0 : Math.max(0, 60 - Math.min(billingOrder, 60));
-  const episodeScore = Math.min(Math.log2(creditEpisodeCount(item) + 1) * 9, 54);
-  return billingScore + episodeScore;
-}
-
-function creditReleaseDate(item: Record<string, unknown>): number {
-  const date =
-    typeof item.release_date === "string"
-      ? item.release_date
-      : typeof item.first_air_date === "string"
-        ? item.first_air_date
-        : "";
-  const timestamp = Date.parse(date);
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function sortTalentCreditsByRelevance(
-  credits: Record<string, unknown>[]
-): Record<string, unknown>[] {
-  return [...credits].sort((left, right) => {
-    const marginalDifference = Number(isMarginalTalentAppearance(left)) - Number(isMarginalTalentAppearance(right));
-    if (marginalDifference !== 0) {
-      return marginalDifference;
-    }
-
-    const prominenceDifference = creditProminence(right) - creditProminence(left);
-    if (prominenceDifference !== 0) {
-      return prominenceDifference;
-    }
-
-    const popularityDifference = creditNumber(right, "popularity") - creditNumber(left, "popularity");
-    if (popularityDifference !== 0) {
-      return popularityDifference;
-    }
-
-    const ratingDifference = creditNumber(right, "vote_average") - creditNumber(left, "vote_average");
-    if (ratingDifference !== 0) {
-      return ratingDifference;
-    }
-
-    const voteCountDifference = creditNumber(right, "vote_count") - creditNumber(left, "vote_count");
-    if (voteCountDifference !== 0) {
-      return voteCountDifference;
-    }
-
-    return creditReleaseDate(right) - creditReleaseDate(left);
-  });
-}
-
 function uniqueTalentCredits(credits: TalentCredit[]): TalentCredit[] {
   const seen = new Set<string>();
 
@@ -1734,8 +1652,31 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
   const providersPayload = providersResponse.ok ? ((await providersResponse.json()) as Record<string, unknown>) : {};
   const item = normalizeItem({ ...payload, media_type: mediaType });
   const watchOptions = getWatchOptions(providersPayload, item.title);
-  const standardCast =
+  let standardCast =
     (payload.credits as { cast?: Array<Record<string, unknown>> } | undefined)?.cast ?? [];
+  if (mediaType === "movie" && !standardCast.length) {
+    const creditsUrl = new URL(`${baseUrl}/movie/${tmdbId}/credits`);
+    creditsUrl.searchParams.set("api_key", apiKey);
+    creditsUrl.searchParams.set("language", "es-MX");
+    try {
+      const creditsResponse = await fetch(creditsUrl.toString());
+      if (creditsResponse.ok) {
+        const credits = (await creditsResponse.json()) as {
+          cast?: Array<Record<string, unknown>>;
+          crew?: Array<Record<string, unknown>>;
+        };
+        standardCast = credits.cast ?? [];
+        const existingCredits = (payload.credits as Record<string, unknown> | undefined) ?? {};
+        payload.credits = {
+          ...existingCredits,
+          ...(credits.cast ? { cast: credits.cast } : {}),
+          ...(credits.crew ? { crew: credits.crew } : {})
+        };
+      }
+    } catch {
+      // La ficha sigue disponible; el reparto vacio muestra como reintentar.
+    }
+  }
   const cast = buildCastList(mediaType === "movie" ? standardCast.slice(0, 40) : standardCast);
   const collectionId =
     mediaType === "movie" &&
@@ -1955,8 +1896,17 @@ export async function getSeriesAiringInfo(tmdbId: number): Promise<SeriesAiringI
         ? `${nextEpisodeName ?? "Próximo episodio"} · ${formatDate(nextEpisodeDate)}`
         : null;
 
+  const statusLabels: Record<string, string> = {
+    "Returning Series": "En emisión",
+    Ended: "Finalizada",
+    Canceled: "Cancelada",
+    "In Production": "En producción",
+    Planned: "Planificada",
+    Pilot: "Piloto"
+  };
+
   return {
-    statusLabel: typeof payload.status === "string" ? payload.status : null,
+    statusLabel: typeof payload.status === "string" ? statusLabels[payload.status] ?? payload.status : null,
     nextEpisodeLabel,
     nextEpisodeDate,
     nextEpisodeDayLabel: nextEpisodeDate ? formatWeekday(nextEpisodeDate) : null
@@ -2035,17 +1985,14 @@ export async function getTalentDetails(personId: number): Promise<TalentDetails 
   } | undefined) ?? { cast: [], crew: [] };
 
   const actingCredits = uniqueTalentCredits(
-    sortTalentCreditsByRelevance(combinedCredits.cast ?? [])
+    (combinedCredits.cast ?? [])
       .map((item) => normalizeCredit(item))
       .filter((item): item is TalentCredit => Boolean(item))
   );
 
   const directingCredits = uniqueTalentCredits(
-    sortTalentCreditsByRelevance(
-      (combinedCredits.crew ?? []).filter(
-        (item) => item.job === "Director" || item.department === "Directing"
-      )
-    )
+    (combinedCredits.crew ?? [])
+      .filter((item) => item.job === "Director" || item.department === "Directing")
       .map((item) => normalizeCredit(item))
       .filter((item): item is TalentCredit => Boolean(item))
   );

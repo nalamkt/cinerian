@@ -507,7 +507,7 @@ export function MediaDetailsSheet({
     }
     const hasSeasonalCast =
       details.mediaType === "tv" && details.seasons.some((season) => season.seasonNumber > 0);
-    if (!details.cast.length && !hasSeasonalCast && crewList.length) {
+    if (details.mediaType !== "movie" && !details.cast.length && !hasSeasonalCast && crewList.length) {
       setCreditsTab("crew");
     } else {
       setCreditsTab("cast");
@@ -616,7 +616,7 @@ export function MediaDetailsSheet({
       ? seasonCast ?? []
       : details?.cast ?? [];
   const hasCast = Boolean(
-    details && (details.mediaType === "tv" ? tvCastSeasons.length || details.cast.length : details.cast.length)
+    details && (details.mediaType === "tv" ? tvCastSeasons.length || details.cast.length : true)
   );
 
   if (!item) {
@@ -1057,7 +1057,9 @@ export function MediaDetailsSheet({
                     ))
                   ) : (
                     <div className="media-modal__cast-empty">
-                      {hasSeasonCastFailed
+                      {details.mediaType === "movie"
+                        ? "Ocurrió un error al cargar el reparto. Cerrá la app y volvé a abrirla para intentarlo de nuevo."
+                        : hasSeasonCastFailed
                         ? "No pudimos cargar el reparto de esta temporada."
                         : "No hay reparto cargado para esta temporada."}
                     </div>
