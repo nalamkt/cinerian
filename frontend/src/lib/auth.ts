@@ -566,6 +566,25 @@ export async function updateProfile(input: UpdateProfileInput): Promise<Profile>
   return normalizeProfileRow(data);
 }
 
+export async function saveCurrentWatchingEntries(userId: string, entries: CurrentWatchingEntry[]): Promise<Profile> {
+  if (!supabase) {
+    throw new Error("Supabase no esta configurado.");
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({ current_watching: entries })
+    .eq("id", userId)
+    .select(PROFILE_SELECT)
+    .single<ProfileRow>();
+
+  if (error || !data) {
+    throw error ?? new Error("No pude actualizar las series que estás viendo.");
+  }
+
+  return normalizeProfileRow(data);
+}
+
 export async function getProfileById(userId: string): Promise<Profile | null> {
   return selectProfileById(userId);
 }

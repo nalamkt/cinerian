@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   GENDER_OPTIONS,
   signOut,
@@ -13,6 +13,7 @@ type EditProfileFormProps = {
   profile: Profile;
   onCancel: () => void;
   onSaved: (profile: Profile) => void;
+  focusNotifications?: boolean;
 };
 
 type FormState = {
@@ -34,7 +35,8 @@ function normalizeUsername(value: string) {
     .slice(0, 24);
 }
 
-export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormProps) {
+export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications = false }: EditProfileFormProps) {
+  const notificationsRef = useRef<HTMLDivElement | null>(null);
   const [form, setForm] = useState<FormState>({
     displayName: profile.display_name,
     username: profile.username,
@@ -46,6 +48,18 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!focusNotifications) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      notificationsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+      notificationsRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusNotifications]);
 
   function updateField<Key extends keyof FormState>(key: Key, value: FormState[Key]) {
     setForm((current) => ({
@@ -257,7 +271,7 @@ export function EditProfileForm({ profile, onCancel, onSaved }: EditProfileFormP
         </div>
       </div>
 
-      <div className="profile-editor__section">
+      <div className="profile-editor__section" ref={notificationsRef} tabIndex={-1}>
         <div className="profile-editor__section-copy">
           <div className="profile-editor__section-title">
             <span className="profile-editor__section-number">4</span>

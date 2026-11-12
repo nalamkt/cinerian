@@ -7,7 +7,7 @@ import {
   type CurrentWatchingEntry,
   type Profile,
   type ProfileVisibilitySettings,
-  updateProfile
+  saveCurrentWatchingEntries
 } from "../lib/auth";
 import { deleteFeedPost, fetchUserTextPosts, updateFeedPost } from "../lib/feed";
 import {
@@ -38,6 +38,7 @@ type ProfileTabsProps = {
   profile?: Profile | null;
   visibilitySettings?: ProfileVisibilitySettings;
   onProfileUpdated?: (profile: Profile) => void;
+  tabRequest?: { tab: "watching"; key: number } | null;
 };
 
 type TabId = "watched" | "watchlist" | "mutual-likes" | "watching" | "posts" | "ranking";
@@ -188,10 +189,12 @@ export function ProfileTabs({
   isOwnProfile = true,
   profile = null,
   visibilitySettings,
-  onProfileUpdated
+  onProfileUpdated,
+  tabRequest
 }: ProfileTabsProps) {
   const { openMediaDetails } = useMediaDetails();
   const [activeTab, setActiveTab] = useState<TabId>(requestedProfileTab);
+  const tabsRef = useRef<HTMLElement | null>(null);
   const [reactions, setReactions] = useState<StoredReaction[]>([]);
   const [viewerReactions, setViewerReactions] = useState<StoredReaction[]>([]);
   const [titles, setTitles] = useState<Record<string, DiscoveryItem>>({});
@@ -201,6 +204,13 @@ export function ProfileTabs({
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [watchingEntries, setWatchingEntries] = useState<CurrentWatchingEntry[]>([]);
   const [watchingItems, setWatchingItems] = useState<WatchingItem[]>([]);
+  const [showMutualHint, setShowMutualHint] = useState(() => {
+    try {
+      return !window.localStorage.getItem(`cinerian:mutual-hint-seen:${viewerUserId}`);
+    } catch {
+      return true;
+    }
+  });
   const [watchingQuery, setWatchingQuery] = useState("");
   const [watchingResults, setWatchingResults] = useState<DiscoveryItem[]>([]);
   const [isWatchingSearchOpen, setIsWatchingSearchOpen] = useState(false);
@@ -211,6 +221,28 @@ export function ProfileTabs({
   useEffect(() => {
     setWatchingEntries(profile?.current_watching ?? []);
   }, [profile]);
+
+  useEffect(() => {
+    if (tabRequest?.tab === "watching") {
+      setActiveTab("watching");
+      const frame = window.requestAnimationFrame(() => {
+        tabsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+        tabsRef.current?.querySelector<HTMLButtonElement>('[data-profile-tab="watching"]')?.focus({ preventScroll: true });
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+  }, [tabRequest]);
+
+  function dismissMutualHint() {
+    setShowMutualHint(false);
+    if (viewerUserId) {
+      try {
+        window.localStorage.setItem(`cinerian:mutual-hint-seen:${viewerUserId}`, "1");
+      } catch {
+        // El acceso a En común sigue disponible aunque localStorage esté bloqueado.
+      }
+    }
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -368,14 +400,20 @@ export function ProfileTabs({
     const tabs: TabId[] = [];
 
     if (visibilitySettings?.showWatchlist !== false) {
-      tabs.push("watched", "watchlist");
+      tabs.push("watched");
+
+      if (isOwnProfile) {
+        tabs.push("watching");
+      }
+
+      tabs.push("watchlist");
 
       if (!isOwnProfile && viewerUserId) {
         tabs.push("mutual-likes");
       }
     }
 
-    if (isOwnProfile) {
+    if (isOwnProfile && visibilitySettings?.showWatchlist === false) {
       tabs.push("watching");
     }
 
@@ -767,20 +805,7 @@ export function ProfileTabs({
     try {
       setIsSyncing(true);
       setSyncMessage(null);
-      const nextProfile = await updateProfile({
-        userId: profile.id,
-        displayName: profile.display_name,
-        username: profile.username,
-        bio: profile.bio ?? "",
-        avatarUrl: profile.avatar_url ?? "",
-        bannerUrl: profile.banner_url ?? "",
-        gender: profile.gender,
-        birthDate: profile.birth_date,
-        favoriteTitles: profile.favorite_titles,
-        featuredCollections: profile.featured_collections,
-        currentWatching: nextEntries,
-        visibilitySettings: profile.visibility_settings
-      });
+      const nextProfile = await saveCurrentWatchingEntries(profile.id, nextEntries);
       onProfileUpdated(nextProfile);
       setWatchingEntries(nextEntries);
     } catch {
@@ -818,7 +843,18 @@ export function ProfileTabs({
   }
 
   return (
-    <section className="profile-tabs">
+    <section className="profile-tabs" ref={tabsRef}>
+      {!isOwnProfile && visibleTabs.includes("mutual-likes") && showMutualHint && activeTab !== "mutual-likes" ? (
+        <div className="profile-tabs__discovery-hint">
+          <p>¿Qué tienen en común? Compará las favoritas que ambos valoraron positivamente y los títulos que guardaron en Watchlist.</p>
+          <button type="button" onClick={() => { setActiveTab("mutual-likes"); dismissMutualHint(); }}>
+            Ver en común <span aria-hidden="true">→</span>
+          </button>
+          <button type="button" className="profile-tabs__discovery-dismiss" onClick={dismissMutualHint} aria-label="Ocultar sugerencia sobre En común">
+            ×
+          </button>
+        </div>
+      ) : null}
       <div className="profile-tabs__switcher">
         {visibleTabs.map((tab) => {
           const isComingSoon = tab === "posts";
@@ -834,7 +870,13 @@ export function ProfileTabs({
                 className={`profile-tabs__switch ${activeTab === tab ? "is-active" : ""} ${
                   isComingSoon ? "is-disabled" : ""
                 }`}
-                onClick={() => setActiveTab(tab)}
+                data-profile-tab={tab}
+                onClick={() => {
+                  setActiveTab(tab);
+                  if (tab === "mutual-likes") {
+                    dismissMutualHint();
+                  }
+                }}
                 disabled={isComingSoon}
                 aria-label={isComingSoon ? "Posts: Próximamente" : undefined}
               >
@@ -975,7 +1017,7 @@ export function ProfileTabs({
             </div>
           ) : (
             <div className="profile-grid__empty">
-              Todavía no cargaste series en Viendo. Sumá una desde el buscador para arrancar.
+              <strong>Seguí tus series en un solo lugar.</strong> Agregá la que estás mirando para consultar su próximo episodio cuando TMDB tenga la fecha. También podés sumarla desde su ficha.
             </div>
           )}
         </div>

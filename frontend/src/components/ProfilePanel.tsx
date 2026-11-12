@@ -4,6 +4,7 @@ import { listProfiles, type Profile } from "../lib/auth";
 import { fetchFollowerCount, fetchFollowerUserIds, fetchFollowingUserIds } from "../lib/follows";
 import { fetchStoredReactions, isRatedReaction, REACTIONS_UPDATED_EVENT } from "../lib/reactions";
 import { EditProfileForm } from "./EditProfileForm";
+import { DiscoverCinerianHelp } from "./DiscoverCinerianHelp";
 import { ProfileTabs } from "./ProfileTabs";
 
 type ProfilePanelProps = {
@@ -19,6 +20,7 @@ type ProfilePanelProps = {
   readOnly?: boolean;
   onProfileUpdated?: (profile: Profile) => void;
   onOpenUserProfile?: (profile: { userId: string; username?: string }) => void;
+  onNavigateToSearch?: () => void;
 };
 
 export function ProfilePanel({
@@ -32,7 +34,8 @@ export function ProfilePanel({
   headerAction,
   readOnly = false,
   onProfileUpdated,
-  onOpenUserProfile
+  onOpenUserProfile,
+  onNavigateToSearch
 }: ProfilePanelProps) {
   const displayName = profile?.display_name ?? "Cineriano activo";
   const username = profile?.username ?? "cargando";
@@ -42,6 +45,8 @@ export function ProfilePanel({
   const visibilitySettings = profile?.visibility_settings;
   const [stats, setStats] = useState({ likes: 0, watched: 0, followers: 0, following: 0 });
   const [isEditing, setIsEditing] = useState(false);
+  const [focusNotificationSettings, setFocusNotificationSettings] = useState(false);
+  const [tabRequest, setTabRequest] = useState<{ tab: "watching"; key: number } | null>(null);
   const [followerProfiles, setFollowerProfiles] = useState<Profile[]>([]);
   const [followingProfiles, setFollowingProfiles] = useState<Profile[]>([]);
   const [peoplePopupTab, setPeoplePopupTab] = useState<"followers" | "following" | null>(null);
@@ -170,7 +175,7 @@ export function ProfilePanel({
                 <button
                   type="button"
                   className="profile-share-button"
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => { setFocusNotificationSettings(false); setIsEditing(true); }}
                 >
                   Editar perfil
                 </button>
@@ -316,6 +321,7 @@ export function ProfilePanel({
                   </div>
                   <EditProfileForm
                     profile={profile}
+                    focusNotifications={focusNotificationSettings}
                     onCancel={() => setIsEditing(false)}
                     onSaved={(nextProfile) => {
                       onProfileUpdated(nextProfile);
@@ -330,6 +336,14 @@ export function ProfilePanel({
         )
       ) : null}
 
+      {isOwnProfile && profile && onProfileUpdated ? (
+        <DiscoverCinerianHelp
+          onFindPeople={onNavigateToSearch}
+          onOpenWatching={() => setTabRequest((current) => ({ tab: "watching", key: (current?.key ?? 0) + 1 }))}
+          onOpenNotifications={() => { setFocusNotificationSettings(true); setIsEditing(true); }}
+        />
+      ) : null}
+
       <ProfileTabs
         userId={userId}
         viewerUserId={viewerUserId}
@@ -338,6 +352,7 @@ export function ProfilePanel({
         profile={profile}
         visibilitySettings={visibilitySettings}
         onProfileUpdated={onProfileUpdated}
+        tabRequest={tabRequest}
       />
     </section>
   );

@@ -6,7 +6,7 @@ import { TalentDetailsModal } from "./TalentDetailsModal";
 import { TitleReactionListModal } from "./TitleReactionListModal";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { getRatedReactionLabel, RatedReactionIcon } from "./RatedReactionIcon";
-import { fetchProfileSummaries, type ProfileSummary } from "../lib/auth";
+import { fetchProfileSummaries, saveCurrentWatchingEntries, type Profile, type ProfileSummary } from "../lib/auth";
 import { createFeedPost, fetchFeedPosts, removeFeedEvent } from "../lib/feed";
 import { fetchFollowingUserIds } from "../lib/follows";
 import { getProviderSearchUrl } from "../lib/providerLinks";
@@ -440,6 +440,10 @@ type MediaDetailsSheetProps = {
   similarTitles?: DiscoveryItem[];
   isSimilarLoading?: boolean;
   onWatched?: () => void;
+  onAddWatching?: () => void;
+  isWatching?: boolean;
+  isWatchingBusy?: boolean;
+  watchingMessage?: string | null;
   watchedLabel?: string;
   watchedReaction?: RatedReaction | null;
   canSave?: boolean;
@@ -472,6 +476,10 @@ export function MediaDetailsSheet({
   similarTitles = [],
   isSimilarLoading = false,
   onWatched,
+  onAddWatching,
+  isWatching = false,
+  isWatchingBusy = false,
+  watchingMessage = null,
   watchedLabel,
   watchedReaction,
   canSave = false,
@@ -792,6 +800,20 @@ export function MediaDetailsSheet({
                   </div>
                 ) : null}
               </div>
+              {item.mediaType === "tv" && onAddWatching ? (
+                <div className="media-modal__watching-prompt">
+                  <div>
+                    <strong>{isWatching ? "En tu lista Viendo" : "¿Estás siguiendo esta serie?"}</strong>
+                    <p>{isWatching ? "Consultá el próximo episodio desde Mi cuenta." : "Sumala a Viendo para tener a mano su próximo episodio."}</p>
+                  </div>
+                  {!isWatching ? (
+                    <button type="button" onClick={onAddWatching} disabled={isWatchingBusy}>
+                      {isWatchingBusy ? "Agregando..." : "Agregar a Viendo"}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+              {watchingMessage ? <p className="media-modal__watching-error" role="status">{watchingMessage}</p> : null}
             </section>
           ) : null}
 
@@ -1117,6 +1139,8 @@ export function MediaDetailsSheet({
 
 function MediaDetailsModal({
   userId,
+  profile,
+  onProfileUpdated,
   item,
   onClose,
   onOpenRelatedItem,
@@ -1124,6 +1148,8 @@ function MediaDetailsModal({
   onOpenUserProfile
 }: {
   userId?: string;
+  profile?: Profile | null;
+  onProfileUpdated?: (profile: Profile) => void;
   item: MediaReference | null;
   onClose: () => void;
   onOpenRelatedItem: (item: MediaReference) => void;
@@ -1137,6 +1163,8 @@ function MediaDetailsModal({
   const [savedItemKey, setSavedItemKey] = useState<string | null>(null);
   const isSaved = Boolean(item && savedItemKey === `${item.mediaType}-${item.id}`);
   const [isSaveBusy, setIsSaveBusy] = useState(false);
+  const [isWatchingBusy, setIsWatchingBusy] = useState(false);
+  const [watchingMessage, setWatchingMessage] = useState<string | null>(null);
   const [isReactionLoading, setIsReactionLoading] = useState(true);
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
   const [similarTitles, setSimilarTitles] = useState<DiscoveryItem[]>([]);
@@ -1158,7 +1186,32 @@ function MediaDetailsModal({
   useEffect(() => {
     setShareLabel("Compartir");
     setActiveReactionList(null);
+    setWatchingMessage(null);
   }, [item]);
+
+  async function handleAddWatching() {
+    if (!item || item.mediaType !== "tv" || !profile || profile.id !== userId || !onProfileUpdated || isWatchingBusy) {
+      return;
+    }
+
+    if (profile.current_watching.some((entry) => entry.tmdbId === item.id)) {
+      return;
+    }
+
+    try {
+      setIsWatchingBusy(true);
+      setWatchingMessage(null);
+      const nextProfile = await saveCurrentWatchingEntries(profile.id, [
+        { tmdbId: item.id, mediaType: "tv", addedAt: new Date().toISOString() },
+        ...profile.current_watching
+      ]);
+      onProfileUpdated(nextProfile);
+    } catch {
+      setWatchingMessage("No pudimos agregar esta serie a Viendo. Probá de nuevo.");
+    } finally {
+      setIsWatchingBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!item || !userId) {
@@ -1462,6 +1515,10 @@ function MediaDetailsModal({
             similarTitles={similarTitles}
             isSimilarLoading={isSimilarLoading}
             onWatched={handleWatched}
+            onAddWatching={profile?.id === userId && onProfileUpdated ? () => void handleAddWatching() : undefined}
+            isWatching={Boolean(profile?.current_watching.some((entry) => entry.tmdbId === item.id))}
+            isWatchingBusy={isWatchingBusy}
+            watchingMessage={watchingMessage}
             watchedLabel={watchedLabel}
             watchedReaction={watchedReaction}
             canSave={Boolean(userId)}
@@ -1521,10 +1578,14 @@ type DetailStackEntry =
 
 export function MediaDetailsProvider({
   userId,
+  profile,
+  onProfileUpdated,
   onOpenUserProfile,
   children
 }: {
   userId?: string;
+  profile?: Profile | null;
+  onProfileUpdated?: (profile: Profile) => void;
   onOpenUserProfile?: OpenUserProfile;
   children: ReactNode;
 }) {
@@ -1561,6 +1622,8 @@ export function MediaDetailsProvider({
       {children}
       <MediaDetailsModal
         userId={userId}
+        profile={profile}
+        onProfileUpdated={onProfileUpdated}
         item={activeMedia}
         onClose={closeMediaDetails}
         onOpenRelatedItem={openRelatedMedia}

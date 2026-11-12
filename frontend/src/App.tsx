@@ -685,6 +685,7 @@ export default function App() {
           userId={selectedProfileRoute.userId}
           username={selectedProfileRoute.username}
           onOpenUserProfile={handleOpenUserProfile}
+          onNavigateToSearch={accessControl.canAccessView("search") ? () => handleChangeView("search") : undefined}
         />
       );
     }
@@ -730,6 +731,7 @@ export default function App() {
             profileMessage="Tu perfil publico va juntando automaticamente lo que marcaste como visto, guardaste en Watchlist y recomendaste en Cinerian."
             onProfileUpdated={setLocalProfile}
             onOpenUserProfile={handleOpenUserProfile}
+            onNavigateToSearch={accessControl.canAccessView("search") ? () => handleChangeView("search") : undefined}
           />
         </div>
       </>
@@ -788,7 +790,12 @@ export default function App() {
   }
 
   return (
-    <MediaDetailsProvider userId={session.user.id} onOpenUserProfile={handleOpenUserProfile}>
+    <MediaDetailsProvider
+      userId={session.user.id}
+      profile={localProfile}
+      onProfileUpdated={setLocalProfile}
+      onOpenUserProfile={handleOpenUserProfile}
+    >
       <VisualReadyGate canReveal={isActiveViewRestored} />
       {showWelcomeOnboarding && localProfile ? (
         <WelcomeOnboarding
