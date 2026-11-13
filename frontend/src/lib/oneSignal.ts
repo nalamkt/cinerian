@@ -5,6 +5,12 @@ const SERVICE_WORKER_PATH = "/push/onesignal/OneSignalSDKWorker.js";
 const SERVICE_WORKER_SCOPE = "/push/onesignal/";
 
 export type OneSignalPushStatus = "unsupported" | "denied" | "ready" | "subscribed";
+export type OneSignalConnectionStatus = {
+  status: OneSignalPushStatus;
+  permission: NotificationPermission | "unsupported";
+  linkedToAccount: boolean;
+  hasSubscription: boolean;
+};
 
 let initializationTask: Promise<void> | null = null;
 
@@ -69,11 +75,26 @@ export async function getOneSignalPushStatus(): Promise<OneSignalPushStatus> {
     return "unsupported";
   }
 
-  if (OneSignal.Notifications.permissionNative === "denied") {
+  if (Notification.permission === "denied" || OneSignal.Notifications.permissionNative === "denied") {
     return "denied";
   }
 
   return OneSignal.User.PushSubscription.optedIn ? "subscribed" : "ready";
+}
+
+export async function getOneSignalConnectionStatus(userId: string): Promise<OneSignalConnectionStatus> {
+  const status = await getOneSignalPushStatus();
+  const permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
+  if (status === "unsupported" || status === "denied") {
+    return { status, permission, linkedToAccount: false, hasSubscription: false };
+  }
+
+  return {
+    status,
+    permission,
+    linkedToAccount: OneSignal.User.externalId === userId,
+    hasSubscription: Boolean(OneSignal.User.PushSubscription.id)
+  };
 }
 
 export async function enableOneSignalPush() {

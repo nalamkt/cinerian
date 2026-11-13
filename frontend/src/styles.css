@@ -6045,6 +6045,68 @@ textarea {
   list-style: none;
 }
 
+.profile-discover__card .profile-discover__primary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  max-width: 100%;
+  margin: 0 0 14px;
+  padding: 10px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  line-height: 1.2;
+}
+
+.profile-discover__primary-action:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.profile-discover__card .profile-discover__app-status {
+  margin: 0;
+  color: var(--muted-strong);
+}
+
+.profile-discover__card .profile-discover__install-message {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+}
+
+.profile-discover__push-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.profile-discover__push-facts > div {
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.profile-discover__push-facts dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.profile-discover__push-facts dd {
+  margin: 3px 0 0;
+  color: var(--muted-strong);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.profile-discover__card .profile-discover__push-help {
+  margin-bottom: 13px;
+  font-size: 0.86rem;
+}
+
 .profile-discover__install > p {
   margin: 12px 0 0;
   padding: 12px 14px;

@@ -6,7 +6,10 @@ import App from "./App";
 import { AdminPanelPage } from "./components/AdminPanelPage";
 import { SharedMediaPage } from "./components/SharedMediaPage";
 import { parseSharedMediaPath } from "./lib/share";
+import { initializePwaInstall } from "./lib/pwaInstall";
 import "./styles.css";
+
+initializePwaInstall();
 
 const sharedRoute = parseSharedMediaPath(window.location.pathname);
 const isAdminPanelRoute = window.location.pathname === "/panel" || window.location.pathname.startsWith("/panel/");

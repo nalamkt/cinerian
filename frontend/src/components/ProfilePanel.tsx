@@ -338,6 +338,7 @@ export function ProfilePanel({
 
       {isOwnProfile && profile && onProfileUpdated ? (
         <DiscoverCinerianHelp
+          userId={profile.id}
           onFindPeople={onNavigateToSearch}
           onOpenWatching={() => setTabRequest((current) => ({ tab: "watching", key: (current?.key ?? 0) + 1 }))}
           onOpenNotifications={() => { setFocusNotificationSettings(true); setIsEditing(true); }}

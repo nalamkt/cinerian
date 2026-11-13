@@ -1,4 +1,7 @@
 import { supabase } from "./supabase";
+import { parsePushDiagnosticsResponse, parseTestPushResponse, type PushDiagnostics, type TestPushResult } from "./pushDiagnosticsResponse";
+
+export type { PushDiagnostics } from "./pushDiagnosticsResponse";
 
 const ACTIVITY_HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000;
 const ACTIVITY_STORAGE_PREFIX = "cinerian:notification-activity:";
@@ -6,6 +9,26 @@ const ACTIVITY_STORAGE_PREFIX = "cinerian:notification-activity:";
 type InboxPushEvent =
   | { type: "recommendation"; messageId: string }
   | { type: "reply"; replyId: string };
+
+async function authorizedPushRequest(method: "GET" | "POST"): Promise<Response> {
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Iniciá sesión para comprobar las notificaciones.");
+
+  const response = await fetch("/api/push/diagnostics", {
+    method,
+    headers: { Authorization: `Bearer ${session.access_token}` }
+  });
+  return response;
+}
+
+export async function fetchPushDiagnostics(): Promise<PushDiagnostics> {
+  return parsePushDiagnosticsResponse(await authorizedPushRequest("GET"));
+}
+
+export async function sendTestPush(): Promise<TestPushResult> {
+  return parseTestPushResponse(await authorizedPushRequest("POST"));
+}
 
 function lastActivityKey(userId: string) {
   return `${ACTIVITY_STORAGE_PREFIX}${userId}`;

@@ -12,6 +12,7 @@ import type {
 } from "../types";
 import { demoDiscovery } from "../data/demoData";
 import { compareByWeightedTmdbScore } from "./titleRanking";
+import { searchReleaseDate, sortSearchResultsByDate } from "./searchChronology";
 
 const apiKey = import.meta.env.VITE_TMDB_API_KEY;
 const baseUrl = "https://api.themoviedb.org/3";
@@ -866,6 +867,51 @@ export async function searchTitles(query: string): Promise<DiscoveryItem[]> {
     })
     .slice(0, 20)
     .map(normalizeItem);
+}
+
+const MAX_CHRONOLOGICAL_SEARCH_PAGES = 5;
+
+export async function searchTitlesByDate(query: string): Promise<{
+  items: DiscoveryItem[];
+  partial: boolean;
+  scannedCount: number;
+}> {
+  if (!query.trim()) return { items: [], partial: false, scannedCount: 0 };
+  if (!apiKey) {
+    const items = await searchTitles(query);
+    return { items, partial: false, scannedCount: items.length };
+  }
+
+  const url = new URL(`${baseUrl}/search/multi`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("query", query);
+  url.searchParams.set("include_adult", "false");
+  url.searchParams.set("language", "es-MX");
+
+  async function fetchPage(page: number) {
+    url.searchParams.set("page", String(page));
+    const response = await fetch(url.toString());
+    if (!response.ok) throw new Error(`TMDB respondio ${response.status}`);
+    const payload = await response.json() as { results?: Record<string, unknown>[]; total_pages?: number };
+    if (!Array.isArray(payload.results) || !Number.isInteger(payload.total_pages)) {
+      throw new Error("TMDB devolvió resultados de búsqueda inválidos.");
+    }
+    return payload;
+  }
+
+  const firstPage = await fetchPage(1);
+  const pagesToFetch = Math.min(firstPage.total_pages ?? 1, MAX_CHRONOLOGICAL_SEARCH_PAGES);
+  const remaining = await Promise.all(Array.from({ length: Math.max(0, pagesToFetch - 1) }, (_, index) => fetchPage(index + 2)));
+  const found = [firstPage, ...remaining].flatMap((page) => page.results ?? [])
+    .filter((item) => (item.media_type === "movie" || item.media_type === "tv") && hasDisplayTitle(item));
+  const items = sortSearchResultsByDate(found).map((item) => {
+    const date = searchReleaseDate(item);
+    return normalizeItem({
+      ...item,
+      [item.media_type === "tv" ? "first_air_date" : "release_date"]: date ?? ""
+    });
+  });
+  return { items, partial: (firstPage.total_pages ?? 1) > pagesToFetch, scannedCount: found.length };
 }
 
 export async function getRecommendationTitles(): Promise<DiscoveryItem[]> {

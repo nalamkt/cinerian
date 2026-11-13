@@ -151,6 +151,8 @@ export default function App() {
   const viewSessionRef = useRef<ViewSessionRef | null>(null);
   const followSuggestionsLoginRef = useRef<string | null>(null);
   const oneSignalUserRef = useRef<string | null | undefined>(undefined);
+  const oneSignalLinkedRef = useRef<string | null>(null);
+  const oneSignalPendingRef = useRef<string | null>(null);
   const hasAppliedDefaultViewRef = useRef(false);
   const restoredActiveViewUserRef = useRef<string | null>(null);
   const persistedActiveViewUserRef = useRef<string | null>(null);
@@ -239,19 +241,40 @@ export default function App() {
     if (!sessionUserId) {
       if (oneSignalUserRef.current !== null) {
         oneSignalUserRef.current = null;
+        oneSignalLinkedRef.current = null;
         void clearOneSignalUser().catch(() => undefined);
       }
       return;
     }
 
-    if (oneSignalUserRef.current === sessionUserId) {
-      return;
+    const pushUserId = sessionUserId;
+    oneSignalUserRef.current = pushUserId;
+    function linkPushUser() {
+      if (oneSignalLinkedRef.current === pushUserId || oneSignalPendingRef.current === pushUserId) {
+        return;
+      }
+
+      oneSignalPendingRef.current = pushUserId;
+      void identifyOneSignalUser(pushUserId).then(() => {
+        if (oneSignalUserRef.current === pushUserId) {
+          oneSignalLinkedRef.current = pushUserId;
+        }
+      }).catch(() => {
+        // El próximo foco o reconexión reintentará sin bloquear la app.
+      }).finally(() => {
+        if (oneSignalPendingRef.current === pushUserId) {
+          oneSignalPendingRef.current = null;
+        }
+      });
     }
 
-    oneSignalUserRef.current = sessionUserId;
-    void identifyOneSignalUser(sessionUserId).catch(() => {
-      // OneSignal no debe impedir el uso de Cinerian si la red o el SDK fallan.
-    });
+    linkPushUser();
+    window.addEventListener("focus", linkPushUser);
+    window.addEventListener("online", linkPushUser);
+    return () => {
+      window.removeEventListener("focus", linkPushUser);
+      window.removeEventListener("online", linkPushUser);
+    };
   }, [isLoading, sessionUserId]);
 
   useEffect(() => {

@@ -280,7 +280,7 @@ export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications
           <p>Elegí si querés enterarte cuando haya actividad relevante en Cinerian.</p>
         </div>
 
-        <NotificationPreferences />
+        <NotificationPreferences userId={profile.id} />
       </div>
 
       {error ? <div className="inline-status">{error}</div> : null}

@@ -106,7 +106,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
   const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches(userId));
   const searchInputRef = useRef<HTMLInputElement>(null);
   const reactionsRequestRef = useRef(0);
-  const { results, isLoading, error } = useDiscovery(activeTab === "all" ? query : "");
+  const { results, isLoading, error, partial, scannedCount } = useDiscovery(activeTab === "all" ? query : "");
 
   useEffect(() => {
     setRecentSearches(loadRecentSearches(userId));
@@ -558,6 +558,7 @@ export function SearchPanel({ userId, onOpenUserProfile }: SearchPanelProps) {
         <div className="search-result-sections">
           {activeTab === "all" && error && !results.length ? <p className="inline-status">{error}</p> : null}
           {activeTab === "actors" && talentError && !talentResults.length ? <p className="inline-status">{talentError}</p> : null}
+          {activeTab === "all" && partial ? <p className="inline-status">Ordenados por estreno entre los primeros {scannedCount} títulos encontrados por TMDB. Hay más resultados que todavía no se incluyen en este orden.</p> : null}
           {activeTab === "all" && results.length ? (
             <section className="search-result-section">
               <div className="search-result-section__heading">

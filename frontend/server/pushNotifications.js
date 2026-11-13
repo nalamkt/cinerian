@@ -143,7 +143,9 @@ export async function supabaseRest(config, path, options = {}) {
   const payload = asJson(await response.text());
 
   if (!response.ok) {
-    throw new Error(`Supabase: ${responseDetails(response, payload)}`);
+    const error = new Error(`Supabase: ${responseDetails(response, payload)}`);
+    error.httpStatus = response.status;
+    throw error;
   }
 
   return payload;
@@ -151,7 +153,45 @@ export async function supabaseRest(config, path, options = {}) {
 
 export async function selectRows(config, table, params) {
   const result = await supabaseRest(config, restPath(table, params));
-  return Array.isArray(result) ? result : [];
+  if (!Array.isArray(result)) {
+    throw new Error(`Supabase devolvió una respuesta inválida para ${table}.`);
+  }
+  return result;
+}
+
+export async function reservePushTest(config, input, authorization) {
+  if (typeof authorization !== "string" || !/^Bearer \S+$/.test(authorization)) {
+    const error = new Error("Falta la sesión del usuario para reservar la prueba.");
+    error.httpStatus = 401;
+    throw error;
+  }
+
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/rpc/reserve_push_test`, {
+    method: "POST",
+    headers: {
+      apikey: config.supabaseAnonKey,
+      Authorization: authorization,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      p_user_id: input.recipientUserId,
+      p_event_key: input.eventKey,
+      p_target_url: absoluteUrl(config, input.targetPath)
+    })
+  });
+  const result = asJson(await response.text());
+  if (!response.ok) {
+    const error = new Error(`Supabase: ${responseDetails(response, result)}`);
+    error.httpStatus = response.status;
+    throw error;
+  }
+  if (result === null) return null;
+  if (typeof result !== "string" || !/^[0-9a-f-]{36}$/i.test(result)) {
+    const error = new Error("Supabase devolvió una reserva de prueba inválida.");
+    error.httpStatus = 502;
+    throw error;
+  }
+  return result;
 }
 
 async function selectAllRows(config, table, params) {
@@ -178,7 +218,7 @@ function absoluteUrl(config, path) {
 }
 
 async function claimDelivery(config, input) {
-  const rows = await supabaseRest(
+  const insert = () => supabaseRest(
     config,
     restPath("push_notification_deliveries", { on_conflict: "event_key" }),
     {
@@ -196,6 +236,16 @@ async function claimDelivery(config, input) {
       })
     }
   );
+  let rows;
+  try {
+    rows = await insert();
+  } catch (error) {
+    if (error.httpStatus && error.httpStatus !== 408 && error.httpStatus !== 429 && error.httpStatus < 500) {
+      throw error;
+    }
+    // The same unique event key makes a retry safe even if the first insert committed.
+    rows = await insert();
+  }
 
   return Array.isArray(rows) ? rows[0] ?? null : null;
 }
@@ -228,34 +278,60 @@ async function sendOneSignal(config, input) {
   const payload = asJson(await response.text());
 
   if (!response.ok) {
-    throw new Error(`OneSignal: ${responseDetails(response, payload)}`);
+    const error = new Error(`OneSignal: ${responseDetails(response, payload)}`);
+    error.httpStatus = response.status;
+    throw error;
   }
 
   return payload;
 }
 
-export async function deliverPush(config, input) {
-  const delivery = await claimDelivery(config, input);
+export async function deliverPush(config, input, claimedDeliveryId = null) {
+  const delivery = claimedDeliveryId ? { id: claimedDeliveryId } : await claimDelivery(config, input);
   if (!delivery) {
     return { status: "duplicate" };
   }
 
+  let providerResponse;
   try {
-    const providerResponse = await sendOneSignal(config, input);
+    providerResponse = await sendOneSignal(config, input);
+  } catch (error) {
+    const httpStatus = error?.httpStatus;
+    const outcome = httpStatus === 408 || httpStatus === 429 ? "temporary"
+      : httpStatus && httpStatus >= 400 && httpStatus < 500 ? "definitive"
+        : "uncertain";
+    const message = outcome === "definitive" ? "El proveedor rechazó el envío."
+      : outcome === "temporary" ? "El proveedor no pudo procesar el envío por ahora."
+        : "No se pudo confirmar el resultado del proveedor.";
+    await updateDelivery(config, delivery.id, {
+      status: outcome === "uncertain" ? "pending" : "failed",
+      provider_response: { outcome, error: message }
+    }).catch(() => undefined);
+    return { status: outcome === "uncertain" ? "uncertain" : "failed", error: message };
+  }
+
+  if (providerResponse?.recipients === 0 || typeof providerResponse?.id !== "string" || !providerResponse.id) {
+    const outcome = providerResponse?.recipients === 0 ? "definitive" : "uncertain";
+    const message = outcome === "definitive"
+      ? "El proveedor no encontró dispositivos suscritos para esta cuenta."
+      : "El proveedor no confirmó el identificador del envío.";
+    await updateDelivery(config, delivery.id, {
+      status: outcome === "uncertain" ? "pending" : "failed",
+      provider_response: { outcome, error: message }
+    }).catch(() => undefined);
+    return { status: outcome === "uncertain" ? "uncertain" : "failed", error: message };
+  }
+
+  try {
     await updateDelivery(config, delivery.id, {
       status: "sent",
-      provider_message_id: typeof providerResponse?.id === "string" ? providerResponse.id : null,
-      provider_response: providerResponse ?? {},
+      provider_message_id: providerResponse.id,
+      provider_response: { ...providerResponse, outcome: "accepted" },
       sent_at: new Date().toISOString()
     });
     return { status: "sent", providerResponse };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "No se pudo enviar la notificación.";
-    await updateDelivery(config, delivery.id, {
-      status: "failed",
-      provider_response: { error: message }
-    }).catch(() => undefined);
-    return { status: "failed", error: message };
+  } catch {
+    return { status: "uncertain", error: "El proveedor aceptó el envío, pero no pudimos registrar la confirmación." };
   }
 }
 
