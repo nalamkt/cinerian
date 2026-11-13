@@ -21,6 +21,7 @@ export type ProfileVisibilitySettings = {
   showFollowing: boolean;
   showCollections: boolean;
   showWatchlist: boolean;
+  showWatched: boolean;
 };
 
 export type Gender = "hombre" | "mujer" | "otro" | "no_dice";
@@ -105,7 +106,24 @@ function defaultVisibilitySettings(): ProfileVisibilitySettings {
     showFollowers: false,
     showFollowing: false,
     showCollections: false,
-    showWatchlist: true
+    showWatchlist: true,
+    showWatched: true
+  };
+}
+
+export function normalizeProfileVisibility(value: Partial<ProfileVisibilitySettings> | null): ProfileVisibilitySettings {
+  return {
+    ...defaultVisibilitySettings(),
+    ...(value ?? {}),
+    // El ajuste anterior ocultaba ambas secciones a la vez.
+    showWatched: value?.showWatched ?? value?.showWatchlist ?? true
+  };
+}
+
+export function publicComparisonSections(settings: ProfileVisibilitySettings | undefined) {
+  return {
+    watched: settings?.showWatched !== false,
+    watchlist: settings?.showWatchlist !== false
   };
 }
 
@@ -171,10 +189,7 @@ function normalizeProfileRow(row: ProfileRow): Profile {
           }))
           .filter((entry) => Number.isFinite(entry.tmdbId))
       : [],
-    visibility_settings: {
-      ...defaultVisibilitySettings(),
-      ...(row.visibility_settings ?? {})
-    }
+    visibility_settings: normalizeProfileVisibility(row.visibility_settings)
   };
 }
 

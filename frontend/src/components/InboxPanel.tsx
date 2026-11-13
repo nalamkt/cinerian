@@ -3,10 +3,12 @@ import { createPortal } from "react-dom";
 import { deleteFeedComment, fetchFeedComments } from "../lib/feed";
 import {
   deleteInboxMessage,
+  deleteCommentNotification,
   deleteRecommendationReply,
   editRecommendationNote,
   editRecommendationReply,
   fetchReceivedMessages,
+  fetchCommentNotifications,
   fetchSentMessages,
   INBOX_UPDATED_EVENT,
   markRecommendationRepliesAsRead,
@@ -17,6 +19,7 @@ import {
 } from "../lib/inbox";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { LoadingState } from "./LoadingState";
+import { InboxCategoryTabs, InboxCommentList } from "./InboxActivity";
 import type {
   CommentInboxNotification,
   FeedComment,
@@ -146,11 +149,12 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 900px)").matches : false
   );
-  // Inbox is reserved for recommendation conversations. Post comments live in their post.
-  const [category] = useState<"recommendations" | "comments">("recommendations");
+  const [category, setCategory] = useState<"recommendations" | "comments">("recommendations");
   const [received, setReceived] = useState<RecommendationMessage[]>([]);
   const [sent, setSent] = useState<RecommendationMessage[]>([]);
   const [commentNotifications, setCommentNotifications] = useState<CommentInboxNotification[]>([]);
+  const [isCommentsLoading, setIsCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
@@ -280,6 +284,37 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
     };
   }, [userId]);
 
+  useEffect(() => {
+    if (category !== "comments") return;
+    let isMounted = true;
+    let requestNumber = 0;
+    async function loadComments(silent = false) {
+      const request = ++requestNumber;
+      if (!silent) setIsCommentsLoading(true);
+      try {
+        const notifications = await fetchCommentNotifications(userId);
+        if (isMounted && request === requestNumber) {
+          setCommentNotifications(notifications);
+          setCommentsError(null);
+        }
+      } catch {
+        if (isMounted && request === requestNumber) setCommentsError("No pude cargar los comentarios. Volvé a intentarlo más tarde.");
+      } finally {
+        if (isMounted && request === requestNumber) setIsCommentsLoading(false);
+      }
+    }
+    function handleUpdate(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (!detail?.userId || detail.userId === userId) void loadComments(true);
+    }
+    void loadComments();
+    window.addEventListener(INBOX_UPDATED_EVENT, handleUpdate as EventListener);
+    return () => {
+      isMounted = false;
+      window.removeEventListener(INBOX_UPDATED_EVENT, handleUpdate as EventListener);
+    };
+  }, [category, userId]);
+
   const visibleMessages = useMemo(() => {
     const byId = new Map<string, RecommendationMessage>();
     [...received, ...sent].forEach((message) => byId.set(message.id, message));
@@ -371,10 +406,7 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
     return [...groups.values()];
   }, [filteredMessages, groupByFriend, userId]);
 
-  const isShowingMobileThread =
-    isMobile &&
-    ((category === "recommendations" && Boolean(activeMessage)) ||
-      (category === "comments" && Boolean(activeComment)));
+  const isShowingMobileThread = isMobile && category === "recommendations" && Boolean(activeMessage);
 
   useEffect(() => {
     if (category !== "recommendations") {
@@ -874,6 +906,19 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
     } catch {
       manuallyUnreadCommentIds.current.delete(notification.id);
       setErrorMessage("No pude cambiar el estado del comentario.");
+    } finally {
+      setPendingMessageId(null);
+    }
+  }
+
+  async function handleDismissComment(notification: CommentInboxNotification) {
+    try {
+      setPendingMessageId(notification.id);
+      await deleteCommentNotification({ notificationId: notification.id, userId });
+      setCommentNotifications((current) => current.filter((item) => item.id !== notification.id));
+      setPostPreviewNotification((current) => current?.id === notification.id ? null : current);
+    } catch {
+      setCommentsError("No pude descartar este aviso.");
     } finally {
       setPendingMessageId(null);
     }
@@ -1511,7 +1556,34 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
     <>
       <section className={`feed-shell inbox-shell ${isShowingMobileThread ? "is-thread-open-mobile" : ""}`}>
       <div className="feed-main inbox-main">
-        <div className={`inbox-body ${isShowingMobileThread ? "is-mobile-thread-open" : ""}`}>
+        <InboxCategoryTabs
+          category={category}
+          recommendationCount={unreadCount}
+          commentCount={commentNotifications.filter((item) => !item.readAt).length}
+          onChange={setCategory}
+        />
+        <div className={`inbox-body ${isShowingMobileThread ? "is-mobile-thread-open" : ""} ${category === "comments" ? "inbox-body--comments" : ""}`}>
+          {category === "comments" ? (
+            <>
+              {commentsError ? <div className="timeline-empty" role="alert">{commentsError}</div> : null}
+              {isCommentsLoading && !commentNotifications.length ? <LoadingState label="Cargando comentarios..." /> : null}
+              {(!isCommentsLoading || commentNotifications.length > 0) && (!commentsError || commentNotifications.length > 0) ? (
+                <InboxCommentList
+                  notifications={commentNotifications}
+                  query={searchQuery}
+                  onQueryChange={setSearchQuery}
+                  pendingId={pendingMessageId}
+                  onOpen={(notification) => {
+                    setActiveCommentId(notification.id);
+                    setPostPreviewNotification(notification);
+                    if (!notification.readAt) void handleSetCommentReadState(notification, true);
+                  }}
+                  onToggleRead={(notification) => void handleSetCommentReadState(notification, !notification.readAt)}
+                  onDismiss={(notification) => void handleDismissComment(notification)}
+                />
+              ) : null}
+            </>
+          ) : <>
           {errorMessage ? <div className="timeline-empty">{errorMessage}</div> : null}
           {isLoading ? (
             <LoadingState
@@ -1630,6 +1702,7 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
               </div>
             )
           ) : null}
+          </>}
         </div>
       </div>
       </section>
@@ -1651,7 +1724,7 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
             : []
         }
         userId={userId}
-        onClose={() => setPostPreviewNotification(null)}
+        onClose={() => { setPostPreviewNotification(null); setActiveCommentId(null); }}
         onOpenTitle={openMediaDetails}
         onDeleteComment={(comment) => void handleDeletePostComment(comment)}
       />

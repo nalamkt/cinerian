@@ -1,15 +1,15 @@
 import { AuthPanel } from "./components/AuthPanel";
 import { AuthShowcase } from "./components/AuthShowcase";
 import { AuthSteps } from "./components/AuthSteps";
+import { AppViewStack } from "./components/AppViewStack";
 import { CinerianLogo } from "./components/CinerianLogo";
+import { DiscoveryHub } from "./components/DiscoveryHub";
 import { FeedPanel } from "./components/FeedPanel";
 import { FollowSuggestionsModal } from "./components/FollowSuggestionsModal";
 import { InboxPanel } from "./components/InboxPanel";
 import { LoadingState } from "./components/LoadingState";
 import { MediaDetailsProvider } from "./components/MediaDetailsModal";
 import { ProfilePanel } from "./components/ProfilePanel";
-import { RecommendationPanel } from "./components/RecommendationPanel";
-import { SearchPanel } from "./components/SearchPanel";
 import { SharedUserPage } from "./components/SharedUserPage";
 import { UserProfilePage } from "./components/UserProfilePage";
 import { VisualReadyGate } from "./components/VisualReadyGate";
@@ -17,6 +17,7 @@ import { WelcomeOnboarding } from "./components/WelcomeOnboarding";
 import { useAuth } from "./hooks/useAuth";
 import { usePublicFeatureFlags } from "./hooks/usePublicFeatureFlags";
 import { getAccessControl, isAppView, type AppView } from "./lib/access";
+import { MAIN_NAV_ITEMS, resolveApbView } from "./lib/apbNavigation";
 import { trackProductEvent } from "./lib/analytics";
 import { signOut } from "./lib/auth";
 import { fetchDiscoverFilters } from "./lib/discoverFilters";
@@ -46,7 +47,7 @@ const SCROLLBAR_REVEAL_SELECTOR = [
 function getStoredActiveView(userId: string) {
   try {
     const storedView = window.localStorage.getItem(`${ACTIVE_VIEW_STORAGE_KEY}:${userId}`);
-    return isAppView(storedView) ? storedView : null;
+    return isAppView(storedView) ? (storedView === "inbox" ? "feed" : storedView) : null;
   } catch {
     return null;
   }
@@ -57,7 +58,7 @@ function getRequestedView() {
   return isAppView(view) ? view : null;
 }
 
-function DockIcon({ id, badgeCount = 0 }: { id: AppView; badgeCount?: number }) {
+function DockIcon({ id }: { id: AppView }) {
   if (id === "feed") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -83,16 +84,8 @@ function DockIcon({ id, badgeCount = 0 }: { id: AppView; badgeCount?: number }) 
     );
   }
 
-  if (id === "inbox") {
-    return (
-      <>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M4 6h16v12H4z" />
-          <path d="m4 8 8 6 8-6" />
-        </svg>
-        {badgeCount > 0 ? <span className="dock__badge">{badgeCount > 9 ? "9+" : badgeCount}</span> : null}
-      </>
-    );
+  if (id === "watching") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m10 9 5 3-5 3z" /></svg>;
   }
 
   return (
@@ -112,14 +105,6 @@ function LogoutIcon() {
     </svg>
   );
 }
-
-const dockItems: Array<{ id: AppView; label: string }> = [
-  { id: "feed", label: "Inicio" },
-  { id: "search", label: "Buscador" },
-  { id: "recommendations", label: "Descubri" },
-  { id: "inbox", label: "Inbox" },
-  { id: "user", label: "Mi cuenta" }
-];
 
 type ViewSessionRef = {
   startedAt: number;
@@ -165,9 +150,12 @@ export default function App() {
       }),
     [enabledFeatures, localProfile, session]
   );
+  const canSearch = accessControl.canAccessView("search");
+  const canDiscover = accessControl.canAccessView("recommendations");
+  const hasDiscoveryAccess = canSearch || canDiscover;
   const visibleDockItems = useMemo(
-    () => dockItems.filter((item) => accessControl.canAccessView(item.id)),
-    [accessControl]
+    () => MAIN_NAV_ITEMS.filter((item) => item.id === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(item.id)),
+    [accessControl, hasDiscoveryAccess]
   );
   const isDiscoverActive = activeView === "recommendations" && !selectedProfileRoute;
 
@@ -324,7 +312,13 @@ export default function App() {
     hasAppliedDefaultViewRef.current = false;
 
     if (!selectedProfileRoute) {
-      setActiveView(getRequestedView() ?? getStoredActiveView(userId) ?? defaultView);
+      const requested = resolveApbView(getRequestedView(), canSearch, canDiscover);
+      const stored = resolveApbView(getStoredActiveView(userId), canSearch, canDiscover);
+      const preferred = resolveApbView(defaultView === "inbox" ? "feed" : defaultView, canSearch, canDiscover);
+      const initial = [requested, stored, preferred].find((view) =>
+        view && (view === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(view))
+      );
+      setActiveView(initial ?? visibleDockItems[0]?.id ?? "user");
       restoredActiveViewUserRef.current = userId;
       setIsActiveViewRestored(true);
       if (window.location.pathname !== "/") {
@@ -347,7 +341,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, [defaultView, localProfile, selectedProfileRoute, sessionUserId]);
+  }, [accessControl, canDiscover, canSearch, defaultView, hasDiscoveryAccess, localProfile, selectedProfileRoute, sessionUserId, visibleDockItems]);
 
   useEffect(() => {
     const inviteCode = new URLSearchParams(window.location.search).get("invite");
@@ -361,33 +355,30 @@ export default function App() {
       return;
     }
 
-    if (accessControl.canAccessView(activeView)) {
+    if (activeView === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(activeView)) {
       return;
     }
 
     const fallbackView = visibleDockItems.find((item) => item.id === defaultView)?.id ?? visibleDockItems[0]?.id ?? "user";
     setActiveView(fallbackView);
-  }, [accessControl, activeView, defaultView, selectedProfileRoute, visibleDockItems]);
+  }, [accessControl, activeView, defaultView, hasDiscoveryAccess, selectedProfileRoute, visibleDockItems]);
 
   useEffect(() => {
     if (hasAppliedDefaultViewRef.current || isLoadingPublicConfiguration || selectedProfileRoute || !sessionUserId) {
       return;
     }
 
-    const requestedView = getRequestedView();
-    const storedView = sessionUserId ? getStoredActiveView(sessionUserId) : null;
-    const initialView = requestedView && accessControl.canAccessView(requestedView)
-      ? requestedView
-      : storedView && accessControl.canAccessView(storedView)
-      ? storedView
-      : accessControl.canAccessView(defaultView)
-        ? defaultView
-      : visibleDockItems[0]?.id ?? "user";
+    const requestedView = resolveApbView(getRequestedView(), canSearch, canDiscover);
+    const storedView = resolveApbView(getStoredActiveView(sessionUserId), canSearch, canDiscover);
+    const preferredView = resolveApbView(defaultView === "inbox" ? "feed" : defaultView, canSearch, canDiscover);
+    const initialView = [requestedView, storedView, preferredView].find((view) =>
+      view && (view === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(view))
+    ) ?? visibleDockItems[0]?.id ?? "user";
     setActiveView(initialView);
     hasAppliedDefaultViewRef.current = true;
     restoredActiveViewUserRef.current = sessionUserId;
     setIsActiveViewRestored(true);
-  }, [accessControl, defaultView, isLoadingPublicConfiguration, selectedProfileRoute, sessionUserId, visibleDockItems]);
+  }, [accessControl, canDiscover, canSearch, defaultView, hasDiscoveryAccess, isLoadingPublicConfiguration, selectedProfileRoute, sessionUserId, visibleDockItems]);
 
   useEffect(() => {
     if (sessionUserId && persistedActiveViewUserRef.current !== sessionUserId) {
@@ -675,89 +666,85 @@ export default function App() {
     window.history.pushState({}, "", buildSharedProfilePath(profileRef.username));
   }
 
+  function handleCompareUser(profileRef: { userId: string; username: string }) {
+    handleOpenUserProfile(profileRef);
+    window.history.replaceState({}, "", `${buildSharedProfilePath(profileRef.username)}?tab=mutual-likes`);
+  }
+
   function handleChangeView(view: AppView) {
-    if (!selectedProfileRoute && activeView === "feed" && view === "feed") {
+    const destination = resolveApbView(view, canSearch, canDiscover);
+    if (!destination || !(destination === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(destination))) return;
+    if (!selectedProfileRoute && activeView === "feed" && destination === "feed") {
       window.dispatchEvent(new CustomEvent(FEED_SCROLL_TO_TOP_EVENT));
       window.dispatchEvent(new CustomEvent(FEED_REFRESH_EDITORIAL_EVENT));
       return;
     }
 
     setSelectedProfileRoute(null);
-    setActiveView(view);
-    if (window.location.pathname !== "/") {
+    setActiveView(destination);
+    if (window.location.pathname !== "/" || new URLSearchParams(window.location.search).has("view")) {
       window.history.pushState({}, "", "/");
     }
   }
 
-  /*
-    Todas las vistas de la app se mantienen montadas y se muestran/ocultan con
-    `hidden`. El motivo: al cambiar de pestaña el componente se desmontaba y
-    al volver reconstruia su estado desde cero (fetch de datos, catalogo de
-    TMDB, perfiles, etc.), lo que generaba un "cargando..." de 2-4 segundos.
-    Montandolos una vez, volver a cualquier pestaña es instantaneo y el estado
-    (scroll, filtros, inputs) queda tal como el usuario lo dejo.
-
-    `UserProfilePage` sigue siendo condicional porque depende del
-    `selectedProfileRoute` y cada perfil es un componente distinto.
-  */
+  // Las vistas principales permanecen montadas incluso al visitar un perfil
+  // ajeno. Sus búsquedas, filtros y mazo no vuelven a arrancar al regresar.
   function renderActiveView() {
-    if (selectedProfileRoute) {
-      return (
-        <UserProfilePage
-          currentUserId={session!.user.id}
-          userId={selectedProfileRoute.userId}
-          username={selectedProfileRoute.username}
-          onOpenUserProfile={handleOpenUserProfile}
-          onNavigateToSearch={accessControl.canAccessView("search") ? () => handleChangeView("search") : undefined}
-        />
-      );
-    }
-
-    const hiddenWhen = (view: AppView) => activeView !== view || !!selectedProfileRoute;
-
     return (
-      <>
-        <div hidden={hiddenWhen("feed")}>
+      <AppViewStack
+        activeView={activeView}
+        showProfile={Boolean(selectedProfileRoute)}
+        recommendations={hasDiscoveryAccess ? (
+          <DiscoveryHub
+            userId={session!.user.id}
+            canSearch={canSearch}
+            canDiscover={canDiscover}
+            onOpenUserProfile={handleOpenUserProfile}
+          />
+        ) : null}
+        feed={
           <FeedPanel
             userId={session!.user.id}
             profile={localProfile}
             canAccessEditorial={accessControl.canAccessFeature("editorial")}
             canAccessPremieres={accessControl.canAccessFeature("premieres")}
             onOpenUserProfile={handleOpenUserProfile}
+            onCompareUser={handleCompareUser}
             highlightedPost={highlightedFeedPost}
             onHighlightHandled={() => setHighlightedFeedPost(null)}
           />
-        </div>
-
-        {accessControl.canAccessView("search") ? (
-          <div hidden={hiddenWhen("search")}>
-            <SearchPanel userId={session!.user.id} onOpenUserProfile={handleOpenUserProfile} />
-          </div>
+        }
+        inbox={accessControl.canAccessView("inbox") ? (
+          <InboxPanel
+            userId={session!.user.id}
+            onStartRecommendation={canSearch ? () => handleChangeView("search") : undefined}
+          />
         ) : null}
-
-        {accessControl.canAccessView("inbox") ? (
-          <div hidden={hiddenWhen("inbox")}>
-            <InboxPanel
-              userId={session!.user.id}
-              onStartRecommendation={() => handleChangeView("search")}
-            />
-          </div>
-        ) : null}
-
-        <div hidden={hiddenWhen("user")}>
+        user={
           <ProfilePanel
             userId={session!.user.id}
             viewerUserId={session!.user.id}
             profile={localProfile}
             isOwnProfile
+            watchingOnly={activeView === "watching"}
             headerAction={ownProfileAction}
             profileMessage="Tu perfil publico va juntando automaticamente lo que marcaste como visto, guardaste en Watchlist y recomendaste en Cinerian."
             onProfileUpdated={setLocalProfile}
             onOpenUserProfile={handleOpenUserProfile}
             onNavigateToSearch={accessControl.canAccessView("search") ? () => handleChangeView("search") : undefined}
           />
-        </div>
-      </>
+        }
+        profile={selectedProfileRoute ? (
+          <UserProfilePage
+            key={selectedProfileRoute.userId ?? selectedProfileRoute.username}
+            currentUserId={session!.user.id}
+            userId={selectedProfileRoute.userId}
+            username={selectedProfileRoute.username}
+            onOpenUserProfile={handleOpenUserProfile}
+            onNavigateToSearch={accessControl.canAccessView("search") ? () => handleChangeView("search") : undefined}
+          />
+        ) : null}
+      />
     );
   }
 
@@ -854,7 +841,7 @@ export default function App() {
                     title={item.label}
                   >
                     <span className="dock__icon">
-                      <DockIcon id={item.id} badgeCount={item.id === "inbox" ? unreadInboxCount : 0} />
+                      <DockIcon id={item.id} />
                     </span>
                     <span className="dock__label">{item.label}</span>
                   </button>
@@ -877,19 +864,19 @@ export default function App() {
           </nav>
 
           <section className={`workspace-content workspace-content--${selectedProfileRoute ? "profile" : activeView}`}>
-            {/*
-              Descubrí vive aca aparte del resto porque es el unico panel que
-              se renderiza siempre (independiente del selectedProfileRoute) —
-              el resto esta adentro de renderActiveView() y comparte la misma
-              estrategia: montado una vez, oculto con `hidden`.
-            */}
-            {session && accessControl.canAccessView("recommendations") ? (
-              <div hidden={activeView !== "recommendations" || !!selectedProfileRoute}>
-                <RecommendationPanel
-                  userId={session.user.id}
-                  onOpenUserProfile={handleOpenUserProfile}
-                />
-              </div>
+            {accessControl.canAccessView("inbox") ? (
+              <header className="app-utility-bar">
+                <button
+                  type="button"
+                  className={`app-notifications-button ${activeView === "inbox" && !selectedProfileRoute ? "is-active" : ""}`}
+                  onClick={() => handleChangeView("inbox")}
+                  aria-label={unreadInboxCount ? `Abrir bandeja, ${unreadInboxCount} pendientes` : "Abrir bandeja"}
+                  title="Bandeja y notificaciones"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 9h18c0-1-3-2-3-9Z" /><path d="M10 21h4" /></svg>
+                  {unreadInboxCount > 0 ? <span className="dock__badge">{unreadInboxCount > 9 ? "9+" : unreadInboxCount}</span> : null}
+                </button>
+              </header>
             ) : null}
             {renderActiveView()}
           </section>

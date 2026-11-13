@@ -260,11 +260,20 @@ export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications
 
         <div className="profile-editor__visibility">
           <label className="profile-editor__toggle">
-            <span>Mostrar watchlist y vistas</span>
+            <span>Mostrar Watchlist</span>
             <input
               type="checkbox"
               checked={form.visibilitySettings.showWatchlist}
               onChange={(event) => updateVisibility("showWatchlist", event.target.checked)}
+            />
+          </label>
+
+          <label className="profile-editor__toggle">
+            <span>Mostrar Vistas</span>
+            <input
+              type="checkbox"
+              checked={form.visibilitySettings.showWatched}
+              onChange={(event) => updateVisibility("showWatched", event.target.checked)}
             />
           </label>
 

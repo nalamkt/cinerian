@@ -183,29 +183,61 @@ async function fetchMessagesByColumn(column: "sender_id" | "recipient_id", userI
     .order("created_at", { ascending: false })
     .limit(40);
 
-  if (!primaryQuery.error) {
-    return (primaryQuery.data ?? []) as RecommendationMessageRow[];
+  if (primaryQuery.error) {
+    if (!isMissingReadAtColumn(primaryQuery.error)) throw primaryQuery.error;
+    const fallbackQuery = await supabase
+      .from("recommendation_messages")
+      .select("id, sender_id, recipient_id, tmdb_id, media_type, title, poster_url, year, note, created_at")
+      .eq(column, userId)
+      .order("created_at", { ascending: false })
+      .limit(40);
+    if (fallbackQuery.error) throw fallbackQuery.error;
+    return ((fallbackQuery.data ?? []) as Omit<RecommendationMessageRow, "read_at">[]).map((row) => ({ ...row, read_at: null }));
   }
 
-  if (!isMissingReadAtColumn(primaryQuery.error)) {
-    throw primaryQuery.error;
+  const rows = (primaryQuery.data ?? []) as RecommendationMessageRow[];
+  const pendingIds = await fetchUnreadReplyMessageIds(userId);
+  const pendingRows: RecommendationMessageRow[] = [];
+  if (column === "recipient_id") {
+    for (let offset = 0; ; offset += 200) {
+      const page = await supabase.from("recommendation_messages")
+        .select("id, sender_id, recipient_id, tmdb_id, media_type, title, poster_url, year, note, created_at, read_at")
+        .eq("recipient_id", userId).is("read_at", null)
+        .order("created_at", { ascending: false }).order("id", { ascending: false })
+        .range(offset, offset + 199);
+      if (page.error) throw page.error;
+      pendingRows.push(...((page.data ?? []) as RecommendationMessageRow[]));
+      if ((page.data?.length ?? 0) < 200) break;
+    }
   }
 
-  const fallbackQuery = await supabase
-    .from("recommendation_messages")
-    .select("id, sender_id, recipient_id, tmdb_id, media_type, title, poster_url, year, note, created_at")
-    .eq(column, userId)
-    .order("created_at", { ascending: false })
-    .limit(40);
-
-  if (fallbackQuery.error) {
-    throw fallbackQuery.error;
+  for (let offset = 0; offset < pendingIds.length; offset += 100) {
+    const page = await supabase.from("recommendation_messages")
+      .select("id, sender_id, recipient_id, tmdb_id, media_type, title, poster_url, year, note, created_at, read_at")
+      .eq(column, userId).in("id", pendingIds.slice(offset, offset + 100));
+    if (page.error) throw page.error;
+    pendingRows.push(...((page.data ?? []) as RecommendationMessageRow[]));
   }
 
-  return ((fallbackQuery.data ?? []) as Omit<RecommendationMessageRow, "read_at">[]).map((row) => ({
-    ...row,
-    read_at: null
-  }));
+  return [...new Map([...rows, ...pendingRows].map((row) => [row.id, row])).values()]
+    .sort((left, right) => right.created_at.localeCompare(left.created_at));
+}
+
+async function fetchUnreadReplyMessageIds(userId: string): Promise<string[]> {
+  if (!supabase) return [];
+  const ids = new Set<string>();
+  for (let offset = 0; ; offset += 200) {
+    const page = await supabase.from("recommendation_message_replies")
+      .select("message_id, id").eq("recipient_id", userId).is("read_at", null)
+      .order("id", { ascending: true }).range(offset, offset + 199);
+    if (page.error) {
+      if (isMissingReplyActivityColumns(page.error)) return [];
+      throw page.error;
+    }
+    for (const row of page.data ?? []) ids.add(row.message_id as string);
+    if ((page.data?.length ?? 0) < 200) break;
+  }
+  return [...ids];
 }
 
 async function mapMessageRows(rows: RecommendationMessageRow[]): Promise<RecommendationMessage[]> {
@@ -238,31 +270,30 @@ async function fetchRepliesForMessages(messageIds: string[]) {
     return [] as RecommendationReplyRow[];
   }
 
-  const primaryResult = await supabase
-    .from("recommendation_message_replies")
-    .select("id, message_id, sender_id, recipient_id, body, created_at, read_at")
-    .in("message_id", messageIds)
-    .order("created_at", { ascending: true });
-
-  if (!primaryResult.error) {
-    return (primaryResult.data ?? []) as RecommendationReplyRow[];
+  const replies: RecommendationReplyRow[] = [];
+  for (let offset = 0; offset < messageIds.length; offset += 100) {
+    const ids = messageIds.slice(offset, offset + 100);
+    for (let pageOffset = 0; ; pageOffset += 200) {
+      const primaryResult = await supabase.from("recommendation_message_replies")
+        .select("id, message_id, sender_id, recipient_id, body, created_at, read_at")
+        .in("message_id", ids).order("created_at", { ascending: true }).order("id", { ascending: true })
+        .range(pageOffset, pageOffset + 199);
+      if (!primaryResult.error) {
+        replies.push(...((primaryResult.data ?? []) as RecommendationReplyRow[]));
+        if ((primaryResult.data?.length ?? 0) < 200) break;
+        continue;
+      }
+      if (!isMissingReplyActivityColumns(primaryResult.error)) throw primaryResult.error;
+      const legacyResult = await supabase.from("recommendation_message_replies")
+        .select("id, message_id, sender_id, body, created_at")
+        .in("message_id", ids).order("created_at", { ascending: true }).order("id", { ascending: true })
+        .range(pageOffset, pageOffset + 199);
+      if (legacyResult.error) throw legacyResult.error;
+      replies.push(...((legacyResult.data ?? []) as RecommendationReplyRow[]));
+      if ((legacyResult.data?.length ?? 0) < 200) break;
+    }
   }
-
-  if (!isMissingReplyActivityColumns(primaryResult.error)) {
-    throw primaryResult.error;
-  }
-
-  const legacyResult = await supabase
-    .from("recommendation_message_replies")
-    .select("id, message_id, sender_id, body, created_at")
-    .in("message_id", messageIds)
-    .order("created_at", { ascending: true });
-
-  if (legacyResult.error) {
-    throw legacyResult.error;
-  }
-
-  return (legacyResult.data ?? []) as RecommendationReplyRow[];
+  return replies.sort((left, right) => left.created_at.localeCompare(right.created_at));
 }
 
 function groupRepliesByMessage(
@@ -364,11 +395,7 @@ export async function fetchUnreadInboxCount(userId: string): Promise<number> {
       .is("deleted_at", null)
   ]);
 
-  if (recommendationResult.error) {
-    if (isMissingReadAtColumn(recommendationResult.error)) {
-      return 0;
-    }
-
+  if (recommendationResult.error && !isMissingReadAtColumn(recommendationResult.error)) {
     throw recommendationResult.error;
   }
 
@@ -380,7 +407,9 @@ export async function fetchUnreadInboxCount(userId: string): Promise<number> {
     throw commentResult.error;
   }
 
-  return (recommendationResult.count ?? 0) + (replyResult.count ?? 0) + (commentResult.count ?? 0);
+  return (recommendationResult.error ? 0 : recommendationResult.count ?? 0) +
+    (replyResult.error ? 0 : replyResult.count ?? 0) +
+    (commentResult.error ? 0 : commentResult.count ?? 0);
 }
 
 export async function fetchCommentNotifications(userId: string): Promise<CommentInboxNotification[]> {
@@ -406,7 +435,27 @@ export async function fetchCommentNotifications(userId: string): Promise<Comment
     throw error;
   }
 
-  const rows = (data ?? []) as CommentNotificationRow[];
+  // El contador incluye todos los no leídos; no dejarlos invisibles cuando
+  // hay más de 60 avisos históricos recientes.
+  const unreadRows: CommentNotificationRow[] = [];
+  const pageSize = 200;
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await supabase
+      .from("feed_post_comment_notifications")
+      .select("id, comment_id, post_id, actor_user_id, recipient_user_id, created_at, read_at, deleted_at, feed_post_comments(body), feed_posts(body, post_type, tmdb_id, media_type)")
+      .eq("recipient_user_id", userId)
+      .is("read_at", null)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (page.error) throw page.error;
+    unreadRows.push(...((page.data ?? []) as CommentNotificationRow[]));
+    if ((page.data?.length ?? 0) < pageSize) break;
+  }
+
+  const rows = [...new Map([...((data ?? []) as CommentNotificationRow[]), ...unreadRows].map((row) => [row.id, row])).values()]
+    .sort((left, right) => right.created_at.localeCompare(left.created_at));
   const [profiles, items] = await Promise.all([
     listProfiles(),
     Promise.all(rows.map((row) => hydrateNotificationItem(row)))

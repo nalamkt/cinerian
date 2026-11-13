@@ -7,6 +7,7 @@ import {
   type CurrentWatchingEntry,
   type Profile,
   type ProfileVisibilitySettings,
+  publicComparisonSections,
   saveCurrentWatchingEntries
 } from "../lib/auth";
 import { deleteFeedPost, fetchUserTextPosts, updateFeedPost } from "../lib/feed";
@@ -39,6 +40,7 @@ type ProfileTabsProps = {
   visibilitySettings?: ProfileVisibilitySettings;
   onProfileUpdated?: (profile: Profile) => void;
   tabRequest?: { tab: "watching"; key: number } | null;
+  watchingOnly?: boolean;
 };
 
 type TabId = "watched" | "watchlist" | "mutual-likes" | "watching" | "posts" | "ranking";
@@ -190,10 +192,11 @@ export function ProfileTabs({
   profile = null,
   visibilitySettings,
   onProfileUpdated,
-  tabRequest
+  tabRequest,
+  watchingOnly = false
 }: ProfileTabsProps) {
   const { openMediaDetails } = useMediaDetails();
-  const [activeTab, setActiveTab] = useState<TabId>(requestedProfileTab);
+  const [selectedTab, setActiveTab] = useState<TabId>(requestedProfileTab);
   const tabsRef = useRef<HTMLElement | null>(null);
   const [reactions, setReactions] = useState<StoredReaction[]>([]);
   const [viewerReactions, setViewerReactions] = useState<StoredReaction[]>([]);
@@ -398,23 +401,20 @@ export function ProfileTabs({
 
   const visibleTabs = useMemo(() => {
     const tabs: TabId[] = [];
-
-    if (visibilitySettings?.showWatchlist !== false) {
+    const publicSections = publicComparisonSections(visibilitySettings);
+    const canShowWatched = isOwnProfile || publicSections.watched;
+    const canShowWatchlist = isOwnProfile || publicSections.watchlist;
+    if (canShowWatched) {
       tabs.push("watched");
-
-      if (isOwnProfile) {
-        tabs.push("watching");
-      }
-
-      tabs.push("watchlist");
-
-      if (!isOwnProfile && viewerUserId) {
-        tabs.push("mutual-likes");
-      }
     }
-
-    if (isOwnProfile && visibilitySettings?.showWatchlist === false) {
+    if (isOwnProfile) {
       tabs.push("watching");
+    }
+    if (canShowWatchlist) {
+      tabs.push("watchlist");
+    }
+    if (!isOwnProfile && viewerUserId && (canShowWatched || canShowWatchlist)) {
+      tabs.push("mutual-likes");
     }
 
     // El ranking se arma con a quien seguis vos, asi que solo tiene sentido en
@@ -424,16 +424,20 @@ export function ProfileTabs({
     }
 
     return tabs;
-  }, [isOwnProfile, viewerUserId, visibilitySettings?.showWatchlist]);
+  }, [isOwnProfile, viewerUserId, visibilitySettings?.showWatched, visibilitySettings?.showWatchlist]);
+  const activeTab: TabId = watchingOnly ? "watching" : visibleTabs.includes(selectedTab) ? selectedTab : visibleTabs[0] ?? "posts";
 
   useEffect(() => {
-    if (!visibleTabs.includes(activeTab)) {
+    if (!visibleTabs.includes(selectedTab)) {
       setActiveTab(visibleTabs[0] ?? "posts");
     }
-  }, [activeTab, visibleTabs]);
+  }, [selectedTab, visibleTabs]);
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [mutualFilter, setMutualFilter] = useState<"watched" | "watchlist">("watched");
+  const { watched: canCompareWatched, watchlist: canCompareWatchlist } = publicComparisonSections(visibilitySettings);
+  const shownMutualFilter = mutualFilter === "watched" && !canCompareWatched ? "watchlist" :
+    mutualFilter === "watchlist" && !canCompareWatchlist ? "watched" : mutualFilter;
   // La preferencia es de quien mira, no del perfil que se esta viendo.
   const sortOwnerId = viewerUserId ?? userId;
   const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>(() =>
@@ -597,7 +601,7 @@ export function ProfileTabs({
       .filter((item): item is DiscoveryItem => Boolean(item));
   }, [reactions, titles, viewerReactions]);
 
-  const mutualItems = mutualFilter === "watched" ? mutualWatchedItems : mutualWatchlistItems;
+  const mutualItems = shownMutualFilter === "watched" ? mutualWatchedItems : mutualWatchlistItems;
 
   const tabItems = useMemo(() => {
     if (activeTab === "mutual-likes") {
@@ -680,7 +684,7 @@ export function ProfileTabs({
       (entry) => isRatedReaction(entry.reaction)
     ).length,
     watchlist: reactions.filter((entry) => entry.reaction === "watchlist").length,
-    "mutual-likes": mutualWatchedItems.length + mutualWatchlistItems.length,
+    "mutual-likes": (canCompareWatched ? mutualWatchedItems.length : 0) + (canCompareWatchlist ? mutualWatchlistItems.length : 0),
     watching: watchingEntries.length,
     posts: posts.length
   };
@@ -846,7 +850,7 @@ export function ProfileTabs({
     <section className="profile-tabs" ref={tabsRef}>
       {!isOwnProfile && visibleTabs.includes("mutual-likes") && showMutualHint && activeTab !== "mutual-likes" ? (
         <div className="profile-tabs__discovery-hint">
-          <p>¿Qué tienen en común? Compará las favoritas que ambos valoraron positivamente y los títulos que guardaron en Watchlist.</p>
+          <p>¿Qué tienen en común? Compará las Vistas y Watchlists que este perfil comparte.</p>
           <button type="button" onClick={() => { setActiveTab("mutual-likes"); dismissMutualHint(); }}>
             Ver en común <span aria-hidden="true">→</span>
           </button>
@@ -855,7 +859,7 @@ export function ProfileTabs({
           </button>
         </div>
       ) : null}
-      <div className="profile-tabs__switcher">
+      {!watchingOnly ? <div className="profile-tabs__switcher">
         {visibleTabs.map((tab) => {
           const isComingSoon = tab === "posts";
 
@@ -888,7 +892,7 @@ export function ProfileTabs({
             </span>
           );
         })}
-      </div>
+      </div> : null}
 
       {!readOnly && syncMessage ? <div className="inline-status">{syncMessage}</div> : null}
 
@@ -1229,7 +1233,7 @@ export function ProfileTabs({
               <p className="section-eyebrow">Punto en común</p>
               <h3>En común</h3>
               <p>
-                {mutualFilter === "watched"
+                {shownMutualFilter === "watched"
                   ? "Películas y series que ambos vieron y marcaron como favoritas."
                   : "Títulos que ambos guardaron para ver más adelante."}
               </p>
@@ -1239,20 +1243,20 @@ export function ProfileTabs({
           <div className="profile-list-toolbar">
             {activeTab === "mutual-likes" ? (
               <div className="profile-type-filter">
-                <button
+                {canCompareWatched ? <button
                   type="button"
-                  className={mutualFilter === "watched" ? "is-active" : ""}
+                  className={shownMutualFilter === "watched" ? "is-active" : ""}
                   onClick={() => setMutualFilter("watched")}
                 >
                   Vistas
-                </button>
-                <button
+                </button> : null}
+                {canCompareWatchlist ? <button
                   type="button"
-                  className={mutualFilter === "watchlist" ? "is-active" : ""}
+                  className={shownMutualFilter === "watchlist" ? "is-active" : ""}
                   onClick={() => setMutualFilter("watchlist")}
                 >
                   Watchlist
-                </button>
+                </button> : null}
               </div>
             ) : (
               <div className="profile-type-filter">
@@ -1347,9 +1351,9 @@ export function ProfileTabs({
           ) : (
             <div className="profile-grid__empty">
               {activeTab === "mutual-likes"
-                ? mutualFilter === "watched"
-                  ? "Todavía no tienen títulos que les hayan gustado a los dos."
-                  : "Todavía no tienen títulos en Watchlist en común."
+                ? shownMutualFilter === "watched"
+                  ? canCompareWatchlist ? "Todavía no tienen títulos valorados positivamente por ambos. Probá Watchlist para ver qué guardaron en común." : "Todavía no tienen títulos valorados positivamente por ambos."
+                  : canCompareWatched ? "Todavía no tienen títulos en Watchlist en común. Probá Vistas para encontrar favoritos de ambos." : "Todavía no tienen títulos en Watchlist en común."
                 : activeTab === "watched"
                 ? isOwnProfile
                   ? "Todavia no marcaste titulos como vistos."

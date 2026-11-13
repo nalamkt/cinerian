@@ -36,6 +36,7 @@ import type {
 } from "../types";
 import { EditorialOnboardingModal } from "./EditorialOnboardingModal";
 import { LoadingState } from "./LoadingState";
+import { MutualDiscovery } from "./MutualDiscovery";
 
 function findMediaFromPost(body: string) {
   const lowered = body.toLowerCase();
@@ -48,6 +49,7 @@ type FeedPanelProps = {
   canAccessEditorial?: boolean;
   canAccessPremieres?: boolean;
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
+  onCompareUser: (profile: { userId: string; username: string }) => void;
   highlightedPost?: {
     postId: string;
     openComments?: boolean;
@@ -160,6 +162,7 @@ export function FeedPanel({
   canAccessEditorial = true,
   canAccessPremieres = true,
   onOpenUserProfile,
+  onCompareUser,
   highlightedPost,
   onHighlightHandled
 }: FeedPanelProps) {
@@ -1056,6 +1059,8 @@ export function FeedPanel({
             Siguiendo
           </button>
         </header>
+
+        <MutualDiscovery userId={userId} profiles={profiles} followingUserIds={followingUserIds} onCompare={onCompareUser} />
 
         <section className="composer-card">
           <div className="composer-card__avatar">

@@ -18,6 +18,7 @@ type ProfilePanelProps = {
   headerLabel?: string | null;
   headerAction?: ReactNode;
   readOnly?: boolean;
+  watchingOnly?: boolean;
   onProfileUpdated?: (profile: Profile) => void;
   onOpenUserProfile?: (profile: { userId: string; username?: string }) => void;
   onNavigateToSearch?: () => void;
@@ -33,6 +34,7 @@ export function ProfilePanel({
   headerLabel = "Perfil",
   headerAction,
   readOnly = false,
+  watchingOnly = false,
   onProfileUpdated,
   onOpenUserProfile,
   onNavigateToSearch
@@ -145,14 +147,14 @@ export function ProfilePanel({
     : activePeopleList;
 
   return (
-    <section className="panel profile-panel">
-      {bannerUrl ? (
+    <section className={`panel profile-panel ${watchingOnly ? "profile-panel--watching" : ""}`}>
+      {!watchingOnly && bannerUrl ? (
         <div className="profile-banner" aria-hidden="true">
           <img src={bannerUrl} alt="" className="profile-banner__image" />
         </div>
       ) : null}
 
-      <div className="profile-hero">
+      {!watchingOnly ? <div className="profile-hero">
         <div className="profile-avatar" aria-hidden="true">
           {avatarUrl ? (
             <img src={avatarUrl} alt={`Avatar de ${displayName}`} className="profile-avatar__image" />
@@ -214,7 +216,7 @@ export function ProfilePanel({
                 : "Aca ves lo que esta persona ya miro, guardo para despues y publico dentro de Cinerian.")}
           </p>
         </div>
-      </div>
+      </div> : null}
 
       {peoplePopupTab ? (
         <div className="profile-people-popup__backdrop" onClick={closePeoplePopup}>
@@ -336,7 +338,7 @@ export function ProfilePanel({
         )
       ) : null}
 
-      {isOwnProfile && profile && onProfileUpdated ? (
+      {!watchingOnly && isOwnProfile && profile && onProfileUpdated ? (
         <DiscoverCinerianHelp
           userId={profile.id}
           onFindPeople={onNavigateToSearch}
@@ -354,6 +356,7 @@ export function ProfilePanel({
         visibilitySettings={visibilitySettings}
         onProfileUpdated={onProfileUpdated}
         tabRequest={tabRequest}
+        watchingOnly={watchingOnly}
       />
     </section>
   );
