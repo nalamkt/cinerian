@@ -1,5 +1,6 @@
 import type { Session, User } from "@supabase/supabase-js";
 import { trackProductEvent } from "./analytics";
+import { authRedirectUrl } from "./authRedirect";
 import { supabase } from "./supabase";
 
 export type ProfileCollection = {
@@ -327,11 +328,7 @@ function buildFallbackUsername(email: string | undefined, userId: string) {
 }
 
 function getAuthRedirectUrl() {
-  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-    return window.location.origin;
-  }
-
-  return "https://cinerian.app";
+  return authRedirectUrl(typeof window === "undefined" ? null : window.location);
 }
 
 export async function sendMagicLink(email: string, shouldCreateUser = false) {
