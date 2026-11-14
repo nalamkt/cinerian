@@ -1,5 +1,11 @@
 export type DiscoverMode = "cards" | "trailers";
 
+export function splitTrailerTitleForBadge(title: string): { prefix: string; lastWord: string } {
+  const trimmed = title.trim();
+  const match = /^([\s\S]*\S)\s+(\S+)$/u.exec(trimmed);
+  return match ? { prefix: match[1], lastWord: match[2] } : { prefix: "", lastWord: trimmed };
+}
+
 export function shouldFetchMoreTrailerPages(input: {
   scanComplete: boolean;
   unexploredCount: number;

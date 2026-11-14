@@ -25,8 +25,9 @@ import {
 } from "../lib/discoverFilters";
 import { fetchSocialRecommendations, type RankedRecommendation, type Watcher } from "../lib/recommendations";
 import { buildWatchedPostBody } from "../lib/reviews";
-import { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, trailerAvailability, trailerDragOffset, trailerEmptyPhase, type DiscoverMode } from "../lib/discoverTrailer";
+import { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerAvailability, trailerDragOffset, trailerEmptyPhase, type DiscoverMode } from "../lib/discoverTrailer";
 import { advanceTrailerProgress, EMPTY_TRAILER_PROGRESS, parseTrailerProgress, serializeTrailerProgress, trailerProgressStorageKey, type TrailerProgress } from "../lib/trailerProgress";
+import { readTrailerSoundPreference, saveTrailerSoundPreference } from "../lib/trailerPlayback";
 import {
   getProviderCatalog,
   getTitleDetails,
@@ -239,6 +240,10 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     try { return window.localStorage.getItem(`cinerian:discover-mode:${userId}`) === "trailers" ? "trailers" : "cards"; }
     catch { return "cards"; }
   });
+  const [trailerSoundEnabled, setTrailerSoundEnabled] = useState(() => {
+    try { return readTrailerSoundPreference(window.localStorage, userId); }
+    catch { return false; }
+  });
   const [trailerHistory, setTrailerHistory] = useState<DiscoveryItem[]>([]);
   const [trailerHistoryIndex, setTrailerHistoryIndex] = useState<number | null>(null);
   const [isTrailerEnd, setIsTrailerEnd] = useState(false);
@@ -422,6 +427,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
       ? eligibleTrailerItems.find((item) => itemKey(item) === trailerProgress.currentKey) ??
         (page >= MAX_DECK_PAGES && trailerScan.complete ? unexploredTrailerItems[0] ?? null : null)
       : unexploredTrailerItems[0] ?? null;
+  const trailerTitleParts = shownTrailerItem ? splitTrailerTitleForBadge(shownTrailerItem.title) : null;
   const isTrailerJourneyComplete = canFinishTrailerJourney({
     scanComplete: trailerScan.complete,
     page,
@@ -1437,6 +1443,12 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     syncing: isSyncing || Boolean(trailerTransition)
   });
 
+  function changeTrailerSound(enabled: boolean) {
+    setTrailerSoundEnabled(enabled);
+    try { saveTrailerSoundPreference(window.localStorage, userId, enabled); }
+    catch { /* El estado de esta sesión sigue funcionando sin almacenamiento. */ }
+  }
+
   function renderDiscoverActions(item: DiscoveryItem, trailer = false) {
     const disabled = isSyncing || (trailer && reactedKeys.has(itemKey(item)));
     return <div className="discover-actions">
@@ -1654,6 +1666,8 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
               trailerUrl={shownTrailerDetails?.trailerUrl ?? null}
               posterUrl={shownTrailerItem.posterUrl}
               active={canPlayTrailer}
+              soundEnabled={trailerSoundEnabled}
+              onSoundEnabledChange={changeTrailerSound}
               onUnplayable={() => {
                 const key = itemKey(shownTrailerItem);
                 setBlockedTrailerKeys((current) => new Set(current).add(key));
@@ -1679,6 +1693,12 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
             <div className="discover-title-row">
               <h2 className="discover-title">{shownTrailerItem.title}</h2>
               <p className="discover-kind">{shownTrailerItem.mediaType === "tv" ? "Serie" : "Película"}</p>
+              <h2 className="discover-title discover-trailer__title-mobile">
+                {trailerTitleParts?.prefix ? `${trailerTitleParts.prefix} ` : ""}
+                <span className="discover-trailer__title-tail">
+                  {trailerTitleParts?.lastWord}{"\u00a0"}<span className="discover-kind">{shownTrailerItem.mediaType === "tv" ? "Serie" : "Película"}</span>
+                </span>
+              </h2>
             </div>
             <button type="button" className="discover-trailer__details" onClick={() => openMediaDetails(shownTrailerItem)}>Ver ficha</button>
             <p className="discover-facts">
