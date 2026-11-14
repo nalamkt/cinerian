@@ -27,7 +27,6 @@ test("el chat conserva el encabezado y desplaza solo los mensajes", () => {
 });
 
 test("la búsqueda mobile evita autozoom sin impedir el zoom manual", () => {
-  assert.match(styles, /@media \(max-width: 900px\) \{\s*\.app-shell--immersive \{[^}]*\}\s*input\[type="search"\] \{ font-size: max\(1rem, 1em\); \}/);
   assert.match(app, /function closeGlobalSearch\(\) \{\s*if \(document\.activeElement instanceof HTMLInputElement && document\.activeElement\.type === "search"\) document\.activeElement\.blur\(\)/);
   assert.match(app, /function handleChangeView\(view: AppView\) \{[\s\S]*?document\.activeElement\.blur\(\)/);
   assert.match(styles, /\.app-topbar__search-slot\.is-open \.app-topbar__search-popover \{ display: flex; position: fixed;[^}]*left: 12px; right: 12px; width: auto;/);

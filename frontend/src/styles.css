@@ -7951,15 +7951,14 @@ textarea {
     flex: 1 1 auto;
     gap: 10px;
     width: 100%;
-    padding: 12px 14px calc(8px + env(safe-area-inset-bottom));
-    min-height: 100%;
+    padding: max(12px, env(safe-area-inset-top, 0px)) 14px calc(8px + env(safe-area-inset-bottom));
+    min-height: 0;
     height: 100%;
     animation: inboxThreadSlideIn 220ms ease;
   }
 
   .inbox-thread-view__summary {
-    position: sticky;
-    top: 0;
+    position: relative;
     z-index: 5;
     flex-shrink: 0;
     width: 100%;
@@ -8032,14 +8031,10 @@ textarea {
     height: 18px;
   }
 
-  .inbox-thread-panel,
-  .inbox-thread-view__messages {
-    height: 100%;
-  }
-
   .inbox-thread-view__messages {
     flex: 1 1 auto;
     min-height: 0;
+    height: auto;
     width: 100%;
     overflow-y: auto;
     align-content: start;
@@ -8050,7 +8045,7 @@ textarea {
   .inbox-thread-panel {
     display: none;
     overflow: hidden;
-    min-height: 100%;
+    min-height: 0;
     height: 100%;
   }
 
@@ -8058,7 +8053,7 @@ textarea {
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
-    min-height: 100%;
+    min-height: 0;
     height: 100%;
   }
 
@@ -8128,21 +8123,21 @@ textarea {
 
   .inbox-shell.is-thread-open-mobile .feed-main {
     border-radius: 30px;
-    min-height: 100%;
+    min-height: 0;
     height: 100%;
     overflow: hidden;
   }
 
   .inbox-shell.is-thread-open-mobile .inbox-body {
-    min-height: 100%;
-    height: 100%;
+    min-height: 0;
+    height: auto;
   }
 
   .inbox-shell.is-thread-open-mobile .inbox-layout,
   .inbox-shell.is-thread-open-mobile .inbox-thread-panel,
   .inbox-shell.is-thread-open-mobile .inbox-thread-panel.is-visible-mobile,
   .inbox-shell.is-thread-open-mobile .inbox-thread-view {
-    min-height: 100%;
+    min-height: 0;
     height: 100%;
   }
 
@@ -14496,7 +14491,9 @@ textarea {
 
 @media (max-width: 900px) {
   .app-shell--immersive { --mobile-dock-reserve: calc(74px + env(safe-area-inset-bottom, 0px)); min-height: 100dvh; padding-bottom: 0; }
-  input[type="search"] { font-size: max(1rem, 1em); }
+  input[type="search"],
+  .app-topbar__search-inline input,
+  .app-topbar__search-popover input { font-size: max(16px, 1rem); }
   .app-topbar { width: 100%; }
   .app-topbar__navigation { flex: 1 1 auto; }
   .app-topbar__actions { flex: 0 0 auto; gap: 7px; }
