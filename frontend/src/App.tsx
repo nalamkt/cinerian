@@ -769,6 +769,7 @@ export default function App() {
   }
 
   function closeGlobalSearch() {
+    if (document.activeElement instanceof HTMLInputElement && document.activeElement.type === "search") document.activeElement.blur();
     setIsGlobalSearchOpen(false);
     setSearchQuery("");
     setIsSearchBrowsing(false);
@@ -785,6 +786,7 @@ export default function App() {
   function handleChangeView(view: AppView) {
     const destination = resolveApbView(view, canSearch, canDiscover);
     if (!destination || !(destination === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(destination))) return;
+    if (document.activeElement instanceof HTMLInputElement && document.activeElement.type === "search") document.activeElement.blur();
     setIsActivityOpen(false);
     setIsGlobalSearchOpen(false);
     if (!selectedProfileRoute && activeView === "feed" && destination === "feed") {

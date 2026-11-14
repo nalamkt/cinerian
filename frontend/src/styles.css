@@ -7697,6 +7697,11 @@ textarea {
   }
 
   body.inbox-mobile-thread-open .app-shell--immersive {
+    position: fixed;
+    top: var(--inbox-viewport-top, 0px);
+    right: 0;
+    left: 0;
+    width: 100%;
     padding-bottom: 0;
   }
 
@@ -11789,22 +11794,26 @@ textarea {
   }
 
   .app-shell--discover {
-    height: auto;
-    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .app-shell--discover .workspace-grid {
+    flex: 1 1 auto;
     height: auto;
     min-height: 0;
   }
 
   .app-shell--discover .workspace-content--recommendations {
-    /* La ficha termina antes del dock fijo sin mover nunca el propio dock. */
-    flex: none;
-    height: calc(100dvh - var(--mobile-app-top-space) - var(--mobile-dock-reserve));
+    /* El shell mide el viewport; el contenido reserva el dock una sola vez. */
+    flex: 1 1 auto;
+    height: 100%;
     min-height: 0;
     overflow: hidden;
-    padding-bottom: 0;
+    padding-bottom: var(--mobile-dock-reserve);
     display: flex;
     flex-direction: column;
   }
@@ -14487,6 +14496,7 @@ textarea {
 
 @media (max-width: 900px) {
   .app-shell--immersive { --mobile-dock-reserve: calc(74px + env(safe-area-inset-bottom, 0px)); min-height: 100dvh; padding-bottom: 0; }
+  input[type="search"] { font-size: max(1rem, 1em); }
   .app-topbar { width: 100%; }
   .app-topbar__navigation { flex: 1 1 auto; }
   .app-topbar__actions { flex: 0 0 auto; gap: 7px; }

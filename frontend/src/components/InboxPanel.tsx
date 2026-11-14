@@ -172,7 +172,7 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [groupByFriend, setGroupByFriend] = useState(false);
   const composerRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [swipedMessageId, setSwipedMessageId] = useState<string | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [threadSwipeOffset, setThreadSwipeOffset] = useState(0);
@@ -454,7 +454,8 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
     if (!activeMessage) {
       return;
     }
-    messagesEndRef.current?.scrollIntoView({ block: "end" });
+    const container = messagesContainerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
   }, [activeMessage?.id, activeMessage?.replies?.length]);
 
   useEffect(() => {
@@ -574,24 +575,12 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
     }
 
     const viewport = window.visualViewport;
-    let frameId: number | undefined;
-
-    // iOS Safari does not always update `dvh` while its keyboard animates.
-    // Keep the thread sized to the actual visible viewport instead.
+    // Safari may pan the visual viewport when the keyboard opens.
     const syncVisibleViewport = () => {
-      // The thread itself is anchored at the document origin. Adding pageTop
-      // made its height grow again when Safari panned for the keyboard, which
-      // pushed the composer below the actual visible viewport.
       const visibleHeight = Math.round(viewport ? viewport.height : window.innerHeight);
+      const visibleTop = Math.round(viewport?.offsetTop ?? 0);
       document.documentElement.style.setProperty("--inbox-visible-height", `${visibleHeight}px`);
-
-      if (frameId !== undefined) {
-        window.cancelAnimationFrame(frameId);
-      }
-
-      frameId = window.requestAnimationFrame(() => {
-        window.scrollTo(0, 0);
-      });
+      document.documentElement.style.setProperty("--inbox-viewport-top", `${visibleTop}px`);
     };
 
     syncVisibleViewport();
@@ -600,14 +589,11 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
     window.addEventListener("resize", syncVisibleViewport);
 
     return () => {
-      if (frameId !== undefined) {
-        window.cancelAnimationFrame(frameId);
-      }
-
       viewport?.removeEventListener("resize", syncVisibleViewport);
       viewport?.removeEventListener("scroll", syncVisibleViewport);
       window.removeEventListener("resize", syncVisibleViewport);
       document.documentElement.style.removeProperty("--inbox-visible-height");
+      document.documentElement.style.removeProperty("--inbox-viewport-top");
     };
   }, [isShowingMobileThread]);
 
@@ -1428,7 +1414,7 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
 
         </div>
 
-        <div className="inbox-thread-view__messages">
+        <div className="inbox-thread-view__messages" ref={messagesContainerRef}>
           {conversation.map((entry, index) => {
             const isOwn = entry.senderId === userId;
             const daySeparator = formatDaySeparator(entry.createdAt);
@@ -1537,7 +1523,6 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
               </div>
             );
           })}
-          <div ref={messagesEndRef} />
         </div>
 
         <div className="inbox-thread-view__composer">
