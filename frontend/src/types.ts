@@ -111,6 +111,8 @@ export type MediaDetails = {
   directorLabel: string | null;
   budgetLabel: string | null;
   trailerUrl: string | null;
+  /** False si falló una consulta adicional necesaria para cubrir el idioma original. */
+  trailerLookupComplete?: boolean;
   creators: Array<{
     id: number;
     name: string;

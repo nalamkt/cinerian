@@ -10,6 +10,7 @@ type UserProfilePageProps = {
   username?: string;
   onOpenUserProfile?: (profile: { userId: string; username?: string }) => void;
   onNavigateToSearch?: () => void;
+  onNavigateToWatching?: () => void;
 };
 
 export function UserProfilePage({
@@ -17,7 +18,8 @@ export function UserProfilePage({
   userId,
   username,
   onOpenUserProfile,
-  onNavigateToSearch
+  onNavigateToSearch,
+  onNavigateToWatching
 }: UserProfilePageProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [followers, setFollowers] = useState(0);
@@ -192,6 +194,7 @@ export function UserProfilePage({
           readOnly={!isOwnProfile}
           onOpenUserProfile={onOpenUserProfile}
           onNavigateToSearch={onNavigateToSearch}
+          onNavigateToWatching={onNavigateToWatching}
         />
       )}
     </div>

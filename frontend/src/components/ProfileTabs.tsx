@@ -39,8 +39,8 @@ type ProfileTabsProps = {
   profile?: Profile | null;
   visibilitySettings?: ProfileVisibilitySettings;
   onProfileUpdated?: (profile: Profile) => void;
-  tabRequest?: { tab: "watching"; key: number } | null;
   watchingOnly?: boolean;
+  watchlistOnly?: boolean;
 };
 
 type TabId = "watched" | "watchlist" | "mutual-likes" | "watching" | "posts" | "ranking";
@@ -192,8 +192,8 @@ export function ProfileTabs({
   profile = null,
   visibilitySettings,
   onProfileUpdated,
-  tabRequest,
-  watchingOnly = false
+  watchingOnly = false,
+  watchlistOnly = false
 }: ProfileTabsProps) {
   const { openMediaDetails } = useMediaDetails();
   const [selectedTab, setActiveTab] = useState<TabId>(requestedProfileTab);
@@ -224,17 +224,6 @@ export function ProfileTabs({
   useEffect(() => {
     setWatchingEntries(profile?.current_watching ?? []);
   }, [profile]);
-
-  useEffect(() => {
-    if (tabRequest?.tab === "watching") {
-      setActiveTab("watching");
-      const frame = window.requestAnimationFrame(() => {
-        tabsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-        tabsRef.current?.querySelector<HTMLButtonElement>('[data-profile-tab="watching"]')?.focus({ preventScroll: true });
-      });
-      return () => window.cancelAnimationFrame(frame);
-    }
-  }, [tabRequest]);
 
   function dismissMutualHint() {
     setShowMutualHint(false);
@@ -403,12 +392,9 @@ export function ProfileTabs({
     const tabs: TabId[] = [];
     const publicSections = publicComparisonSections(visibilitySettings);
     const canShowWatched = isOwnProfile || publicSections.watched;
-    const canShowWatchlist = isOwnProfile || publicSections.watchlist;
+    const canShowWatchlist = !isOwnProfile && publicSections.watchlist;
     if (canShowWatched) {
       tabs.push("watched");
-    }
-    if (isOwnProfile) {
-      tabs.push("watching");
     }
     if (canShowWatchlist) {
       tabs.push("watchlist");
@@ -425,7 +411,7 @@ export function ProfileTabs({
 
     return tabs;
   }, [isOwnProfile, viewerUserId, visibilitySettings?.showWatched, visibilitySettings?.showWatchlist]);
-  const activeTab: TabId = watchingOnly ? "watching" : visibleTabs.includes(selectedTab) ? selectedTab : visibleTabs[0] ?? "posts";
+  const activeTab: TabId = watchlistOnly ? "watchlist" : watchingOnly ? "watching" : visibleTabs.includes(selectedTab) ? selectedTab : visibleTabs[0] ?? "posts";
 
   useEffect(() => {
     if (!visibleTabs.includes(selectedTab)) {
@@ -848,6 +834,7 @@ export function ProfileTabs({
 
   return (
     <section className="profile-tabs" ref={tabsRef}>
+      {watchlistOnly ? <div className="profile-tabs__standalone-heading"><p className="section-eyebrow">Tu biblioteca</p><h2>Watchlist</h2><p>Películas y series que guardaste para ver después.</p></div> : null}
       {!isOwnProfile && visibleTabs.includes("mutual-likes") && showMutualHint && activeTab !== "mutual-likes" ? (
         <div className="profile-tabs__discovery-hint">
           <p>¿Qué tienen en común? Compará las Vistas y Watchlists que este perfil comparte.</p>
@@ -859,7 +846,7 @@ export function ProfileTabs({
           </button>
         </div>
       ) : null}
-      {!watchingOnly ? <div className="profile-tabs__switcher">
+      {!watchingOnly && !watchlistOnly ? <div className="profile-tabs__switcher">
         {visibleTabs.map((tab) => {
           const isComingSoon = tab === "posts";
 

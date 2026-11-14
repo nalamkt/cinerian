@@ -397,46 +397,34 @@ function getProvidersLabel(payload: Record<string, unknown>) {
   );
 }
 
-/**
- * Elige que trailer mostrar.
- *
- * Buscamos audio original con subtitulos en español. TMDB no tiene un campo
- * para eso, pero lo deja escrito en el nombre: para una misma pelicula conviven
- * "Trailer Oficial [Doblado]" y "Trailer Oficial [Subtitulado]", los dos
- * marcados como iso_639_1 = "es". Por eso el orden de preferencia mira el
- * nombre y no solo el idioma; quedarse con el primer video en español elegia
- * casi siempre el doblado, que es el que aparece antes en la lista.
- */
+// TMDB describe el video, no certifica las pistas de subtitulos de YouTube.
 const SUBTITLED_RE = /subtitul|\bsub\b|\bvose\b/i;
 const DUBBED_RE = /doblad|latino|castellano|\bdub\b/i;
 
-function getTrailerUrl(payload: Record<string, unknown>) {
+export function getTrailerUrl(payload: Record<string, unknown>) {
   const videos =
     (payload.videos as { results?: Array<Record<string, unknown>> } | undefined)?.results ?? [];
   const originalLanguage =
     typeof payload.original_language === "string" ? payload.original_language : null;
 
   const playable = videos.filter(
-    (video) => video.site === "YouTube" && typeof video.key === "string"
+    (video) => video.site === "YouTube" && typeof video.key === "string" && /^[A-Za-z0-9_-]+$/.test(video.key) &&
+      (video.type === "Trailer" || video.type === "Teaser")
   );
+  const score = (video: Record<string, unknown>) => {
+    const name = typeof video.name === "string" ? video.name : "";
+    const language = video.iso_639_1;
+    const subtitled = SUBTITLED_RE.test(name) && !DUBBED_RE.test(name);
+    const dubbed = DUBBED_RE.test(name);
+    const tier = originalLanguage === "es" && language === "es" ? 0
+      : originalLanguage && originalLanguage !== "es" && language === "es" && subtitled ? 0
+      : language === "es" && dubbed ? 1
+      : originalLanguage && language === originalLanguage ? 2 : 3;
+    return tier * 100 + (video.type === "Trailer" ? 0 : 40) + (video.official === true ? 0 : 20) -
+      Math.min(Number(video.size) || 0, 2160) / 2160;
+  };
   const trailers = playable.filter((video) => video.type === "Trailer");
-
-  const nameOf = (video: Record<string, unknown>) =>
-    typeof video.name === "string" ? video.name : "";
-  const isDubbed = (video: Record<string, unknown>) => DUBBED_RE.test(nameOf(video));
-
-  const pick =
-    // 1) Subtitulado al español: audio original, texto en español.
-    trailers.find((video) => video.iso_639_1 === "es" && SUBTITLED_RE.test(nameOf(video))) ??
-    // 2) En el idioma original de la pelicula, sin subtitulos.
-    trailers.find((video) => originalLanguage && video.iso_639_1 === originalLanguage) ??
-    // 3) Cualquiera que no sea doblado.
-    trailers.find((video) => !isDubbed(video)) ??
-    // 4) Ya sin opciones, lo que haya.
-    trailers[0] ??
-    playable.find((video) => video.type === "Teaser") ??
-    null;
-
+  const pick = [...(trailers.length ? trailers : playable)].sort((left, right) => score(left) - score(right))[0] ?? null;
   return pick ? `https://www.youtube.com/embed/${pick.key}` : null;
 }
 
@@ -1694,6 +1682,25 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
   }
 
   let payload = (await detailResponse.json()) as Record<string, unknown>;
+  let trailerLookupComplete = true;
+  const originalLanguage = typeof payload.original_language === "string" ? payload.original_language : "";
+  if (/^[a-z]{2}$/.test(originalLanguage) && !["es", "en"].includes(originalLanguage)) {
+    const originalVideosUrl = new URL(`${baseUrl}/${mediaType}/${tmdbId}/videos`);
+    originalVideosUrl.searchParams.set("api_key", apiKey);
+    originalVideosUrl.searchParams.set("language", originalLanguage);
+    originalVideosUrl.searchParams.set("include_video_language", `${originalLanguage},null`);
+    try {
+      const originalResponse = await fetch(originalVideosUrl.toString());
+      if (!originalResponse.ok) throw new Error("Videos en idioma original no disponibles");
+      const originalVideos = (await originalResponse.json()) as { results?: Array<Record<string, unknown>> };
+      if (!Array.isArray(originalVideos.results)) throw new Error("Respuesta de videos invalida");
+      const existing = (payload.videos as { results?: Array<Record<string, unknown>> } | undefined)?.results ?? [];
+      const seen = new Set(existing.map((video) => video.key));
+      payload.videos = { results: [...existing, ...originalVideos.results.filter((video) => !seen.has(video.key))] };
+    } catch {
+      trailerLookupComplete = false;
+    }
+  }
   payload = await fillMissingOverviewFromEnglish(payload, tmdbId, mediaType);
   const providersPayload = providersResponse.ok ? ((await providersResponse.json()) as Record<string, unknown>) : {};
   const item = normalizeItem({ ...payload, media_type: mediaType });
@@ -1791,6 +1798,7 @@ export async function getTitleDetails(tmdbId: number, mediaType: MediaType): Pro
     directorLabel: getDirectorLabel(payload, mediaType),
     budgetLabel: mediaType === "movie" ? formatBudget(typeof payload.budget === "number" ? payload.budget : null) : null,
     trailerUrl: getTrailerUrl(payload),
+    trailerLookupComplete,
     creators,
     previousInstallments: await previousInstallmentsPromise,
     cast,

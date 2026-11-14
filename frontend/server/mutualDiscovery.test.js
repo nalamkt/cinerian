@@ -50,9 +50,21 @@ test("el acceso en Inicio ofrece una elección voluntaria, sin datos inventados"
   assert.doesNotMatch(html, /@amiga|@berta/);
 });
 
+test("la vista principal muestra búsqueda directa y reutiliza las mismas reglas", () => {
+  const html = renderToStaticMarkup(createElement(MutualDiscovery, {
+    userId: "me", profiles: [person("friend", "Amiga")], followingUserIds: [], onCompare: () => {}, alwaysOpen: true
+  }));
+  assert.match(html, /Buscar una persona/);
+  assert.match(html, /@amiga/);
+  assert.doesNotMatch(html, /Elegir persona/);
+  assert.match(html, /mutual-discovery--standalone/);
+});
+
 test("Viendo hereda el permiso de Mi cuenta, sin requerir otra bandera remota", () => {
   const access = getAccessControl({ session: null, profile: null, enabledFeatureOverrides: ["feed"] });
   assert.equal(access.canAccessView("user"), true);
   assert.equal(access.canAccessView("watching"), true);
+  assert.equal(access.canAccessView("watchlist"), true);
+  assert.equal(access.canAccessView("mutual"), true);
   assert.equal(access.canAccessView("inbox"), false);
 });

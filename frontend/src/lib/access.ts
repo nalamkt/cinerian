@@ -1,9 +1,9 @@
 import type { Session } from "@supabase/supabase-js";
 import type { Profile } from "./auth";
 
-export type AppView = "feed" | "search" | "recommendations" | "watching" | "inbox" | "user";
+export type AppView = "feed" | "search" | "recommendations" | "mutual" | "watching" | "watchlist" | "inbox" | "user";
 
-export const APP_VIEWS: AppView[] = ["feed", "search", "recommendations", "watching", "inbox", "user"];
+export const APP_VIEWS: AppView[] = ["feed", "search", "recommendations", "mutual", "watching", "watchlist", "inbox", "user"];
 
 export function isAppView(value: string | null | undefined): value is AppView {
   return APP_VIEWS.includes(value as AppView);
@@ -91,6 +91,6 @@ export function getAccessControl(input: AccessControlInput): AccessControl {
     canAccessAdminPanel: isInternalUser,
     enabledPublicFeatures,
     canAccessFeature,
-    canAccessView: (view) => canAccessFeature(view === "watching" ? "user" : view)
+    canAccessView: (view) => canAccessFeature(view === "watching" || view === "watchlist" || view === "mutual" ? "user" : view)
   };
 }

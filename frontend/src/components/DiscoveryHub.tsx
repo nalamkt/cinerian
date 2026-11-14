@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { DiscoverySurface } from "./DiscoverySurface";
 import { RecommendationPanel } from "./RecommendationPanel";
 import { SearchPanel } from "./SearchPanel";
@@ -7,13 +6,17 @@ type DiscoveryHubProps = {
   userId: string;
   canSearch: boolean;
   canDiscover: boolean;
+  active: boolean;
+  query: string;
+  onQueryChange: (query: string) => void;
+  isBrowsing: boolean;
+  onToggleBrowse: () => void;
+  isGlobalSearchOpen: boolean;
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
 };
 
-export function DiscoveryHub({ userId, canSearch, canDiscover, onOpenUserProfile }: DiscoveryHubProps) {
-  const [query, setQuery] = useState("");
-  const [isBrowsing, setIsBrowsing] = useState(false);
-  const showingSearch = Boolean(query.trim()) || isBrowsing || !canDiscover;
+export function DiscoveryHub({ userId, canSearch, canDiscover, active, query, onQueryChange, isBrowsing, onToggleBrowse, isGlobalSearchOpen, onOpenUserProfile }: DiscoveryHubProps) {
+  const showingSearch = Boolean(query.trim()) || isBrowsing || isGlobalSearchOpen || !canDiscover;
 
   return (
     <DiscoverySurface
@@ -21,18 +24,18 @@ export function DiscoveryHub({ userId, canSearch, canDiscover, onOpenUserProfile
         <SearchPanel
           userId={userId}
           query={query}
-          onQueryChange={(value) => {
-            setQuery(value);
-            if (value.trim()) setIsBrowsing(false);
-          }}
+          onQueryChange={onQueryChange}
           isBrowsing={isBrowsing || !canDiscover}
           canDiscover={canDiscover}
-          onToggleBrowse={() => setIsBrowsing((current) => !current)}
+          onToggleBrowse={onToggleBrowse}
+          showInput={false}
+          showEmptyPrompt={isGlobalSearchOpen}
+          showBrowseToggle={isGlobalSearchOpen || isBrowsing}
           onOpenUserProfile={onOpenUserProfile}
         />
       ) : null}
       deck={canDiscover ? (
-        <RecommendationPanel userId={userId} onOpenUserProfile={onOpenUserProfile} />
+        <RecommendationPanel userId={userId} active={active && !showingSearch} onOpenUserProfile={onOpenUserProfile} />
       ) : null}
       showDeck={!showingSearch}
     />

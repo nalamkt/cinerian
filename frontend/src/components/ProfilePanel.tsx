@@ -19,9 +19,11 @@ type ProfilePanelProps = {
   headerAction?: ReactNode;
   readOnly?: boolean;
   watchingOnly?: boolean;
+  watchlistOnly?: boolean;
   onProfileUpdated?: (profile: Profile) => void;
   onOpenUserProfile?: (profile: { userId: string; username?: string }) => void;
   onNavigateToSearch?: () => void;
+  onNavigateToWatching?: () => void;
 };
 
 export function ProfilePanel({
@@ -35,9 +37,11 @@ export function ProfilePanel({
   headerAction,
   readOnly = false,
   watchingOnly = false,
+  watchlistOnly = false,
   onProfileUpdated,
   onOpenUserProfile,
-  onNavigateToSearch
+  onNavigateToSearch,
+  onNavigateToWatching
 }: ProfilePanelProps) {
   const displayName = profile?.display_name ?? "Cineriano activo";
   const username = profile?.username ?? "cargando";
@@ -48,7 +52,6 @@ export function ProfilePanel({
   const [stats, setStats] = useState({ likes: 0, watched: 0, followers: 0, following: 0 });
   const [isEditing, setIsEditing] = useState(false);
   const [focusNotificationSettings, setFocusNotificationSettings] = useState(false);
-  const [tabRequest, setTabRequest] = useState<{ tab: "watching"; key: number } | null>(null);
   const [followerProfiles, setFollowerProfiles] = useState<Profile[]>([]);
   const [followingProfiles, setFollowingProfiles] = useState<Profile[]>([]);
   const [peoplePopupTab, setPeoplePopupTab] = useState<"followers" | "following" | null>(null);
@@ -147,14 +150,14 @@ export function ProfilePanel({
     : activePeopleList;
 
   return (
-    <section className={`panel profile-panel ${watchingOnly ? "profile-panel--watching" : ""}`}>
-      {!watchingOnly && bannerUrl ? (
+    <section className={`panel profile-panel ${watchingOnly ? "profile-panel--watching" : ""}${watchlistOnly ? " profile-panel--watchlist" : ""}`}>
+      {!watchingOnly && !watchlistOnly && bannerUrl ? (
         <div className="profile-banner" aria-hidden="true">
           <img src={bannerUrl} alt="" className="profile-banner__image" />
         </div>
       ) : null}
 
-      {!watchingOnly ? <div className="profile-hero">
+      {!watchingOnly && !watchlistOnly ? <div className="profile-hero">
         <div className="profile-avatar" aria-hidden="true">
           {avatarUrl ? (
             <img src={avatarUrl} alt={`Avatar de ${displayName}`} className="profile-avatar__image" />
@@ -338,11 +341,11 @@ export function ProfilePanel({
         )
       ) : null}
 
-      {!watchingOnly && isOwnProfile && profile && onProfileUpdated ? (
+      {!watchingOnly && !watchlistOnly && isOwnProfile && profile && onProfileUpdated ? (
         <DiscoverCinerianHelp
           userId={profile.id}
           onFindPeople={onNavigateToSearch}
-          onOpenWatching={() => setTabRequest((current) => ({ tab: "watching", key: (current?.key ?? 0) + 1 }))}
+          onOpenWatching={() => onNavigateToWatching?.()}
           onOpenNotifications={() => { setFocusNotificationSettings(true); setIsEditing(true); }}
         />
       ) : null}
@@ -355,8 +358,8 @@ export function ProfilePanel({
         profile={profile}
         visibilitySettings={visibilitySettings}
         onProfileUpdated={onProfileUpdated}
-        tabRequest={tabRequest}
         watchingOnly={watchingOnly}
+        watchlistOnly={watchlistOnly}
       />
     </section>
   );

@@ -2,6 +2,7 @@ import { AuthPanel } from "./components/AuthPanel";
 import { AuthShowcase } from "./components/AuthShowcase";
 import { AuthSteps } from "./components/AuthSteps";
 import { AppViewStack } from "./components/AppViewStack";
+import { ActivityPopover } from "./components/ActivityPopover";
 import { CinerianLogo } from "./components/CinerianLogo";
 import { DiscoveryHub } from "./components/DiscoveryHub";
 import { FeedPanel } from "./components/FeedPanel";
@@ -9,6 +10,7 @@ import { FollowSuggestionsModal } from "./components/FollowSuggestionsModal";
 import { InboxPanel } from "./components/InboxPanel";
 import { LoadingState } from "./components/LoadingState";
 import { MediaDetailsProvider } from "./components/MediaDetailsModal";
+import { MutualPanel } from "./components/MutualPanel";
 import { ProfilePanel } from "./components/ProfilePanel";
 import { SharedUserPage } from "./components/SharedUserPage";
 import { UserProfilePage } from "./components/UserProfilePage";
@@ -17,10 +19,12 @@ import { WelcomeOnboarding } from "./components/WelcomeOnboarding";
 import { useAuth } from "./hooks/useAuth";
 import { usePublicFeatureFlags } from "./hooks/usePublicFeatureFlags";
 import { getAccessControl, isAppView, type AppView } from "./lib/access";
-import { MAIN_NAV_ITEMS, resolveApbView } from "./lib/apbNavigation";
+import type { ActivityTarget } from "./lib/activity";
+import { MAIN_NAV_ITEMS, MOBILE_NAV_ITEMS, requestedApbView, resolveApbView } from "./lib/apbNavigation";
 import { trackProductEvent } from "./lib/analytics";
 import { signOut } from "./lib/auth";
 import { fetchDiscoverFilters } from "./lib/discoverFilters";
+import { shouldCompactGlobalSearch } from "./lib/globalSearchLayout";
 import { fetchUnreadInboxCount, INBOX_UPDATED_EVENT } from "./lib/inbox";
 import { createAndShareInvite, PENDING_INVITE_STORAGE_KEY } from "./lib/invites";
 import { clearOneSignalUser, identifyOneSignalUser } from "./lib/oneSignal";
@@ -54,8 +58,7 @@ function getStoredActiveView(userId: string) {
 }
 
 function getRequestedView() {
-  const view = new URLSearchParams(window.location.search).get("view");
-  return isAppView(view) ? view : null;
+  return requestedApbView(window.location.search);
 }
 
 function DockIcon({ id }: { id: AppView }) {
@@ -84,8 +87,21 @@ function DockIcon({ id }: { id: AppView }) {
     );
   }
 
+  if (id === "mutual") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="9" cy="12" r="6" />
+        <circle cx="15" cy="12" r="6" />
+      </svg>
+    );
+  }
+
   if (id === "watching") {
     return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m10 9 5 3-5 3z" /></svg>;
+  }
+
+  if (id === "watchlist") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3h11A1.5 1.5 0 0 1 19 4.5V21l-7-4-7 4z" /></svg>;
   }
 
   return (
@@ -118,8 +134,20 @@ export default function App() {
   const sessionUserId = session?.user.id ?? null;
   const [localProfile, setLocalProfile] = useState<Profile | null>(profile);
   const [activeView, setActiveView] = useState<AppView>("feed");
+  const [lastMainView, setLastMainView] = useState<AppView>("recommendations");
   const [isActiveViewRestored, setIsActiveViewRestored] = useState(false);
   const [unreadInboxCount, setUnreadInboxCount] = useState(0);
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchBrowsing, setIsSearchBrowsing] = useState(false);
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const [isSearchCompact, setIsSearchCompact] = useState(false);
+  const searchSlotRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchReturnRef = useRef<{ view: AppView; profileRoute: { userId?: string; username: string } | null; url: string } | null>(null);
+  const [inboxTarget, setInboxTarget] = useState<{ target: ActivityTarget; key: number } | null>(null);
+  const activityContainerRef = useRef<HTMLDivElement>(null);
+  const activityButtonRef = useRef<HTMLButtonElement>(null);
   const [highlightedFeedPost, setHighlightedFeedPost] = useState<{
     postId: string;
     openComments?: boolean;
@@ -153,11 +181,43 @@ export default function App() {
   const canSearch = accessControl.canAccessView("search");
   const canDiscover = accessControl.canAccessView("recommendations");
   const hasDiscoveryAccess = canSearch || canDiscover;
-  const visibleDockItems = useMemo(
-    () => MAIN_NAV_ITEMS.filter((item) => item.id === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(item.id)),
+  const visibleNavigationItems = useMemo(
+    () => MOBILE_NAV_ITEMS.filter((item) => item.id === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(item.id)),
     [accessControl, hasDiscoveryAccess]
   );
+  const visibleDockItems = useMemo(() => visibleNavigationItems.filter((item) => item.id !== "user"), [visibleNavigationItems]);
   const isDiscoverActive = activeView === "recommendations" && !selectedProfileRoute;
+
+  useEffect(() => {
+    const slot = searchSlotRef.current;
+    if (!slot || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => setIsSearchCompact(shouldCompactGlobalSearch(entry.contentRect.width)));
+    observer.observe(slot);
+    return () => observer.disconnect();
+  }, [sessionUserId, canSearch]);
+
+  useEffect(() => {
+    if (!isGlobalSearchOpen) return;
+    const input = searchInputRef.current;
+    if (input?.getClientRects().length) input.focus();
+  }, [isGlobalSearchOpen, isSearchCompact]);
+
+  useEffect(() => {
+    if (!selectedProfileRoute && !isGlobalSearchOpen && MAIN_NAV_ITEMS.some((item) => item.id === activeView)) {
+      setLastMainView(activeView);
+    }
+  }, [activeView, isGlobalSearchOpen, selectedProfileRoute]);
+
+  useEffect(() => {
+    if (!isActivityOpen) return;
+    function closeOnOutside(event: PointerEvent) {
+      if (event.target instanceof Node && !activityContainerRef.current?.contains(event.target)) {
+        setIsActivityOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", closeOnOutside);
+    return () => document.removeEventListener("pointerdown", closeOnOutside);
+  }, [isActivityOpen]);
 
   useEffect(() => {
     function dismissTopmostPopup(event: KeyboardEvent) {
@@ -485,6 +545,9 @@ export default function App() {
             <path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
           </svg>
         </button>
+        <button type="button" className="recommendation-action-button recommendation-action-button--small" data-tooltip="Salir" aria-label="Cerrar sesión" onClick={() => void signOut()}>
+          <LogoutIcon />
+        </button>
       </div>
     );
   }, [inviteLabel, localProfile?.username, sessionUserId, shareLabel]);
@@ -497,6 +560,15 @@ export default function App() {
     window.addEventListener("popstate", syncRouteFromLocation);
     return () => window.removeEventListener("popstate", syncRouteFromLocation);
   }, []);
+
+  useEffect(() => {
+    if (!selectedProfileRoute || !localProfile?.username || !sessionUserId) return;
+    const isOwnRoute = selectedProfileRoute.username.toLowerCase() === localProfile.username.toLowerCase();
+    if (!isOwnRoute || new URLSearchParams(window.location.search).get("tab") !== "watchlist") return;
+    setSelectedProfileRoute(null);
+    setActiveView("watchlist");
+    window.history.replaceState({}, "", "/?view=watchlist");
+  }, [localProfile?.username, selectedProfileRoute, sessionUserId]);
 
   useEffect(() => {
     const currentTrackedView: AppView = selectedProfileRoute ? "user" : activeView;
@@ -636,6 +708,7 @@ export default function App() {
   }, [sessionUserId]);
 
   function handleOpenUserProfile(profileRef: { userId: string; username?: string }) {
+    setIsGlobalSearchOpen(false);
     void trackProductEvent({
       eventName: "profile_opened",
       userId: session?.user.id ?? null,
@@ -671,9 +744,49 @@ export default function App() {
     window.history.replaceState({}, "", `${buildSharedProfilePath(profileRef.username)}?tab=mutual-likes`);
   }
 
+  function openGlobalSearch() {
+    if (!canSearch) return;
+    if (!isGlobalSearchOpen) {
+      searchReturnRef.current = {
+        view: activeView,
+        profileRoute: selectedProfileRoute,
+        url: `${window.location.pathname}${window.location.search}`
+      };
+    }
+    setIsGlobalSearchOpen(true);
+    setIsSearchBrowsing(false);
+    setSelectedProfileRoute(null);
+    setActiveView("recommendations");
+    if (window.location.pathname !== "/" || new URLSearchParams(window.location.search).has("view")) {
+      window.history.pushState({}, "", "/");
+    }
+  }
+
+  function changeGlobalSearchQuery(value: string) {
+    setSearchQuery(value);
+    if (value.trim()) setIsSearchBrowsing(false);
+    if (!isGlobalSearchOpen) openGlobalSearch();
+  }
+
+  function closeGlobalSearch() {
+    setIsGlobalSearchOpen(false);
+    setSearchQuery("");
+    setIsSearchBrowsing(false);
+    const previous = searchReturnRef.current;
+    searchReturnRef.current = null;
+    if (!previous) return;
+    setActiveView(previous.view);
+    setSelectedProfileRoute(previous.profileRoute);
+    if (`${window.location.pathname}${window.location.search}` !== previous.url) {
+      window.history.pushState({}, "", previous.url);
+    }
+  }
+
   function handleChangeView(view: AppView) {
     const destination = resolveApbView(view, canSearch, canDiscover);
     if (!destination || !(destination === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(destination))) return;
+    setIsActivityOpen(false);
+    setIsGlobalSearchOpen(false);
     if (!selectedProfileRoute && activeView === "feed" && destination === "feed") {
       window.dispatchEvent(new CustomEvent(FEED_SCROLL_TO_TOP_EVENT));
       window.dispatchEvent(new CustomEvent(FEED_REFRESH_EDITORIAL_EVENT));
@@ -699,7 +812,21 @@ export default function App() {
             userId={session!.user.id}
             canSearch={canSearch}
             canDiscover={canDiscover}
+            active={activeView === "recommendations" && !selectedProfileRoute}
+            query={searchQuery}
+            onQueryChange={changeGlobalSearchQuery}
+            isBrowsing={isSearchBrowsing}
+            onToggleBrowse={() => setIsSearchBrowsing((current) => !current)}
+            isGlobalSearchOpen={isGlobalSearchOpen}
             onOpenUserProfile={handleOpenUserProfile}
+          />
+        ) : null}
+        mutual={accessControl.canAccessView("mutual") ? (
+          <MutualPanel
+            key={session!.user.id}
+            userId={session!.user.id}
+            active={activeView === "mutual" && !selectedProfileRoute}
+            onCompare={handleCompareUser}
           />
         ) : null}
         feed={
@@ -717,6 +844,7 @@ export default function App() {
         inbox={accessControl.canAccessView("inbox") ? (
           <InboxPanel
             userId={session!.user.id}
+            openTarget={inboxTarget}
             onStartRecommendation={canSearch ? () => handleChangeView("search") : undefined}
           />
         ) : null}
@@ -727,11 +855,13 @@ export default function App() {
             profile={localProfile}
             isOwnProfile
             watchingOnly={activeView === "watching"}
+            watchlistOnly={activeView === "watchlist"}
             headerAction={ownProfileAction}
             profileMessage="Tu perfil publico va juntando automaticamente lo que marcaste como visto, guardaste en Watchlist y recomendaste en Cinerian."
             onProfileUpdated={setLocalProfile}
             onOpenUserProfile={handleOpenUserProfile}
             onNavigateToSearch={accessControl.canAccessView("search") ? () => handleChangeView("search") : undefined}
+            onNavigateToWatching={() => handleChangeView("watching")}
           />
         }
         profile={selectedProfileRoute ? (
@@ -742,6 +872,7 @@ export default function App() {
             username={selectedProfileRoute.username}
             onOpenUserProfile={handleOpenUserProfile}
             onNavigateToSearch={accessControl.canAccessView("search") ? () => handleChangeView("search") : undefined}
+            onNavigateToWatching={() => handleChangeView("watching")}
           />
         ) : null}
       />
@@ -824,60 +955,89 @@ export default function App() {
         {error ? <div className="app-alert app-alert--floating">{error}</div> : null}
         {isLoading ? <div className="app-alert app-alert--session-status">Cargando sesión...</div> : null}
 
-        <main className="workspace-grid workspace-grid--immersive">
-          <nav className="dock">
-            <div className="dock__items">
-              <div className="dock__brand">
-                <CinerianLogo className="dock__brand-logo" />
+        <header className="app-topbar">
+          <div className="app-topbar__navigation">
+            <button type="button" className="app-topbar__brand" onClick={() => handleChangeView(accessControl.canAccessView("feed") ? "feed" : "recommendations")} aria-label="Ir a Inicio">
+              <CinerianLogo className="app-topbar__brand-logo" />
+            </button>
+            <nav className="dock" aria-label="Navegación principal">
+              <div className="dock__items">
+                <div className="dock__nav">
+                  {visibleNavigationItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`dock__button${item.id === "user" ? " dock__button--mobile-profile" : ""}${!selectedProfileRoute && activeView === item.id ? " is-active" : ""}`}
+                      onClick={() => handleChangeView(item.id)}
+                      aria-label={item.label}
+                      aria-current={!selectedProfileRoute && activeView === item.id ? "page" : undefined}
+                      title={item.label}
+                    >
+                      <span className="dock__icon"><DockIcon id={item.id} /></span>
+                      <span className="dock__label">{item.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="dock__nav">
-                {visibleDockItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`dock__button ${selectedProfileRoute ? "" : activeView === item.id ? "is-active" : ""}`}
-                    onClick={() => handleChangeView(item.id)}
-                    aria-label={item.label}
-                    title={item.label}
-                  >
-                    <span className="dock__icon">
-                      <DockIcon id={item.id} />
-                    </span>
-                    <span className="dock__label">{item.label}</span>
-                  </button>
-                ))}
-              </div>
+            </nav>
+          </div>
 
-              <button
-                type="button"
-                className="dock__button dock__button--logout"
-                onClick={() => void signOut()}
-                aria-label="Cerrar sesion"
-                title="Salir"
-              >
-                <span className="dock__icon">
-                  <LogoutIcon />
-                </span>
-                <span className="dock__label">Salir</span>
-              </button>
-            </div>
-          </nav>
-
-          <section className={`workspace-content workspace-content--${selectedProfileRoute ? "profile" : activeView}`}>
-            {accessControl.canAccessView("inbox") ? (
-              <header className="app-utility-bar">
-                <button
-                  type="button"
-                  className={`app-notifications-button ${activeView === "inbox" && !selectedProfileRoute ? "is-active" : ""}`}
-                  onClick={() => handleChangeView("inbox")}
-                  aria-label={unreadInboxCount ? `Abrir bandeja, ${unreadInboxCount} pendientes` : "Abrir bandeja"}
-                  title="Bandeja y notificaciones"
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 9h18c0-1-3-2-3-9Z" /><path d="M10 21h4" /></svg>
-                  {unreadInboxCount > 0 ? <span className="dock__badge">{unreadInboxCount > 9 ? "9+" : unreadInboxCount}</span> : null}
+          <div className="app-topbar__actions">
+            {canSearch ? (
+              <div ref={searchSlotRef} className={`app-topbar__search-slot${isSearchCompact ? " is-compact" : ""}${isGlobalSearchOpen ? " is-open" : ""}`}>
+                <div className="app-topbar__search-inline">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                  <input type="search" value={searchQuery} onFocus={openGlobalSearch} onChange={(event) => changeGlobalSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeGlobalSearch(); } }} aria-label="Buscar en Cinerian" placeholder="Películas, series, personas..." />
+                  {isGlobalSearchOpen || searchQuery ? <button type="button" onClick={closeGlobalSearch} aria-label="Cerrar búsqueda" data-escape-dismiss={isGlobalSearchOpen ? "" : undefined}>×</button> : null}
+                </div>
+                <button type="button" className="app-topbar__search-trigger" onClick={openGlobalSearch} aria-label="Abrir búsqueda global" aria-expanded={isGlobalSearchOpen} aria-controls={isGlobalSearchOpen ? "app-global-search-popover" : undefined}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                 </button>
-              </header>
+                {isGlobalSearchOpen ? <div className="app-topbar__search-popover" id="app-global-search-popover">
+                  <input ref={searchInputRef} type="search" value={searchQuery} onChange={(event) => changeGlobalSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeGlobalSearch(); } }} aria-label="Buscar películas, series, personas o talentos" placeholder="Películas, series, personas..." />
+                  <button type="button" onClick={closeGlobalSearch} aria-label="Cerrar búsqueda" data-escape-dismiss>Cerrar</button>
+                </div> : null}
+              </div>
             ) : null}
+                {accessControl.canAccessView("inbox") ? (
+                  <div className="app-activity-anchor" ref={activityContainerRef}>
+                  <button
+                    type="button"
+                    ref={activityButtonRef}
+                    className={`app-notifications-button ${isActivityOpen ? "is-active" : ""}`}
+                    onClick={() => setIsActivityOpen((current) => !current)}
+                    aria-label={unreadInboxCount ? `Abrir actividad, ${unreadInboxCount} pendientes` : "Abrir actividad"}
+                    aria-expanded={isActivityOpen}
+                    aria-haspopup="dialog"
+                    aria-controls={isActivityOpen ? "app-activity-popover" : undefined}
+                    title="Actividad"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 9h18c0-1-3-2-3-9Z" /><path d="M10 21h4" /></svg>
+                    {unreadInboxCount > 0 ? <span className="dock__badge">{unreadInboxCount > 9 ? "9+" : unreadInboxCount}</span> : null}
+                  </button>
+                  {isActivityOpen ? <div id="app-activity-popover"><ActivityPopover
+                    userId={session.user.id}
+                    pendingCount={unreadInboxCount}
+                    onClose={() => {
+                      setIsActivityOpen(false);
+                      activityButtonRef.current?.focus();
+                    }}
+                    onOpenEvent={(target) => {
+                      setInboxTarget((current) => ({ target, key: (current?.key ?? 0) + 1 }));
+                      handleChangeView("inbox");
+                    }}
+                    onOpenInbox={() => handleChangeView("inbox")}
+                  /></div> : null}
+                  </div>
+                ) : null}
+            <button type="button" className={`app-topbar__avatar${activeView === "user" && !selectedProfileRoute ? " is-active" : ""}`} onClick={() => handleChangeView(activeView === "user" && !selectedProfileRoute ? lastMainView : "user")} aria-label={activeView === "user" && !selectedProfileRoute ? "Volver a la sección anterior" : "Abrir Mi cuenta"} title="Mi cuenta">
+              {localProfile?.avatar_url ? <img key={localProfile.avatar_url} src={localProfile.avatar_url} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
+              <span>{(localProfile?.display_name || localProfile?.username || "C").charAt(0).toUpperCase()}</span>
+            </button>
+          </div>
+        </header>
+        <main className="workspace-grid workspace-grid--immersive">
+          <section className={`workspace-content workspace-content--${selectedProfileRoute ? "profile" : activeView}`}>
             {renderActiveView()}
           </section>
         </main>

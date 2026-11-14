@@ -20,6 +20,7 @@ import {
 import { useMediaDetails } from "./MediaDetailsModal";
 import { LoadingState } from "./LoadingState";
 import { InboxCategoryTabs, InboxCommentList } from "./InboxActivity";
+import { activityTargetCategory, type ActivityTarget } from "../lib/activity";
 import type {
   CommentInboxNotification,
   FeedComment,
@@ -30,6 +31,7 @@ import type {
 type InboxPanelProps = {
   userId: string;
   onStartRecommendation?: () => void;
+  openTarget?: { target: ActivityTarget; key: number } | null;
 };
 
 function formatDaySeparator(isoDate: string): string {
@@ -144,7 +146,7 @@ function CommentPostPreviewModal({
   );
 }
 
-export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
+export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 900px)").matches : false
@@ -177,6 +179,7 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
   const [postPreviewNotification, setPostPreviewNotification] = useState<CommentInboxNotification | null>(null);
   const manuallyUnreadReplyMessageIds = useRef(new Set<string>());
   const manuallyUnreadCommentIds = useRef(new Set<string>());
+  const handledOpenTargetRef = useRef<number | null>(null);
   const swipeRef = useRef<{
     id: string | null;
     startX: number;
@@ -513,6 +516,28 @@ export function InboxPanel({ userId, onStartRecommendation }: InboxPanelProps) {
     setActiveMessageId(null);
     setActiveCommentId(null);
   }, [category, isMobile]);
+
+  useEffect(() => {
+    if (!openTarget || handledOpenTargetRef.current === openTarget.key) return;
+    const targetCategory = activityTargetCategory(openTarget.target);
+    if (category !== targetCategory) {
+      setCategory(targetCategory);
+      return;
+    }
+    if (openTarget.target.kind === "message") {
+      if (!visibleMessages.some((message) => message.id === openTarget.target.id)) return;
+      setUnreadOnly(false);
+      setSearchQuery("");
+      setActiveMessageId(openTarget.target.id);
+    } else {
+      const comment = commentNotifications.find((item) => item.id === openTarget.target.id);
+      if (!comment) return;
+      setSearchQuery("");
+      setActiveCommentId(comment.id);
+      setPostPreviewNotification(comment);
+    }
+    handledOpenTargetRef.current = openTarget.key;
+  }, [category, commentNotifications, openTarget, visibleMessages]);
 
   useEffect(() => {
     setSearchQuery("");

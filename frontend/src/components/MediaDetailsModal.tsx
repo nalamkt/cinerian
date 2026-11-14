@@ -34,6 +34,7 @@ export type MediaReference = Pick<DiscoveryItem, "id" | "mediaType" | "title">;
 type MediaDetailsContextValue = {
   openMediaDetails: (item: MediaReference) => void;
   pushMediaDetails: (item: MediaReference) => void;
+  isMediaDetailsOpen: boolean;
 };
 
 const MediaDetailsContext = createContext<MediaDetailsContextValue | null>(null);
@@ -1616,7 +1617,8 @@ export function MediaDetailsProvider({
     <MediaDetailsContext.Provider
       value={{
         openMediaDetails,
-        pushMediaDetails: openRelatedMedia
+        pushMediaDetails: openRelatedMedia,
+        isMediaDetailsOpen: detailStack.length > 0
       }}
     >
       {children}

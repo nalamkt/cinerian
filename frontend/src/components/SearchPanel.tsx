@@ -37,6 +37,9 @@ type SearchPanelProps = {
   isBrowsing: boolean;
   canDiscover: boolean;
   onToggleBrowse: () => void;
+  showInput?: boolean;
+  showEmptyPrompt?: boolean;
+  showBrowseToggle?: boolean;
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
 };
 
@@ -74,7 +77,7 @@ function isWatchedReaction(reaction: RecommendationReaction | undefined): reacti
   return reaction === "superliked" || reaction === "liked" || reaction === "disliked";
 }
 
-export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDiscover, onToggleBrowse, onOpenUserProfile }: SearchPanelProps) {
+export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDiscover, onToggleBrowse, showInput = true, showEmptyPrompt = false, showBrowseToggle = true, onOpenUserProfile }: SearchPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
   const [areReactionsReady, setAreReactionsReady] = useState(false);
@@ -467,8 +470,8 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
   }
 
   return (
-    <section className={`panel search-panel${hasQuery || isBrowsing ? " is-active" : ""}`}>
-      <div className="input-stack search-panel__input search-panel__input--glass">
+    <section className={`panel search-panel${hasQuery || isBrowsing ? " is-active" : ""}${showInput ? "" : " search-panel--global"}`}>
+      {showInput ? <div className="input-stack search-panel__input search-panel__input--glass">
         <svg className="search-panel__input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.5-3.5" strokeLinecap="round" />
@@ -499,9 +502,11 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
             </svg>
           </button>
         ) : null}
-      </div>
+      </div> : null}
 
-      {!hasQuery && canDiscover ? (
+      {showEmptyPrompt && !hasQuery && !isBrowsing ? <p className="search-panel__global-prompt">Buscá películas, series, personas o talentos.</p> : null}
+
+      {!hasQuery && canDiscover && showBrowseToggle ? (
         <button type="button" className="search-panel__browse-toggle" onClick={onToggleBrowse} aria-expanded={isBrowsing} aria-label={isBrowsing ? "Volver a las tarjetas" : "Explorar catálogo"}>
           {isBrowsing ? "Volver" : "Catálogo"}
         </button>

@@ -6,6 +6,7 @@ type AppViewStackProps = {
   showProfile: boolean;
   feed: ReactNode;
   recommendations?: ReactNode;
+  mutual?: ReactNode;
   inbox?: ReactNode;
   user: ReactNode;
   profile?: ReactNode;
@@ -16,6 +17,7 @@ export function AppViewStack({
   showProfile,
   feed,
   recommendations,
+  mutual,
   inbox,
   user,
   profile
@@ -25,9 +27,10 @@ export function AppViewStack({
   return (
     <>
       {recommendations != null ? <div hidden={isHidden("recommendations")}>{recommendations}</div> : null}
+      {mutual != null ? <div hidden={isHidden("mutual")}>{mutual}</div> : null}
       <div hidden={isHidden("feed")}>{feed}</div>
       {inbox != null ? <div hidden={isHidden("inbox")}>{inbox}</div> : null}
-      <div hidden={showProfile || (activeView !== "user" && activeView !== "watching")}>{user}</div>
+      <div hidden={showProfile || (activeView !== "user" && activeView !== "watching" && activeView !== "watchlist")}>{user}</div>
       {showProfile ? profile : null}
     </>
   );

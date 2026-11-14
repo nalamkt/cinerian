@@ -3,7 +3,7 @@ import { after, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
-import { MAIN_NAV_ITEMS, resolveApbView } from "../src/lib/apbNavigation.ts";
+import { MAIN_NAV_ITEMS, MOBILE_NAV_ITEMS, requestedApbView, resolveApbView } from "../src/lib/apbNavigation.ts";
 
 const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
 after(() => vite.close());
@@ -36,10 +36,24 @@ test("Buscar antiguo se abre en Descubrí sin habilitar funciones bloqueadas", (
   assert.equal(resolveApbView("inbox", false, false), "inbox");
 });
 
-test("la navegación principal tiene cuatro destinos y conserva Inbox como ruta interna", () => {
-  assert.deepEqual(MAIN_NAV_ITEMS.map(({ id }) => id), ["feed", "recommendations", "watching", "user"]);
+test("la navegación principal conserva cuatro destinos; Inicio e Inbox siguen accesibles fuera del dock", () => {
+  assert.deepEqual(MAIN_NAV_ITEMS.map(({ id }) => id), ["recommendations", "mutual", "watching", "watchlist"]);
+  assert.deepEqual(MOBILE_NAV_ITEMS.map(({ id }) => id), ["recommendations", "mutual", "watching", "watchlist", "user"]);
   assert.equal(resolveApbView("inbox", true, true), "inbox");
+  assert.equal(resolveApbView("feed", true, true), "feed");
+  assert.equal(resolveApbView("mutual", true, true), "mutual");
   assert.equal(resolveApbView("search", true, true), "recommendations");
+});
+
+test("enlaces antiguos de Inbox y Viendo conservan su destino", () => {
+  assert.equal(requestedApbView("?view=inbox"), "inbox");
+  assert.equal(requestedApbView("?tab=watching"), "watching");
+  assert.equal(requestedApbView("?view=user&tab=watching"), "watching");
+  assert.equal(requestedApbView("?view=invalid&tab=watching"), null);
+  assert.equal(requestedApbView("?view=watchlist"), "watchlist");
+  assert.equal(requestedApbView("?view=user&tab=watchlist"), "watchlist");
+  assert.equal(requestedApbView("?tab=watchlist"), "watchlist");
+  assert.equal(requestedApbView("?view=user"), "user");
 });
 
 test("el campo integrado busca sin exigir una categoría previa", async () => {
@@ -59,4 +73,17 @@ test("el campo integrado busca sin exigir una categoría previa", async () => {
   assert.match(html, /Buscar películas, series, usuarios o actores/);
   assert.match(html, /Buscando títulos y talentos/);
   assert.doesNotMatch(html, /role="tablist"/);
+});
+
+test("la búsqueda global reutiliza los resultados de Descubrí sin duplicar el campo", async () => {
+  const { SearchPanel } = await vite.ssrLoadModule("/src/components/SearchPanel.tsx");
+  const { MediaDetailsProvider } = await vite.ssrLoadModule("/src/components/MediaDetailsModal.tsx");
+  const html = renderToStaticMarkup(createElement(MediaDetailsProvider, { userId: "test-user" },
+    createElement(SearchPanel, {
+      userId: "test-user", query: "Neagley", onQueryChange: () => {}, isBrowsing: false,
+      canDiscover: true, onToggleBrowse: () => {}, onOpenUserProfile: () => {}, showInput: false
+    })
+  ));
+  assert.doesNotMatch(html, /aria-label="Buscar películas, series, usuarios o actores"/);
+  assert.match(html, /Buscando títulos y talentos/);
 });
