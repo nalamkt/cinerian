@@ -21,6 +21,7 @@ import { useMediaDetails } from "./MediaDetailsModal";
 import { LoadingState } from "./LoadingState";
 import { InboxCategoryTabs, InboxCommentList } from "./InboxActivity";
 import { activityTargetCategory, type ActivityTarget } from "../lib/activity";
+import { isImeConfirmingEnter } from "../lib/ime";
 import type {
   CommentInboxNotification,
   FeedComment,
@@ -1470,7 +1471,7 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
                           autoFocus
                           onChange={(event) => setEditDraft(event.target.value)}
                           onKeyDown={(event) => {
-                            if (event.key === "Enter" && !event.shiftKey) {
+                            if (event.key === "Enter" && !event.shiftKey && !isImeConfirmingEnter(event.nativeEvent)) {
                               event.preventDefault();
                               void handleSaveEdit(message, { id: entry.id, isRoot });
                             } else if (event.key === "Escape") {
@@ -1548,7 +1549,7 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
               value={replyDraft}
               onChange={(event) => setReplyDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey && replyDraft.trim() && !isPending) {
+                if (event.key === "Enter" && !event.shiftKey && !isImeConfirmingEnter(event.nativeEvent) && replyDraft.trim() && !isPending) {
                   event.preventDefault();
                   void handleReplySubmit(message, replyDraft);
                 }

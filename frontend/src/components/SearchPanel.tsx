@@ -470,7 +470,9 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
   }
 
   return (
-    <section className={`panel search-panel${hasQuery || isBrowsing ? " is-active" : ""}${showInput ? "" : " search-panel--global"}`}>
+    <section className={`panel search-panel${hasQuery || isBrowsing ? " is-active" : ""}${showInput ? "" : " search-panel--global"}`} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) setIsInputFocused(false);
+    }}>
       {showInput ? <div className="input-stack search-panel__input search-panel__input--glass">
         <svg className="search-panel__input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
@@ -483,7 +485,6 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           onFocus={() => setIsInputFocused(true)}
-          onBlur={() => window.setTimeout(() => setIsInputFocused(document.activeElement === searchInputRef.current), 150)}
           placeholder="Películas, series, usuarios o actores"
         />
         {query ? (
@@ -532,32 +533,18 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
             </button>
           </div>
           {recentSearches.map((term) => (
-            <button
-              key={term}
-              type="button"
-              className="search-panel__recent"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onQueryChange(term)}
-            >
-              <svg className="search-panel__recent-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="7" />
-                <path d="m20 20-3.5-3.5" strokeLinecap="round" />
-              </svg>
-              <span className="search-panel__recent-label">{term}</span>
-              <span
-                role="button"
-                tabIndex={0}
-                aria-label={`Eliminar ${term}`}
-                className="search-panel__recent-remove"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  removeRecentSearch(term);
-                }}
-              >
+            <div key={term} className="search-panel__recent">
+              <button type="button" className="search-panel__recent-choice" onMouseDown={(event) => event.preventDefault()} onClick={() => onQueryChange(term)}>
+                <svg className="search-panel__recent-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+                </svg>
+                <span className="search-panel__recent-label">{term}</span>
+              </button>
+              <button type="button" aria-label={`Eliminar ${term}`} className="search-panel__recent-remove" onMouseDown={(event) => event.preventDefault()} onClick={() => removeRecentSearch(term)}>
                 ×
-              </span>
-            </button>
+              </button>
+            </div>
           ))}
         </div>
       ) : null}
@@ -583,8 +570,8 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
             <article
               className="media-card media-card--interactive"
               key={`${item.mediaType}-${item.id}`}
-              onClick={() => openMediaDetails(item)}
             >
+              <button type="button" className="media-card__open" aria-label={`Ver detalles de ${item.title}`} onClick={() => openMediaDetails(item)} />
               <div className="detail-poster">
                 <img src={item.posterUrl} alt={item.title} className="media-poster" />
                 <span className="detail-poster__hint" aria-hidden="true">
