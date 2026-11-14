@@ -69,7 +69,7 @@ test("tráilers desktop muestra sinopsis completa y controles compactos sin ayud
   assert.match(desktop, /\.discover-trailer__info \.discover-overview p,[\s\S]*?overflow: visible;[\s\S]*?-webkit-line-clamp: unset;/);
   assert.match(desktop, /\.discover-trailer__info \.discover-overview__more,[\s\S]*?\.discover-trailer__navigation,[\s\S]*?\.discover-trailer__swipe-hint \{ display: none; \}/);
   assert.match(styles, /\.discover-trailer__playback \{ position: absolute;[^}]*pointer-events: none;/);
-  assert.match(styles, /\.discover-trailer__playback button \{ display: grid;[^}]*pointer-events: auto;/);
+  assert.match(styles, /\.discover-trailer__playback button \{\s*display: grid;[^}]*pointer-events: auto;/);
 });
 
 test("Watchlist compacta y En común usan la superficie compartida", () => {

@@ -35,7 +35,7 @@ export function DiscoveryHub({ userId, canSearch, canDiscover, active, query, on
         />
       ) : null}
       deck={canDiscover ? (
-        <RecommendationPanel userId={userId} active={active && !showingSearch} onOpenUserProfile={onOpenUserProfile} />
+        <RecommendationPanel key={userId} userId={userId} active={active && !showingSearch} onOpenUserProfile={onOpenUserProfile} />
       ) : null}
       showDeck={!showingSearch}
     />

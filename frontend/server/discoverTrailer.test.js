@@ -9,7 +9,7 @@ const vite = await createServer({ server: { middlewareMode: true, hmr: false }, 
 after(() => vite.close());
 const { DiscoverModeSwitch } = await vite.ssrLoadModule("/src/components/DiscoverModeSwitch.tsx");
 const { DiscoverTrailerPlayer, buildDiscoverTrailerUrl } = await vite.ssrLoadModule("/src/components/DiscoverTrailerPlayer.tsx");
-const { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, trailerAvailability, trailerDragOffset, trailerEmptyPhase } = await vite.ssrLoadModule("/src/lib/discoverTrailer.ts");
+const { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerAvailability, trailerDragOffset, trailerEmptyPhase } = await vite.ssrLoadModule("/src/lib/discoverTrailer.ts");
 const { advanceTrailerProgress, parseTrailerProgress, serializeTrailerProgress, trailerProgressStorageKey } = await vite.ssrLoadModule("/src/lib/trailerProgress.ts");
 const { getTrailerUrl } = await vite.ssrLoadModule("/src/lib/tmdb.ts");
 const { DiscoverWatchOptions } = await vite.ssrLoadModule("/src/components/DiscoverWatchOptions.tsx");
@@ -36,7 +36,7 @@ test("el tráiler solo utiliza embeds seguros y conserva formato horizontal", ()
   assert.ok(url);
   const parsed = new URL(url);
   assert.equal(parsed.searchParams.get("mute"), "1");
-  assert.equal(parsed.searchParams.get("autoplay"), "1");
+  assert.equal(parsed.searchParams.get("autoplay"), "0");
   assert.equal(parsed.searchParams.get("playsinline"), "1");
   assert.equal(parsed.searchParams.get("origin"), "https://cinerian.app");
   assert.equal(parsed.searchParams.get("cc_lang_pref"), "es");
@@ -46,15 +46,30 @@ test("el tráiler solo utiliza embeds seguros y conserva formato horizontal", ()
   assert.equal(buildDiscoverTrailerUrl("https://www.youtube.com/redirect?url=evil", "https://cinerian.app"), null);
 });
 
+test("el título mobile conserva la última palabra junto al badge sin alterar Tarjetas", () => {
+  assert.deepEqual(splitTrailerTitleForBadge("Fuera de mí"), { prefix: "Fuera de", lastWord: "mí" });
+  assert.deepEqual(splitTrailerTitleForBadge("Cafarnaúm: La ciudad olvidada"), { prefix: "Cafarnaúm: La ciudad", lastWord: "olvidada" });
+  assert.deepEqual(splitTrailerTitleForBadge("Wolfblood: Familia lobo"), { prefix: "Wolfblood: Familia", lastWord: "lobo" });
+  assert.deepEqual(splitTrailerTitleForBadge("Titanic"), { prefix: "", lastWord: "Titanic" });
+  const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
+  const trailer = panel.slice(panel.indexOf('className="discover-trailer__info"'), panel.indexOf('className="discover-trailer__bottom"'));
+  const cards = panel.slice(panel.indexOf('className="discover-card__body"'));
+  const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(trailer, /<h2 className="discover-title">\{shownTrailerItem\.title\}<\/h2>/);
+  assert.match(trailer, /<h2 className="discover-title discover-trailer__title-mobile">[\s\S]*?className="discover-trailer__title-tail"[\s\S]*?\{"\\u00a0"\}<span className="discover-kind">/);
+  assert.match(cards, /<h2 className="discover-title">\{spotlight\.title\}<\/h2>/);
+  assert.match(styles, /@media \(max-width: 680px\) \{[\s\S]*?\.discover-trailer__title-tail \{ display: inline-block; white-space: nowrap; \}/);
+});
+
 test("sin tráiler muestra póster y acciones de reproducción ausentes", () => {
-  const html = renderToStaticMarkup(createElement(DiscoverTrailerPlayer, { title: "Título", trailerUrl: null, posterUrl: "/poster.jpg", active: true }));
+  const html = renderToStaticMarkup(createElement(DiscoverTrailerPlayer, { title: "Título", trailerUrl: null, posterUrl: "/poster.jpg", active: true, soundEnabled: false, onSoundEnabledChange: () => {} }));
   assert.match(html, /Póster de Título/);
   assert.match(html, /Tráiler no disponible/);
   assert.doesNotMatch(html, /<iframe|Activar sonido|Pausar/);
 });
 
 test("al ocultar la vista desmonta el video; solo el activo puede reproducirse", () => {
-  const props = { title: "Título", trailerUrl: "https://www.youtube.com/embed/AbC_123-xy", posterUrl: "/poster.jpg" };
+  const props = { title: "Título", trailerUrl: "https://www.youtube.com/embed/AbC_123-xy", posterUrl: "/poster.jpg", soundEnabled: false, onSoundEnabledChange: () => {} };
   const playing = renderToStaticMarkup(createElement(DiscoverTrailerPlayer, { ...props, active: true }));
   const paused = renderToStaticMarkup(createElement(DiscoverTrailerPlayer, { ...props, active: false }));
   assert.equal((playing.match(/<iframe/g) ?? []).length, 1);
