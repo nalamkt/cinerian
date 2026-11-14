@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { isRatedReaction, type RatedReaction, type RecommendationReaction } from "../lib/reactions";
 import { WatchNowRow } from "./WatchNowRow";
+import type { ProfileSummary } from "../lib/auth";
 import type { DiscoveryItem } from "../types";
+
+/** Accion directa sobre el poster, visible al pasar el mouse (Watchlist desktop). */
+export type TitleCardQuickAction = {
+  id: string;
+  label: string;
+  tone?: "primary" | "ghost";
+  onClick: () => void;
+};
 
 type TitleCardProps = {
   item: DiscoveryItem;
@@ -11,7 +20,58 @@ type TitleCardProps = {
   onRemove?: () => void;
   removeLabel?: string;
   isRemoving?: boolean;
+  /** De quien es el puntaje del poster ("TMDB"): sin esto es solo una estrella. */
+  scoreSource?: string;
+  /** Duracion o temporadas: lo que ayuda a decidir si la mirás hoy. */
+  showLength?: boolean;
+  /** Personas que seguis y que tambien la tienen guardada. */
+  friends?: ProfileSummary[];
+  quickActions?: TitleCardQuickAction[];
+  isHighlighted?: boolean;
+  /** Pasa la fila "Ver en" al modo compacto, con estas plataformas primero. */
+  preferredProviderIds?: number[];
+  /** Mobile: el boton "···" abre un panel inferior en vez del menu chico. */
+  onOpenActions?: () => void;
+  /** Mobile: plataformas y amigos van sobre el pie del poster. */
+  posterFooter?: boolean;
 };
+
+export function describeLength(item: DiscoveryItem) {
+  if (item.mediaType === "movie") {
+    if (!item.runtimeMinutes) {
+      return null;
+    }
+
+    const hours = Math.floor(item.runtimeMinutes / 60);
+    const minutes = item.runtimeMinutes % 60;
+    return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
+  }
+
+  if (item.seriesType === "Miniseries" && item.episodeCount) {
+    return `${item.episodeCount} ${item.episodeCount === 1 ? "episodio" : "episodios"}`;
+  }
+
+  return item.seasonCount
+    ? `${item.seasonCount} ${item.seasonCount === 1 ? "temporada" : "temporadas"}`
+    : null;
+}
+
+export function describeType(item: DiscoveryItem) {
+  if (item.mediaType === "movie") {
+    return "Película";
+  }
+
+  return item.seriesType === "Miniseries" ? "Miniserie" : "Serie";
+}
+
+function initialsOf(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 const THUMB_PATH =
   "M7 10v10M7 10l3.5-6a2.5 2.5 0 0 1 2.4 3.2L12 10h6a2 2 0 0 1 2 2.4l-1.2 6a2 2 0 0 1-2 1.6H7";
@@ -45,7 +105,15 @@ export function TitleCard({
   onChangeRating,
   onRemove,
   removeLabel = "Quitar",
-  isRemoving = false
+  isRemoving = false,
+  scoreSource,
+  showLength = false,
+  friends = [],
+  quickActions = [],
+  isHighlighted = false,
+  preferredProviderIds,
+  onOpenActions,
+  posterFooter = false
 }: TitleCardProps) {
   const [menuState, setMenuState] = useState<"closed" | "menu" | "confirm">("closed");
   const cardRef = useRef<HTMLElement | null>(null);
@@ -76,12 +144,21 @@ export function TitleCard({
     };
   }, [menuState]);
 
+  // "Elegí por mí" puede caer en una tarjeta que esta fuera de pantalla.
+  useEffect(() => {
+    if (isHighlighted) {
+      cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [isHighlighted]);
+
   const ratedReaction = reaction && isRatedReaction(reaction) ? reaction : null;
   const canRate = Boolean(onChangeRating && ratedReaction);
   const canRemove = Boolean(onRemove);
   const currentLabel = ratedReaction
     ? RATING_OPTIONS.find((option) => option.id === ratedReaction)?.label
     : null;
+  const length = showLength ? describeLength(item) : null;
+  const shownFriends = friends.slice(0, 3);
 
   function pickRating(next: RatedReaction) {
     setMenuState("closed");
@@ -96,7 +173,12 @@ export function TitleCard({
   }
 
   return (
-    <article ref={cardRef} className={`title-card ${menuState !== "closed" ? "is-menu-open" : ""}`}>
+    <article
+      ref={cardRef}
+      className={`title-card ${menuState !== "closed" ? "is-menu-open" : ""} ${
+        quickActions.length ? "has-quick-actions" : ""
+      } ${isHighlighted ? "is-highlighted" : ""}`}
+    >
       <div className="title-card__poster-wrap">
         <img
           src={item.posterUrl}
@@ -106,12 +188,56 @@ export function TitleCard({
         />
 
         {item.score > 0 ? (
-          <span className="title-card__score">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7-5.4-4.7 7.1-.6z" />
-            </svg>
+          <span
+            className="title-card__score"
+            title={scoreSource === "TMDB" ? "Puntaje de TMDB (The Movie Database)" : undefined}
+          >
+            {scoreSource ? (
+              <span className="title-card__score-source">{scoreSource}</span>
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7-5.4-4.7 7.1-.6z" />
+              </svg>
+            )}
             {item.score.toFixed(1)}
           </span>
+        ) : null}
+
+        {posterFooter ? (
+          <div className="title-card__poster-footer">
+            <WatchNowRow item={item} preferredProviderIds={preferredProviderIds} limit={2} />
+            {shownFriends.length ? (
+              <span
+                className="title-card__friends-avatars"
+                title={`También en la Watchlist de ${friends.map((friend) => friend.displayName).join(", ")}`}
+              >
+                {shownFriends.map((friend) =>
+                  friend.avatarUrl ? (
+                    <img key={friend.id} src={friend.avatarUrl} alt="" loading="lazy" />
+                  ) : (
+                    <span key={friend.id}>{initialsOf(friend.displayName)}</span>
+                  )
+                )}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+
+        {quickActions.length ? (
+          <div className="title-card__quick">
+            {quickActions.map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                className={`title-card__quick-button ${
+                  action.tone === "primary" ? "title-card__quick-button--primary" : ""
+                }`}
+                onClick={action.onClick}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
         ) : null}
       </div>
 
@@ -119,15 +245,20 @@ export function TitleCard({
         {item.title}
       </strong>
       <span className="title-card__meta">
-        {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {item.year}
+        {describeType(item)} • {item.year}
+        {length ? ` • ${length}` : ""}
       </span>
 
-      {canRate || canRemove ? (
+      {canRate || canRemove || onOpenActions ? (
         <button
           type="button"
           className={`title-card__reaction ${ratedReaction === "disliked" ? "is-muted" : ""}`}
-          onClick={() => setMenuState((current) => (current === "closed" ? "menu" : "closed"))}
-          aria-haspopup="menu"
+          onClick={() =>
+            onOpenActions
+              ? onOpenActions()
+              : setMenuState((current) => (current === "closed" ? "menu" : "closed"))
+          }
+          aria-haspopup={onOpenActions ? "dialog" : "menu"}
           aria-expanded={menuState !== "closed"}
           aria-label={currentLabel ? `Tu puntuación: ${currentLabel}` : `Opciones de ${item.title}`}
         >
@@ -146,7 +277,27 @@ export function TitleCard({
         </button>
       ) : null}
 
-      <WatchNowRow item={item} />
+      {posterFooter ? null : <WatchNowRow item={item} preferredProviderIds={preferredProviderIds} />}
+
+      {shownFriends.length && !posterFooter ? (
+        <p
+          className="title-card__friends"
+          title={`También en la Watchlist de ${friends.map((friend) => friend.displayName).join(", ")}`}
+        >
+          <span className="title-card__friends-avatars" aria-hidden="true">
+            {shownFriends.map((friend) =>
+              friend.avatarUrl ? (
+                <img key={friend.id} src={friend.avatarUrl} alt="" loading="lazy" />
+              ) : (
+                <span key={friend.id}>{initialsOf(friend.displayName)}</span>
+              )
+            )}
+          </span>
+          {friends.length === 1
+            ? `${friends[0].displayName.split(" ")[0]} también la quiere ver`
+            : `${friends.length} amigos también la quieren ver`}
+        </p>
+      ) : null}
 
       {menuState === "menu" ? (
         <div className="title-card__menu" role="menu">

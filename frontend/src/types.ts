@@ -74,6 +74,13 @@ export type DiscoveryItem = {
    * queda null porque TMDB no lo manda ahi.
    */
   seriesType?: string | null;
+  /**
+   * Duracion (peliculas) y cantidad de temporadas/episodios (series). Solo
+   * vienen de los endpoints de detalle, igual que `seriesType`.
+   */
+  runtimeMinutes?: number | null;
+  seasonCount?: number | null;
+  episodeCount?: number | null;
 };
 
 export type SeriesAiringInfo = {

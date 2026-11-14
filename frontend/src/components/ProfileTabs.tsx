@@ -1,18 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { LoadingState } from "./LoadingState";
-import { TitleCard } from "./TitleCard";
+import { describeLength, describeType, TitleCard, type TitleCardQuickAction } from "./TitleCard";
 import { WatchNowRow } from "./WatchNowRow";
+import { WatchlistDropdown } from "./WatchlistDropdown";
+import { WatchlistSheet } from "./WatchlistSheet";
+import { WatchReviewModal } from "./WatchReviewModal";
 import {
   type CurrentWatchingEntry,
   type Profile,
+  type ProfileSummary,
   type ProfileVisibilitySettings,
   publicComparisonSections,
   saveCurrentWatchingEntries
 } from "../lib/auth";
-import { deleteFeedPost, fetchUserTextPosts, updateFeedPost } from "../lib/feed";
+import {
+  DISCOVER_FILTERS_UPDATED_EVENT,
+  fetchDiscoverFilters,
+  saveDiscoverFilters
+} from "../lib/discoverFilters";
+import {
+  createFeedPost,
+  deleteFeedPost,
+  fetchUserTextPosts,
+  removeFeedEvent,
+  updateFeedPost
+} from "../lib/feed";
 import {
   fetchStoredReactions,
+  getReactionSaveErrorMessage,
   isRatedReaction,
   REACTIONS_UPDATED_EVENT,
   removeStoredRatedReaction,
@@ -25,10 +42,22 @@ import {
 import {
   fetchCircleRanking,
   fetchCircleScores,
+  fetchCircleWatchlist,
   type CircleRanking,
   type CircleScore
 } from "../lib/recommendations";
-import { getSeriesAiringInfo, getTitleById, searchTitles } from "../lib/tmdb";
+import { buildWatchedPostBody } from "../lib/reviews";
+import {
+  getSeriesAiringInfo,
+  getTitleById,
+  getProviderCatalog,
+  getWatchOptionsFor,
+  NO_FILTERS,
+  searchTitles,
+  type DiscoverFilters,
+  type ProviderOption,
+  type WatchOptions
+} from "../lib/tmdb";
 import type { DiscoveryItem, FeedEntry, SeriesAiringInfo } from "../types";
 
 type ProfileTabsProps = {
@@ -55,7 +84,7 @@ function requestedProfileTab(): TabId {
 /** Cuantos puestos del ranking traemos por tanda. */
 const RANKING_PAGE_SIZE = 20;
 
-type WatchlistSort = "score" | "recent" | "alpha";
+type WatchlistSort = "score" | "tmdb" | "recent" | "year" | "alpha";
 
 /**
  * `short` es lo que se ve en el disparador y `label` lo que se lee dentro del
@@ -63,9 +92,38 @@ type WatchlistSort = "score" | "recent" | "alpha";
  */
 const WATCHLIST_SORT_OPTIONS: Array<{ id: WatchlistSort; short: string; label: string }> = [
   { id: "score", short: "Ranking Cineriano", label: "Ranking Cineriano" },
+  { id: "tmdb", short: "Puntaje TMDB", label: "Puntaje TMDB" },
   { id: "recent", short: "Recientes", label: "Agregadas recientemente" },
+  { id: "year", short: "Estreno", label: "Año de estreno" },
   { id: "alpha", short: "A–Z", label: "Orden alfabético" }
 ];
+
+/** La version enriquecida de la Watchlist es solo para desktop. */
+const DESKTOP_QUERY = "(min-width: 901px)";
+
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(DESKTOP_QUERY).matches
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia(DESKTOP_QUERY);
+    const handleChange = () => setIsDesktop(query.matches);
+
+    handleChange();
+    query.addEventListener("change", handleChange);
+    return () => query.removeEventListener("change", handleChange);
+  }, []);
+
+  return isDesktop;
+}
+
+const WATCHLIST_HINT_KEY = "cinerian:watchlist-viendo-hint-seen";
+
+type WatchlistToast = {
+  message: string;
+  undo?: () => Promise<void>;
+};
 
 const WATCHLIST_SORT_KEY = "cinerian:watchlist-sort";
 
@@ -76,7 +134,7 @@ const WATCHLIST_SORT_KEY = "cinerian:watchlist-sort";
 function loadWatchlistSort(ownerId: string): WatchlistSort {
   try {
     const raw = window.localStorage.getItem(`${WATCHLIST_SORT_KEY}:${ownerId}`);
-    return raw === "recent" || raw === "alpha" || raw === "score" ? raw : "score";
+    return WATCHLIST_SORT_OPTIONS.some((option) => option.id === raw) ? (raw as WatchlistSort) : "score";
   } catch {
     return "score";
   }
@@ -108,7 +166,7 @@ type TypeFilter = "all" | "movie" | "tv" | "mini";
 
 const TYPE_FILTER_OPTIONS: Array<{ id: TypeFilter; label: string }> = [
   { id: "all", label: "Todo" },
-  { id: "movie", label: "Peliculas" },
+  { id: "movie", label: "Películas" },
   { id: "tv", label: "Series" },
   { id: "mini", label: "Miniseries" }
 ];
@@ -433,6 +491,144 @@ export function ProfileTabs({
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement | null>(null);
 
+  /*
+    Watchlist enriquecida (solo desktop y solo la propia): filtros por
+    plataforma y genero, acciones directas sobre el poster y la capa social.
+    `rich` es la Watchlist propia; `enhanced` es su version desktop (barra de
+    filtros, acciones al pasar el mouse) y `richMobile` la de mobile (un boton
+    "Filtros" y paneles inferiores). Los datos y los filtros son los mismos.
+  */
+  const isDesktop = useIsDesktop();
+  const rich = watchlistOnly && isOwnProfile && !readOnly;
+  const enhanced = rich && isDesktop;
+  const richMobile = rich && !isDesktop;
+  const [mobileSheet, setMobileSheet] = useState<"filters" | "platforms" | "pick" | null>(null);
+  const [actionItem, setActionItem] = useState<DiscoveryItem | null>(null);
+  const [platformQuery, setPlatformQuery] = useState("");
+  // Los mismos filtros que guarda Descubri: de ahi salen "mis plataformas".
+  const [discoverFilters, setDiscoverFilters] = useState<DiscoverFilters>(NO_FILTERS);
+  const myProviderIds = discoverFilters.providerIds;
+  const [providerCatalog, setProviderCatalog] = useState<ProviderOption[]>([]);
+  const [watchOptions, setWatchOptions] = useState<Record<string, WatchOptions>>({});
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [genreFilter, setGenreFilter] = useState<string[]>([]);
+  const [circleWatchlist, setCircleWatchlist] = useState<Map<string, ProfileSummary[]>>(new Map());
+  const [pickedKey, setPickedKey] = useState<string | null>(null);
+  const [toast, setToast] = useState<WatchlistToast | null>(null);
+  const [reviewItem, setReviewItem] = useState<DiscoveryItem | null>(null);
+  const [stickyTop, setStickyTop] = useState(64);
+  const [showWatchingHint, setShowWatchingHint] = useState(() => {
+    try {
+      return !window.localStorage.getItem(`${WATCHLIST_HINT_KEY}:${userId}`);
+    } catch {
+      return true;
+    }
+  });
+
+  function dismissWatchingHint() {
+    setShowWatchingHint(false);
+    try {
+      window.localStorage.setItem(`${WATCHLIST_HINT_KEY}:${userId}`, "1");
+    } catch {
+      // Si el storage esta bloqueado, el aviso vuelve a aparecer la proxima vez.
+    }
+  }
+
+  // "Mis plataformas" son las que el usuario eligio en los filtros de Descubri.
+  useEffect(() => {
+    if (!rich) {
+      return;
+    }
+
+    let isMounted = true;
+
+    function loadProviders() {
+      void fetchDiscoverFilters(userId)
+        .then((filters) => {
+          if (isMounted) {
+            setDiscoverFilters(filters);
+          }
+        })
+        .catch(() => undefined);
+    }
+
+    loadProviders();
+    void getProviderCatalog().then((catalog) => {
+      if (isMounted) {
+        setProviderCatalog(catalog);
+      }
+    });
+    window.addEventListener(DISCOVER_FILTERS_UPDATED_EVENT, loadProviders);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener(DISCOVER_FILTERS_UPDATED_EVENT, loadProviders);
+    };
+  }, [rich, userId]);
+
+  // La barra de filtros queda fija debajo de la barra superior, mida lo que mida.
+  useEffect(() => {
+    if (!rich) {
+      return;
+    }
+
+    function measure() {
+      const topbar = document.querySelector(".app-topbar");
+      setStickyTop(topbar ? Math.round(topbar.getBoundingClientRect().height) : 0);
+    }
+
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [rich, isDesktop]);
+
+  // La barra solo toma fondo cuando queda pegada arriba: en reposo se apoya
+  // directo sobre el fondo de la pagina, sin franja propia.
+  const [toolbarSentinel, setToolbarSentinel] = useState<HTMLDivElement | null>(null);
+  const [isToolbarStuck, setIsToolbarStuck] = useState(false);
+
+  useEffect(() => {
+    if (!rich || !toolbarSentinel) {
+      setIsToolbarStuck(false);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsToolbarStuck(!entry.isIntersecting && entry.boundingClientRect.top < stickyTop + 1),
+      { rootMargin: `-${stickyTop + 1}px 0px 0px 0px`, threshold: 0 }
+    );
+
+    observer.observe(toolbarSentinel);
+    return () => observer.disconnect();
+  }, [rich, stickyTop, toolbarSentinel]);
+
+  /** Editar "mis plataformas" desde aca las guarda en el perfil, igual que Descubri. */
+  async function changeMyProviders(values: string[]) {
+    const previous = discoverFilters;
+    const next: DiscoverFilters = { ...previous, providerIds: values.map(Number) };
+
+    setDiscoverFilters(next);
+    if (!next.providerIds.length) {
+      setOnlyMine(false);
+    }
+
+    try {
+      await saveDiscoverFilters(userId, next);
+    } catch {
+      setDiscoverFilters(previous);
+      setSyncMessage("No pude guardar tus plataformas. Probá de nuevo.");
+    }
+  }
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setToast(null), 7000);
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
+
   useEffect(() => {
     setWatchlistSort(loadWatchlistSort(sortOwnerId));
   }, [sortOwnerId]);
@@ -589,6 +785,78 @@ export function ProfileTabs({
 
   const mutualItems = shownMutualFilter === "watched" ? mutualWatchedItems : mutualWatchlistItems;
 
+  /** Toda la Watchlist, sin filtrar: base de los contadores y de los filtros. */
+  const watchlistAll = useMemo(
+    () =>
+      reactions
+        .filter((entry) => entry.reaction === "watchlist")
+        .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
+        .filter((item): item is DiscoveryItem => Boolean(item)),
+    [reactions, titles]
+  );
+
+  useEffect(() => {
+    if (!rich || !watchlistAll.length) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void Promise.all(
+      watchlistAll.map(async (item) => {
+        const options = await getWatchOptionsFor(item.id, item.mediaType, item.title);
+        return [`${item.mediaType}-${item.id}`, options] as const;
+      })
+    ).then((entries) => {
+      if (isMounted) {
+        setWatchOptions(Object.fromEntries(entries));
+      }
+    });
+
+    void fetchCircleWatchlist(userId, watchlistAll)
+      .then((result) => {
+        if (isMounted) {
+          setCircleWatchlist(result);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setCircleWatchlist(new Map());
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [rich, userId, watchlistAll]);
+
+  const myProviderSet = useMemo(() => new Set(myProviderIds), [myProviderIds]);
+
+  function isOnMyPlatforms(item: DiscoveryItem) {
+    return Boolean(
+      watchOptions[`${item.mediaType}-${item.id}`]?.flatrate.some((provider) =>
+        myProviderSet.has(provider.id)
+      )
+    );
+  }
+
+  const passesExtraFilters = useMemo(() => {
+    if (!rich) {
+      return (_item: DiscoveryItem) => true;
+    }
+
+    return (item: DiscoveryItem) => {
+      const flatrate = watchOptions[`${item.mediaType}-${item.id}`]?.flatrate ?? [];
+
+      if (onlyMine && !flatrate.some((provider) => myProviderSet.has(provider.id))) {
+        return false;
+      }
+
+      // Con varios generos elegidos alcanza con coincidir con uno.
+      return !genreFilter.length || item.genres.some((genre) => genreFilter.includes(genre));
+    };
+  }, [rich, genreFilter, myProviderSet, onlyMine, watchOptions]);
+
   const tabItems = useMemo(() => {
     if (activeTab === "mutual-likes") {
       return mutualItems;
@@ -605,10 +873,15 @@ export function ProfileTabs({
     const items = entries
       .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
       .filter((item): item is DiscoveryItem => Boolean(item))
-      .filter((item) => matchesTypeFilter(item, typeFilter));
+      .filter((item) => matchesTypeFilter(item, typeFilter))
+      .filter((item) => activeTab !== "watchlist" || passesExtraFilters(item));
 
     if (activeTab === "watchlist") {
-      if (watchlistSort === "alpha") {
+      if (watchlistSort === "tmdb") {
+        items.sort((left, right) => right.score - left.score);
+      } else if (watchlistSort === "year") {
+        items.sort((left, right) => (right.releaseDate ?? "").localeCompare(left.releaseDate ?? ""));
+      } else if (watchlistSort === "alpha") {
         // `localeCompare` en español: ignora acentos y mayusculas, y ordena
         // "Rocky 2" antes que "Rocky 10" en vez de alfabeticamente.
         items.sort((left, right) =>
@@ -654,7 +927,103 @@ export function ProfileTabs({
     }
 
     return items;
-  }, [activeTab, circleScores, mutualItems, reactions, titles, typeFilter, watchlistSort]);
+  }, [activeTab, circleScores, mutualItems, passesExtraFilters, reactions, titles, typeFilter, watchlistSort]);
+
+  const filteredWatchlist = useMemo(
+    () => watchlistAll.filter(passesExtraFilters),
+    [passesExtraFilters, watchlistAll]
+  );
+
+  const myPlatformOptions = useMemo(
+    () =>
+      providerCatalog.map((provider) => ({
+        value: String(provider.id),
+        label: provider.name,
+        logoUrl: provider.logoUrl
+      })),
+    [providerCatalog]
+  );
+
+  const genreOptions = useMemo(
+    () =>
+      Array.from(new Set(watchlistAll.flatMap((item) => item.genres))).sort((left, right) =>
+        left.localeCompare(right, "es")
+      ),
+    [watchlistAll]
+  );
+
+  const mineCount = watchlistAll.filter(isOnMyPlatforms).length;
+  const pickedItem = pickedKey
+    ? tabItems.find((item) => `${item.mediaType}-${item.id}` === pickedKey) ?? null
+    : null;
+  // "Tu próxima": lo primero del orden actual que ya podés ver con lo que tenés.
+  const nextItem = pickedItem ?? tabItems.find(isOnMyPlatforms) ?? tabItems[0] ?? null;
+  const nextProviders = nextItem ? watchOptions[`${nextItem.mediaType}-${nextItem.id}`]?.flatrate ?? [] : [];
+  const nextProvider = nextProviders.find((provider) => myProviderSet.has(provider.id)) ?? nextProviders[0] ?? null;
+
+  function clearExtraFilters() {
+    setOnlyMine(false);
+    setGenreFilter([]);
+    setTypeFilter("all");
+  }
+
+  function pickRandom() {
+    if (!tabItems.length) {
+      return;
+    }
+
+    const pool = tabItems.length > 1
+      ? tabItems.filter((item) => `${item.mediaType}-${item.id}` !== pickedKey)
+      : tabItems;
+    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    setPickedKey(`${chosen.mediaType}-${chosen.id}`);
+    if (richMobile) {
+      setMobileSheet("pick");
+    }
+  }
+
+  function describeMeta(item: DiscoveryItem) {
+    const length = describeLength(item);
+    return `${describeType(item)} • ${item.year}${length ? ` • ${length}` : ""}`;
+  }
+
+  /** "Disponible en X" si es de tus plataformas; si no, donde esta. */
+  function describeWhere(item: DiscoveryItem) {
+    const flatrate = watchOptions[`${item.mediaType}-${item.id}`]?.flatrate ?? [];
+    const mineProvider = flatrate.find((provider) => myProviderSet.has(provider.id));
+    if (mineProvider) {
+      return `Disponible en ${mineProvider.name}`;
+    }
+
+    return flatrate[0] ? `En ${flatrate[0].name}` : null;
+  }
+
+  const watchlistSummary = `${watchlistAll.length} ${watchlistAll.length === 1 ? "título" : "títulos"}${
+    myProviderIds.length ? ` · ${mineCount} en tus plataformas` : ""
+  }`;
+
+  // Lo que esta filtrando ahora, para verlo y sacarlo sin abrir el panel.
+  const filterChips: Array<{ id: string; label: string; remove: () => void }> = [];
+  if (typeFilter !== "all") {
+    filterChips.push({
+      id: "type",
+      label: TYPE_FILTER_OPTIONS.find((option) => option.id === typeFilter)?.label ?? "",
+      remove: () => setTypeFilter("all")
+    });
+  }
+  if (onlyMine) {
+    filterChips.push({ id: "mine", label: "En mis plataformas", remove: () => setOnlyMine(false) });
+  }
+  genreFilter.forEach((genre) => {
+    filterChips.push({
+      id: `genre-${genre}`,
+      label: genre,
+      remove: () => setGenreFilter((current) => current.filter((entry) => entry !== genre))
+    });
+  });
+
+  const normalizedPlatformQuery = platformQuery.trim().toLowerCase();
+  const myProviders = providerCatalog.filter((provider) => myProviderSet.has(provider.id));
 
   const activeSortOption =
     WATCHLIST_SORT_OPTIONS.find((option) => option.id === watchlistSort) ??
@@ -704,6 +1073,156 @@ export function ProfileTabs({
     } finally {
       setIsSyncing(false);
     }
+  }
+
+  function dropFromWatchlist(item: DiscoveryItem) {
+    setReactions((current) =>
+      current.filter(
+        (entry) =>
+          !(entry.tmdbId === item.id && entry.mediaType === item.mediaType && entry.reaction === "watchlist")
+      )
+    );
+  }
+
+  async function restoreToWatchlist(item: DiscoveryItem) {
+    await saveStoredReaction({ userId, item, reaction: "watchlist" });
+  }
+
+  /** Quitar sin dialogo de confirmacion: el "Deshacer" del aviso lo reemplaza. */
+  async function handleQuickRemove(item: DiscoveryItem) {
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      await removeStoredReaction(userId, item, "watchlist");
+      dropFromWatchlist(item);
+      setToast({
+        message: `Quitaste «${item.title}» de tu Watchlist.`,
+        undo: () => restoreToWatchlist(item)
+      });
+    } catch {
+      setSyncMessage("No pude eliminar este titulo del perfil.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  /** Empezar una serie la saca de la Watchlist y la deja en Viendo. */
+  async function handleStartWatching(item: DiscoveryItem) {
+    if (!profile || !onProfileUpdated || item.mediaType !== "tv") {
+      return;
+    }
+
+    const previousEntries = watchingEntries;
+
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+
+      if (!previousEntries.some((entry) => entry.tmdbId === item.id)) {
+        const nextEntries: CurrentWatchingEntry[] = [
+          { tmdbId: item.id, mediaType: "tv", addedAt: new Date().toISOString() },
+          ...previousEntries
+        ];
+        onProfileUpdated(await saveCurrentWatchingEntries(profile.id, nextEntries));
+        setWatchingEntries(nextEntries);
+      }
+
+      await removeStoredReaction(userId, item, "watchlist");
+      dropFromWatchlist(item);
+      setToast({
+        message: `«${item.title}» pasó a Viendo.`,
+        undo: async () => {
+          await restoreToWatchlist(item);
+          onProfileUpdated(await saveCurrentWatchingEntries(profile.id, previousEntries));
+          setWatchingEntries(previousEntries);
+        }
+      });
+    } catch {
+      setSyncMessage("No pude pasar esta serie a Viendo. Probá de nuevo.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function handleUndoToast() {
+    const undo = toast?.undo;
+    setToast(null);
+    if (!undo) {
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      await undo();
+    } catch {
+      setSyncMessage("No pude deshacer el cambio. Probá de nuevo.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  /** "Ya la vi": pide la puntuacion, que reemplaza el guardado en Watchlist. */
+  async function handleReviewSubmit(input: { reaction: RatedReaction; comment: string }) {
+    const item = reviewItem;
+    if (!item) {
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      await saveStoredReaction({ userId, item, reaction: input.reaction });
+      setReactions((current) => [
+        ...current.filter((entry) => !(entry.tmdbId === item.id && entry.mediaType === item.mediaType)),
+        { tmdbId: item.id, mediaType: item.mediaType, reaction: input.reaction, createdAt: new Date().toISOString() }
+      ]);
+
+      if (input.comment.trim()) {
+        await createFeedPost({
+          userId,
+          postType: "rating",
+          body: buildWatchedPostBody({ item, reaction: input.reaction, comment: input.comment }),
+          tmdbId: item.id,
+          mediaType: item.mediaType
+        });
+      } else {
+        await removeFeedEvent({ userId, postType: "rating", tmdbId: item.id, mediaType: item.mediaType });
+      }
+
+      setReviewItem(null);
+      setToast({ message: `Marcaste «${item.title}» como vista. Ya está en tus Vistas.` });
+    } catch (error) {
+      setSyncMessage(getReactionSaveErrorMessage(error));
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  function quickActionsFor(item: DiscoveryItem): TitleCardQuickAction[] {
+    const actions: TitleCardQuickAction[] = [];
+    const canStartWatching =
+      item.mediaType === "tv" &&
+      Boolean(profile && onProfileUpdated) &&
+      !watchingEntries.some((entry) => entry.tmdbId === item.id);
+
+    if (canStartWatching) {
+      actions.push({
+        id: "start",
+        label: "Empecé a verla",
+        tone: "primary",
+        onClick: () => void handleStartWatching(item)
+      });
+    }
+
+    actions.push({
+      id: "seen",
+      label: "Ya la vi",
+      tone: canStartWatching ? "ghost" : "primary",
+      onClick: () => setReviewItem(item)
+    });
+    actions.push({ id: "remove", label: "Quitar", tone: "ghost", onClick: () => void handleQuickRemove(item) });
+
+    return actions;
   }
 
   async function handleChangeRating(item: DiscoveryItem, reaction: RatedReaction) {
@@ -833,8 +1352,99 @@ export function ProfileTabs({
   }
 
   return (
-    <section className="profile-tabs" ref={tabsRef}>
-      {watchlistOnly ? <div className="profile-tabs__standalone-heading"><p className="section-eyebrow">Tu biblioteca</p><h2>Watchlist</h2><p>Películas y series que guardaste para ver después.</p></div> : null}
+    <section
+      className={`profile-tabs ${enhanced ? "profile-tabs--watchlist-desktop" : ""} ${
+        richMobile ? "profile-tabs--watchlist-mobile" : ""
+      }`}
+      ref={tabsRef}
+      style={rich ? ({ "--watchlist-sticky-top": `${stickyTop}px` } as React.CSSProperties) : undefined}
+    >
+      {richMobile ? (
+        <>
+          <div className="watchlist-toolbar-sentinel" ref={setToolbarSentinel} aria-hidden="true" />
+          <header className={`watchlist-mobile-header ${isToolbarStuck ? "is-stuck" : ""}`}>
+            <div className="watchlist-mobile-header__row">
+              <div className="watchlist-mobile-header__title">
+                <h2>Watchlist</h2>
+                {!isLoading ? <p>{watchlistSummary}</p> : null}
+              </div>
+              <button
+                type="button"
+                className={`watchlist-filter-button ${filterChips.length ? "has-filters" : ""}`}
+                onClick={() => setMobileSheet("filters")}
+                aria-haspopup="dialog"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+                  <circle cx="16" cy="7" r="2" />
+                  <circle cx="8" cy="17" r="2" />
+                </svg>
+                Filtros
+                {filterChips.length ? <span>{filterChips.length}</span> : null}
+              </button>
+            </div>
+
+            {filterChips.length ? (
+              <div className="watchlist-chips">
+                {filterChips.map((chip) => (
+                  <button key={chip.id} type="button" onClick={chip.remove} aria-label={`Quitar filtro ${chip.label}`}>
+                    {chip.label}
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M6 6l12 12M18 6 6 18" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </header>
+        </>
+      ) : null}
+      {watchlistOnly && !rich ? <div className="profile-tabs__standalone-heading"><p className="section-eyebrow">Tu biblioteca</p><h2>Watchlist</h2><p>Películas y series que guardaste para ver después.</p></div> : null}
+      {enhanced ? (
+        <header className="watchlist-header">
+          <div className="watchlist-header__title">
+            <h2>Watchlist</h2>
+            {!isLoading ? (
+              <p>{watchlistSummary}</p>
+            ) : null}
+          </div>
+
+          <div className="watchlist-header__actions">
+            {nextItem && !isLoading ? (
+              <button
+                type="button"
+                className="watchlist-next"
+                onClick={() => openMediaDetails(nextItem)}
+                title={`Abrir la ficha de ${nextItem.title}`}
+              >
+                <img src={nextItem.posterUrl} alt="" />
+                <span>
+                  <small>{pickedItem ? "Elegida para vos" : "Tu próxima"}</small>
+                  <strong>{nextItem.title}</strong>
+                  {nextProvider ? (
+                    <em>
+                      {myProviderSet.has(nextProvider.id) ? "Disponible en" : "En"} {nextProvider.name}
+                    </em>
+                  ) : null}
+                </span>
+              </button>
+            ) : null}
+
+            <button
+              type="button"
+              className="watchlist-pick"
+              onClick={pickRandom}
+              disabled={isLoading || !tabItems.length}
+              title="Sortea un título entre los que estás viendo con los filtros actuales"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 7h3c4 0 6 10 10 10h5M3 17h3c1.500 0 2.700-1.400 3.800-3.200M14.200 10.200C15.300 8.400 16.500 7 18 7h3M18 4l3 3-3 3M18 14l3 3-3 3" />
+              </svg>
+              Elegí por mí
+            </button>
+          </div>
+        </header>
+      ) : null}
       {!isOwnProfile && visibleTabs.includes("mutual-likes") && showMutualHint && activeTab !== "mutual-likes" ? (
         <div className="profile-tabs__discovery-hint">
           <p>¿Qué tienen en común? Compará las Vistas y Watchlists que este perfil comparte.</p>
@@ -1227,7 +1837,8 @@ export function ProfileTabs({
             </div>
           ) : null}
 
-          <div className="profile-list-toolbar">
+          {enhanced ? <div className="watchlist-toolbar-sentinel" ref={setToolbarSentinel} aria-hidden="true" /> : null}
+          <div className={`profile-list-toolbar ${enhanced && isToolbarStuck ? "is-stuck" : ""}`}>
             {activeTab === "mutual-likes" ? (
               <div className="profile-type-filter">
                 {canCompareWatched ? <button
@@ -1255,10 +1866,58 @@ export function ProfileTabs({
                     onClick={() => setTypeFilter(option.id)}
                   >
                     {option.label}
+                    {enhanced ? (
+                      <span className="profile-type-filter__count">
+                        {filteredWatchlist.filter((item) => matchesTypeFilter(item, option.id)).length}
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
             )}
+
+            {enhanced ? (
+              <div className="watchlist-filters">
+                <div className={`watchlist-mine ${onlyMine ? "is-active" : ""}`}>
+                  <button
+                    type="button"
+                    className={`watchlist-toggle ${onlyMine ? "is-active" : ""}`}
+                    role="switch"
+                    aria-checked={onlyMine}
+                    disabled={!myProviderIds.length}
+                    onClick={() => setOnlyMine((current) => !current)}
+                    title={
+                      myProviderIds.length
+                        ? "Mostrar solo lo que podés ver con las plataformas que marcaste como tuyas"
+                        : "Primero elegí cuáles son tus plataformas"
+                    }
+                  >
+                    <span className="watchlist-toggle__track" aria-hidden="true"><span /></span>
+                    En mis plataformas
+                  </button>
+
+                  <WatchlistDropdown
+                    variant="edit"
+                    label="Tus plataformas"
+                    allLabel="Elegir"
+                    values={myProviderIds.map(String)}
+                    options={myPlatformOptions}
+                    onChange={(values) => void changeMyProviders(values)}
+                    withLogos
+                    searchPlaceholder="Buscar plataforma…"
+                    note="Son las que tenés contratadas. Se guardan en tu perfil y son las mismas que usa Descubrí."
+                  />
+                </div>
+
+                <WatchlistDropdown
+                  label="Género"
+                  allLabel="Todos"
+                  values={genreFilter}
+                  options={genreOptions.map((genre) => ({ value: genre, label: genre }))}
+                  onChange={setGenreFilter}
+                />
+              </div>
+            ) : null}
 
             {activeTab === "watchlist" ? (
               <div className="profile-list-order" ref={sortMenuRef}>
@@ -1277,6 +1936,7 @@ export function ProfileTabs({
                     <path d="M7 4v16M7 20l-3-3M7 20l3-3" />
                     <path d="M17 20V4M17 4l-3 3M17 4l3 3" />
                   </svg>
+                  {enhanced ? <span className="profile-list-order__prefix">Ordenar por:</span> : null}
                   <span className="profile-list-order__value">{activeSortOption.short}</span>
                   <svg className="profile-list-order__caret" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="m6 9 6 6 6-6" />
@@ -1308,6 +1968,27 @@ export function ProfileTabs({
             ) : null}
           </div>
 
+          {rich && showWatchingHint ? (
+            <div className="watchlist-hint">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 11v6M12 7.500v.500" />
+              </svg>
+              {richMobile ? (
+                <p>
+                  Tocá <strong>···</strong> en un título para marcarlo como visto o pasarlo a{" "}
+                  <strong>Viendo</strong>.
+                </p>
+              ) : (
+                <p>
+                  Cuando empezás una serie desde acá, pasa a <strong>Viendo</strong>. Lo que marcás como
+                  visto va a tus <strong>Vistas</strong>.
+                </p>
+              )}
+              <button type="button" onClick={dismissWatchingHint}>Entendido</button>
+            </div>
+          ) : null}
+
           {tabItems.length ? (
             <div
               className={`profile-grid ${
@@ -1332,8 +2013,29 @@ export function ProfileTabs({
                   onRemove={readOnly || activeTab === "mutual-likes" ? undefined : () => void handleRemove(item)}
                   removeLabel={activeTab === "watched" ? "Quitar de Vistas" : "Quitar de Watchlist"}
                   isRemoving={isSyncing}
+                  {...(rich
+                    ? {
+                        scoreSource: "TMDB",
+                        showLength: true,
+                        friends: circleWatchlist.get(`${item.mediaType}-${item.id}`),
+                        preferredProviderIds: myProviderIds
+                      }
+                    : {})}
+                  {...(enhanced
+                    ? {
+                        quickActions: quickActionsFor(item),
+                        isHighlighted: pickedKey === `${item.mediaType}-${item.id}`
+                      }
+                    : {})}
+                  {...(richMobile ? { onOpenActions: () => setActionItem(item), posterFooter: true } : {})}
                 />
               ))}
+            </div>
+          ) : rich && watchlistAll.length ? (
+            <div className="profile-grid__empty watchlist-empty">
+              <strong>Nada con estos filtros</strong>
+              <p>Probá sacar algún filtro para ver más títulos de tu Watchlist.</p>
+              <button type="button" onClick={clearExtraFilters}>Limpiar filtros</button>
             </div>
           ) : (
             <div className="profile-grid__empty">
@@ -1352,6 +2054,301 @@ export function ProfileTabs({
           )}
         </>
       )}
+
+      {richMobile && !isLoading && tabItems.length ? (
+        <button type="button" className="watchlist-fab" onClick={pickRandom}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 7h3c4 0 6 10 10 10h5M3 17h3c1.500 0 2.700-1.400 3.800-3.200M14.200 10.200C15.300 8.400 16.500 7 18 7h3M18 4l3 3-3 3M18 14l3 3-3 3" />
+          </svg>
+          Elegí por mí
+        </button>
+      ) : null}
+
+      {richMobile && mobileSheet === "filters" ? (
+        <WatchlistSheet label="Filtros" onClose={() => setMobileSheet(null)}>
+          <div className="watchlist-sheet__head">
+            <strong>Filtros</strong>
+            <button type="button" onClick={clearExtraFilters} disabled={!filterChips.length}>Limpiar</button>
+          </div>
+
+          <div className="watchlist-sheet__body">
+            <section>
+              <h3>Tipo</h3>
+              <div className="watchlist-sheet__grid">
+                {TYPE_FILTER_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className="watchlist-sheet__option"
+                    aria-pressed={typeFilter === option.id}
+                    onClick={() => setTypeFilter(option.id)}
+                  >
+                    <span>{option.label}</span>
+                    <span className="watchlist-sheet__count">
+                      {filteredWatchlist.filter((item) => matchesTypeFilter(item, option.id)).length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <h3>Dónde verla</h3>
+              <div className={`watchlist-sheet__mine ${onlyMine ? "is-active" : ""}`}>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={onlyMine}
+                  onClick={() => (myProviderIds.length ? setOnlyMine((current) => !current) : setMobileSheet("platforms"))}
+                >
+                  Solo en mis plataformas
+                  <span className="watchlist-toggle__track" aria-hidden="true"><span /></span>
+                </button>
+                <button type="button" onClick={() => setMobileSheet("platforms")}>
+                  {myProviders.length ? (
+                    <span className="watchlist-sheet__logos">
+                      {myProviders.slice(0, 6).map((provider) =>
+                        provider.logoUrl ? (
+                          <img key={provider.id} src={provider.logoUrl} alt={provider.name} />
+                        ) : (
+                          <span key={provider.id}>{provider.name.slice(0, 2).toUpperCase()}</span>
+                        )
+                      )}
+                      {myProviders.length > 6 ? <em>+{myProviders.length - 6}</em> : null}
+                    </span>
+                  ) : (
+                    <span>Todavía no elegiste ninguna</span>
+                  )}
+                  <strong>{myProviders.length ? "Editar" : "Elegir"}</strong>
+                </button>
+              </div>
+            </section>
+
+            <section>
+              <h3>Género</h3>
+              <div className="watchlist-sheet__chips">
+                {genreOptions.map((genre) => (
+                  <button
+                    key={genre}
+                    type="button"
+                    aria-pressed={genreFilter.includes(genre)}
+                    onClick={() =>
+                      setGenreFilter((current) =>
+                        current.includes(genre) ? current.filter((entry) => entry !== genre) : [...current, genre]
+                      )
+                    }
+                  >
+                    {genre}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <h3>Ordenar por</h3>
+              <div className="watchlist-sheet__chips">
+                {WATCHLIST_SORT_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={watchlistSort === option.id}
+                    onClick={() => changeWatchlistSort(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <button type="button" className="watchlist-sheet__primary" onClick={() => setMobileSheet(null)}>
+            Ver {tabItems.length} {tabItems.length === 1 ? "título" : "títulos"}
+          </button>
+        </WatchlistSheet>
+      ) : null}
+
+      {richMobile && mobileSheet === "platforms" ? (
+        <WatchlistSheet label="Tus plataformas" onClose={() => setMobileSheet(null)}>
+          <div className="watchlist-sheet__head">
+            <strong>Tus plataformas</strong>
+            <button type="button" onClick={() => void changeMyProviders([])} disabled={!myProviderIds.length}>
+              Limpiar
+            </button>
+          </div>
+          <p className="watchlist-sheet__note">
+            Las que tenés contratadas. Se guardan en tu perfil y son las mismas que usa Descubrí.
+          </p>
+          <div className="filters-search watchlist-dropdown__search">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="m16 16 4 4" />
+            </svg>
+            <input
+              type="search"
+              value={platformQuery}
+              onChange={(event) => setPlatformQuery(event.target.value)}
+              placeholder="Buscar plataforma…"
+              autoComplete="off"
+            />
+          </div>
+          <div className="watchlist-sheet__body">
+            <div className="watchlist-sheet__grid">
+              {providerCatalog
+                .filter((provider) => provider.name.toLowerCase().includes(normalizedPlatformQuery))
+                .map((provider) => (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    className="watchlist-sheet__option"
+                    aria-pressed={myProviderSet.has(provider.id)}
+                    onClick={() =>
+                      void changeMyProviders(
+                        (myProviderSet.has(provider.id)
+                          ? myProviderIds.filter((id) => id !== provider.id)
+                          : [...myProviderIds, provider.id]
+                        ).map(String)
+                      )
+                    }
+                  >
+                    {provider.logoUrl ? (
+                      <img src={provider.logoUrl} alt="" className="watchlist-sheet__option-logo" />
+                    ) : (
+                      <span className="watchlist-sheet__option-logo" />
+                    )}
+                    <span>{provider.name}</span>
+                    <span className="watchlist-sheet__check" aria-hidden="true">✓</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="watchlist-sheet__primary"
+            onClick={() => {
+              setPlatformQuery("");
+              setMobileSheet("filters");
+            }}
+          >
+            Listo
+          </button>
+        </WatchlistSheet>
+      ) : null}
+
+      {richMobile && actionItem ? (
+        <WatchlistSheet label={`Acciones de ${actionItem.title}`} onClose={() => setActionItem(null)}>
+          <div className="watchlist-sheet__title">
+            <img src={actionItem.posterUrl} alt="" />
+            <div>
+              <strong>{actionItem.title}</strong>
+              <span>{describeMeta(actionItem)}</span>
+              <span>
+                {[describeWhere(actionItem), actionItem.score > 0 ? `TMDB ${actionItem.score.toFixed(1)}` : null]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+              {circleWatchlist.get(`${actionItem.mediaType}-${actionItem.id}`)?.length ? (
+                <em>
+                  {(() => {
+                    const friends = circleWatchlist.get(`${actionItem.mediaType}-${actionItem.id}`) ?? [];
+                    return friends.length === 1
+                      ? `${friends[0].displayName.split(" ")[0]} también la quiere ver`
+                      : `${friends.length} amigos también la quieren ver`;
+                  })()}
+                </em>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="watchlist-sheet__actions">
+            {quickActionsFor(actionItem)
+              .filter((action) => action.id !== "remove")
+              .map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  className={action.tone === "primary" ? "watchlist-sheet__primary" : "watchlist-sheet__ghost"}
+                  onClick={() => {
+                    setActionItem(null);
+                    action.onClick();
+                  }}
+                >
+                  {action.label}
+                </button>
+              ))}
+            <button
+              type="button"
+              className="watchlist-sheet__ghost"
+              onClick={() => {
+                const item = actionItem;
+                setActionItem(null);
+                openMediaDetails(item);
+              }}
+            >
+              Ver ficha
+            </button>
+            <button
+              type="button"
+              className="watchlist-sheet__danger"
+              onClick={() => {
+                const item = actionItem;
+                setActionItem(null);
+                void handleQuickRemove(item);
+              }}
+            >
+              Quitar de Watchlist
+            </button>
+          </div>
+        </WatchlistSheet>
+      ) : null}
+
+      {richMobile && mobileSheet === "pick" && pickedItem ? (
+        <WatchlistSheet label="Elegida para vos" onClose={() => setMobileSheet(null)} className="watchlist-sheet__panel--pick">
+          <small>Elegida para vos</small>
+          <img src={pickedItem.posterUrl} alt="" />
+          <div className="watchlist-sheet__pick-copy">
+            <strong>{pickedItem.title}</strong>
+            <span>{describeMeta(pickedItem)}</span>
+            {describeWhere(pickedItem) ? <span>{describeWhere(pickedItem)}</span> : null}
+          </div>
+          <div className="watchlist-sheet__pair">
+            <button type="button" className="watchlist-sheet__ghost" onClick={pickRandom} disabled={tabItems.length < 2}>
+              Elegir otra
+            </button>
+            <button
+              type="button"
+              className="watchlist-sheet__primary"
+              onClick={() => {
+                const item = pickedItem;
+                setMobileSheet(null);
+                openMediaDetails(item);
+              }}
+            >
+              Ver ficha
+            </button>
+          </div>
+        </WatchlistSheet>
+      ) : null}
+
+      {rich ? (
+        <WatchReviewModal
+          item={reviewItem}
+          isSaving={isSyncing}
+          onClose={() => setReviewItem(null)}
+          onSubmit={(input) => void handleReviewSubmit(input)}
+        />
+      ) : null}
+
+      {rich && toast
+        ? createPortal(
+            <div className="watchlist-toast" role="status">
+              <span>{toast.message}</span>
+              {toast.undo ? (
+                <button type="button" onClick={() => void handleUndoToast()}>Deshacer</button>
+              ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </section>
   );
 }

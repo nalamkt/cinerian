@@ -14760,3 +14760,612 @@ textarea {
   .discover-trailer.is-returning .discover-trailer__preview { transition-duration: 1ms !important; }
   .discover-trailer__swipe-hint { animation: none; }
 }
+
+/*
+  Watchlist enriquecida (solo desktop).
+  `.profile-tabs--watchlist-desktop` lo pone ProfileTabs unicamente por encima
+  de 900px y en la Watchlist propia: nada de esto toca mobile ni otros perfiles.
+*/
+.profile-tabs--watchlist-desktop { margin-top: 0; }
+
+.watchlist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+}
+.watchlist-header__title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; }
+.watchlist-header__title h2 { margin: 0; font-family: var(--font-display); font-size: clamp(2rem, 2.8vw, 2.7rem); line-height: 1.1; }
+.watchlist-header__title p { margin: 0; color: var(--muted); }
+.watchlist-header__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+
+.watchlist-next {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 300px;
+  padding: 6px 16px 6px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease;
+}
+.watchlist-next:hover { border-color: var(--panel-edge-strong); }
+.watchlist-next img { width: 34px; height: 50px; flex: none; border-radius: 6px; object-fit: cover; }
+.watchlist-next > span { display: grid; gap: 1px; min-width: 0; }
+.watchlist-next small { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.watchlist-next strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.92rem; }
+.watchlist-next em { font-style: normal; font-size: 0.78rem; color: var(--muted); }
+
+.watchlist-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), #ffd66a);
+  color: #201507;
+  font-weight: 700;
+  cursor: pointer;
+}
+.watchlist-pick:disabled { opacity: 0.5; cursor: not-allowed; }
+.watchlist-pick svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.watchlist-toolbar-sentinel { height: 0; margin-bottom: -18px; }
+.profile-tabs--watchlist-desktop .profile-list-toolbar {
+  position: sticky;
+  top: var(--watchlist-sticky-top, 64px);
+  z-index: 20;
+  justify-content: flex-start;
+  gap: 12px 14px;
+  margin: 0 -16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+/* Pegada arriba: vidrio esmerilado, para que tome el tono del fondo. */
+.profile-tabs--watchlist-desktop .profile-list-toolbar.is-stuck {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background: rgba(18, 20, 25, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.profile-tabs--watchlist-desktop .profile-list-order { margin-left: auto; }
+.profile-tabs--watchlist-desktop .profile-list-order__trigger { font-size: 0.84rem; }
+.profile-list-order__prefix { color: var(--muted); }
+.profile-tabs--watchlist-desktop .profile-list-order__value { color: var(--text); font-weight: 600; }
+.profile-type-filter__count { margin-left: 6px; font-size: 0.76rem; font-weight: 600; opacity: 0.75; }
+
+.watchlist-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
+
+.watchlist-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 16px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.watchlist-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
+.watchlist-toggle__track { display: flex; align-items: center; width: 34px; height: 20px; padding: 2px; border-radius: 999px; background: #3a404c; transition: background 140ms ease; }
+.watchlist-toggle__track span { width: 16px; height: 16px; border-radius: 999px; background: var(--text); transition: transform 140ms ease, background 140ms ease; }
+.watchlist-toggle.is-active { border-color: rgba(252, 195, 95, 0.5); background: var(--accent-soft); }
+.watchlist-toggle.is-active .watchlist-toggle__track { background: var(--accent); }
+.watchlist-toggle.is-active .watchlist-toggle__track span { transform: translateX(14px); background: #201507; }
+
+.watchlist-dropdown { position: relative; display: inline-flex; }
+.watchlist-dropdown__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.watchlist-dropdown__trigger:hover,
+.watchlist-dropdown__trigger[aria-expanded="true"] { border-color: rgba(252, 195, 95, 0.5); }
+.watchlist-dropdown__trigger.has-value { border-color: rgba(252, 195, 95, 0.5); background: var(--accent-soft); }
+.watchlist-dropdown__label { font-weight: 500; color: var(--muted); }
+.watchlist-dropdown__logo { width: 22px; height: 22px; flex: none; border-radius: 6px; object-fit: cover; }
+.watchlist-dropdown__value { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.watchlist-dropdown__caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 140ms ease;
+}
+.watchlist-dropdown__trigger[aria-expanded="true"] .watchlist-dropdown__caret { transform: rotate(180deg); }
+.watchlist-dropdown__logos { display: inline-flex; align-items: center; gap: 4px; }
+.watchlist-dropdown__logos .watchlist-dropdown__logo { background: rgba(255, 255, 255, 0.08); }
+.watchlist-dropdown__more { margin-left: 2px; font-size: 0.76rem; font-weight: 700; color: var(--muted-strong); }
+.watchlist-dropdown__menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 260px;
+  max-height: min(460px, 64vh);
+  padding: 12px;
+  border: 1px solid rgba(252, 195, 95, 0.34);
+  border-radius: 16px;
+  background: rgba(18, 20, 26, 0.98);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7);
+}
+.watchlist-dropdown__menu--logos { width: 480px; }
+.watchlist-dropdown__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 0.9rem; }
+.watchlist-dropdown__head button { padding: 4px 6px; border: 0; background: transparent; color: var(--accent); font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+.watchlist-dropdown__head button:disabled { color: var(--muted); opacity: 0.6; cursor: default; }
+.watchlist-dropdown__search { flex: none; margin-bottom: 0; }
+.watchlist-dropdown__options { display: grid; gap: 8px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.watchlist-dropdown__menu--logos .watchlist-dropdown__options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.watchlist-dropdown__options .filters-platforms__empty { grid-column: 1 / -1; margin: 4px 0; }
+.watchlist-dropdown__menu .filters-platform__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watchlist-dropdown__note { margin: 0; font-size: 0.76rem; line-height: 1.4; color: var(--muted); }
+
+/* Toggle + "cuales son": un solo control, para que se vea de donde salen. */
+.watchlist-mine {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.watchlist-mine.is-active { border-color: rgba(252, 195, 95, 0.5); background: var(--accent-soft); }
+.watchlist-mine .watchlist-toggle,
+.watchlist-mine .watchlist-toggle.is-active { border: 0; background: transparent; padding-right: 12px; }
+.watchlist-mine .watchlist-dropdown__trigger,
+.watchlist-mine .watchlist-dropdown__trigger.has-value {
+  min-height: 32px;
+  margin-right: 4px;
+  padding: 0 8px 0 10px;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0 999px 999px 0;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 0.78rem;
+}
+.watchlist-mine .watchlist-dropdown__trigger:hover { color: var(--text); }
+
+.watchlist-hint {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px 6px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.watchlist-hint svg { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; }
+.watchlist-hint p { flex: 1; margin: 0; font-size: 0.88rem; color: var(--muted-strong); }
+.watchlist-hint strong { color: var(--text); }
+.watchlist-hint button { padding: 8px 12px; border: 0; background: transparent; color: var(--accent); font-weight: 700; cursor: pointer; }
+
+.profile-panel--watchlist .profile-tabs--watchlist-desktop .profile-grid--library { gap: 32px 22px; }
+
+/* Posters sueltos: sin marco, el contenido respira y entra mas por fila. */
+.profile-tabs--watchlist-desktop .title-card {
+  align-content: start;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.profile-tabs--watchlist-desktop .title-card__reaction { top: 8px; right: 8px; }
+.profile-tabs--watchlist-desktop .title-card__score { z-index: 2; align-items: center; background: rgba(8, 9, 12, 0.88); }
+.title-card__score-source { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; color: var(--muted-strong); }
+.title-card.is-highlighted .title-card__poster-wrap { box-shadow: 0 0 0 3px var(--accent); }
+
+.title-card__quick { display: none; }
+
+/* Con mouse, las acciones van sobre el poster; en tactil queda el menu "···". */
+@media (hover: hover) and (pointer: fine) {
+  .profile-tabs--watchlist-desktop .title-card.has-quick-actions .title-card__reaction { display: none; }
+  .profile-tabs--watchlist-desktop .title-card__quick {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px;
+    background: linear-gradient(to top, rgba(8, 9, 12, 0.94) 0%, rgba(8, 9, 12, 0.6) 60%, rgba(8, 9, 12, 0.25) 100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 140ms ease;
+  }
+  .profile-tabs--watchlist-desktop .title-card:hover .title-card__quick,
+  .profile-tabs--watchlist-desktop .title-card:focus-within .title-card__quick { opacity: 1; }
+  .profile-tabs--watchlist-desktop .title-card:hover .title-card__quick-button,
+  .profile-tabs--watchlist-desktop .title-card:focus-within .title-card__quick-button { pointer-events: auto; }
+}
+
+.title-card__quick-button {
+  min-height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.title-card__quick-button:hover { border-color: var(--text); }
+.title-card__quick-button--primary { border-color: transparent; background: var(--accent); color: #201507; }
+.title-card__quick-button--primary:hover { border-color: transparent; background: #ffd66a; }
+
+.watch-now__platform.is-mine { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.watch-now__platform--more {
+  width: auto;
+  min-width: 32px;
+  padding: 0 7px;
+  border-style: dashed;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.title-card__friends { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 0.74rem; color: var(--muted); }
+.title-card__friends-avatars { display: inline-flex; flex: none; }
+.title-card__friends-avatars > * {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--app-backdrop-base);
+  border-radius: 999px;
+  object-fit: cover;
+}
+.title-card__friends-avatars > * + * { margin-left: -7px; }
+.title-card__friends-avatars > span { display: grid; place-items: center; background: #2a2f3a; color: var(--text); font-size: 0.54rem; font-weight: 700; }
+
+.watchlist-empty { display: grid; justify-items: center; gap: 8px; padding: 56px 20px; text-align: center; }
+.watchlist-empty strong { font-family: var(--font-display); font-size: 1.5rem; color: var(--text); }
+.watchlist-empty p { margin: 0; }
+.watchlist-empty button {
+  margin-top: 6px;
+  min-height: 40px;
+  padding: 0 20px;
+  border: 1px solid rgba(252, 195, 95, 0.5);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.watchlist-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 8px 8px 8px 18px;
+  border: 1px solid rgba(126, 231, 166, 0.4);
+  border-radius: 999px;
+  background: #1d2a22;
+  color: var(--text);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7);
+  transform: translateX(-50%);
+}
+.watchlist-toast button { padding: 8px 12px; border: 0; background: transparent; color: var(--success); font-weight: 700; cursor: pointer; }
+
+/*
+  Watchlist enriquecida en mobile.
+  `.profile-tabs--watchlist-mobile` lo pone ProfileTabs por debajo de 901px y
+  solo en la Watchlist propia. Todos los filtros viven detras de un boton y
+  las acciones de un titulo en paneles que suben desde abajo.
+*/
+.profile-tabs--watchlist-mobile { margin-top: 0; gap: 12px; }
+.profile-tabs--watchlist-mobile .profile-list-toolbar { display: none; }
+
+.watchlist-mobile-header {
+  position: sticky;
+  top: var(--watchlist-sticky-top, 66px);
+  z-index: 20;
+  display: grid;
+  gap: 8px;
+  padding: 10px 0;
+  transition: background 160ms ease;
+}
+/* Pegado arriba toma fondo a todo el ancho, sin depender del padding del panel. */
+.watchlist-mobile-header.is-stuck {
+  background: rgba(18, 20, 25, 0.97);
+  box-shadow: 0 0 0 100vmax rgba(18, 20, 25, 0.97);
+  clip-path: inset(0 -100vmax);
+}
+.watchlist-mobile-header__row { display: flex; align-items: center; gap: 12px; }
+.watchlist-mobile-header__title { flex: 1; min-width: 0; }
+.watchlist-mobile-header__title h2 { margin: 0; font-family: var(--font-display); font-size: 1.75rem; line-height: 1.1; }
+.watchlist-mobile-header__title p { margin: 2px 0 0; font-size: 0.8rem; color: var(--muted); }
+
+.watchlist-filter-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.watchlist-filter-button.has-filters { border-color: rgba(252, 195, 95, 0.5); background: var(--accent-soft); }
+.watchlist-filter-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.watchlist-filter-button span {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #201507;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.watchlist-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.watchlist-chips::-webkit-scrollbar { display: none; }
+.watchlist-chips button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px 0 12px;
+  border: 1px solid rgba(252, 195, 95, 0.5);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.watchlist-chips svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; }
+
+.profile-tabs--watchlist-mobile .watchlist-hint { align-items: flex-start; padding: 10px 6px 10px 12px; }
+.profile-tabs--watchlist-mobile .watchlist-hint svg { margin-top: 2px; }
+.profile-tabs--watchlist-mobile .watchlist-hint p { font-size: 0.82rem; }
+
+/* Tarjetas: poster con plataformas y amigos al pie, titulo y duracion debajo. */
+.profile-panel--watchlist .profile-tabs--watchlist-mobile .profile-grid--library { gap: 18px 12px; padding-bottom: 72px; }
+.profile-tabs--watchlist-mobile .profile-grid--library .title-card__title,
+.profile-tabs--watchlist-mobile .profile-grid--library .title-card__meta {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.profile-tabs--watchlist-mobile .profile-grid--library .title-card__title { margin-top: 6px; font-size: 0.86rem; }
+.profile-tabs--watchlist-mobile .profile-grid--library .title-card__meta { font-size: 0.74rem; color: var(--muted); }
+.profile-tabs--watchlist-mobile .title-card__score { align-items: center; background: rgba(8, 9, 12, 0.88); }
+.profile-tabs--watchlist-mobile .profile-grid--library .title-card__reaction {
+  min-width: 36px;
+  min-height: 36px;
+  justify-content: center;
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--text);
+}
+.profile-tabs--watchlist-mobile .title-card__reaction-caret { display: none; }
+
+.title-card__poster-footer {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  pointer-events: none;
+}
+.title-card__poster-footer > * { pointer-events: auto; }
+.profile-tabs--watchlist-mobile .profile-grid--library .title-card__poster-footer .watch-now { display: flex; flex-wrap: nowrap; gap: 4px; }
+.title-card__poster-footer .watch-now__label { display: none; }
+.title-card__poster-footer .watch-now__platform { width: 28px; height: 28px; padding: 1px; background: rgba(8, 9, 12, 0.88); }
+.title-card__poster-footer .watch-now__platform--more,
+.title-card__poster-footer .watch-now__platform--rent { width: auto; padding: 0 6px; font-size: 0.66rem; color: var(--text); }
+.title-card__poster-footer .title-card__friends-avatars { margin-left: auto; }
+
+.watchlist-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--mobile-dock-reserve, 96px) + 8px);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), #ffd66a);
+  color: #201507;
+  font-weight: 800;
+  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.75);
+  cursor: pointer;
+}
+.watchlist-fab svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.watchlist-sheet { position: fixed; inset: 0; z-index: 150; display: flex; align-items: flex-end; }
+.watchlist-sheet__backdrop { position: absolute; inset: 0; border: 0; background: rgba(0, 0, 0, 0.62); cursor: pointer; }
+.watchlist-sheet__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-height: 86dvh;
+  padding: 10px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--panel-edge-strong);
+  border-radius: 22px 22px 0 0;
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .watchlist-sheet__panel { animation: watchlist-sheet-in 200ms ease-out; }
+}
+@keyframes watchlist-sheet-in {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.watchlist-sheet__handle { align-self: center; flex: none; width: 40px; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.25); }
+.watchlist-sheet__panel { overscroll-behavior: contain; will-change: transform; }
+.watchlist-sheet__handle,
+.watchlist-sheet__head { touch-action: none; }
+.watchlist-sheet__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 1.1rem; }
+.watchlist-sheet__head button { min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: var(--accent); font-size: 0.88rem; font-weight: 700; cursor: pointer; }
+.watchlist-sheet__head button:disabled { color: var(--muted); opacity: 0.6; }
+.watchlist-sheet__note { margin: -8px 0 0; font-size: 0.8rem; line-height: 1.4; color: var(--muted); }
+.watchlist-sheet__body { display: grid; align-content: start; gap: 20px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.watchlist-sheet__body section { display: grid; gap: 8px; }
+.watchlist-sheet__body h3 { margin: 0; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.watchlist-sheet__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+/*
+  Opciones propias del panel. No reutilizan `.filters-platform` porque en
+  mobile ese boton es un mosaico cuadrado que solo muestra el logo.
+*/
+.watchlist-sheet__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted-strong);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.watchlist-sheet__option[aria-pressed="true"] { border-color: var(--accent); background: rgba(252, 195, 95, 0.1); color: var(--text); }
+.watchlist-sheet__option > span:not([class]) { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.watchlist-sheet__option-logo { flex: none; width: 28px; height: 28px; border-radius: 7px; object-fit: cover; background: rgba(255, 255, 255, 0.08); }
+.watchlist-sheet__check { flex: none; opacity: 0; color: var(--accent); font-weight: 800; }
+.watchlist-sheet__option[aria-pressed="true"] .watchlist-sheet__check { opacity: 1; }
+.watchlist-sheet__count { margin-left: auto; font-size: 0.76rem; font-weight: 600; color: var(--muted); }
+
+.watchlist-sheet__chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.watchlist-sheet__chips button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted-strong);
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.watchlist-sheet__chips button[aria-pressed="true"] { border-color: var(--accent); background: rgba(252, 195, 95, 0.1); color: var(--text); }
+
+.watchlist-sheet__mine { display: grid; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 12px; background: rgba(255, 255, 255, 0.03); }
+.watchlist-sheet__mine.is-active { border-color: var(--accent); background: rgba(252, 195, 95, 0.1); }
+.watchlist-sheet__mine > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.watchlist-sheet__mine > button + button { border-top: 1px solid rgba(255, 255, 255, 0.1); font-weight: 500; color: var(--muted-strong); }
+.watchlist-sheet__mine strong { color: var(--accent); }
+.watchlist-sheet__mine.is-active .watchlist-toggle__track { background: var(--accent); }
+.watchlist-sheet__mine.is-active .watchlist-toggle__track span { transform: translateX(14px); background: #201507; }
+.watchlist-sheet__logos { display: inline-flex; align-items: center; gap: 5px; }
+.watchlist-sheet__logos img,
+.watchlist-sheet__logos > span { width: 26px; height: 26px; border-radius: 7px; object-fit: cover; background: rgba(255, 255, 255, 0.08); }
+.watchlist-sheet__logos > span { display: grid; place-items: center; font-size: 0.6rem; font-weight: 800; }
+.watchlist-sheet__logos em { font-style: normal; font-size: 0.78rem; font-weight: 700; }
+
+.watchlist-sheet__primary,
+.watchlist-sheet__ghost,
+.watchlist-sheet__danger {
+  flex: none;
+  min-height: 50px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.watchlist-sheet__primary { border: 0; background: linear-gradient(135deg, var(--accent), #ffd66a); color: #201507; font-weight: 800; }
+.watchlist-sheet__ghost { border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.watchlist-sheet__ghost:disabled { opacity: 0.5; }
+.watchlist-sheet__danger { border: 0; background: transparent; color: #ff9d95; }
+.watchlist-sheet__actions { display: grid; gap: 8px; }
+
+.watchlist-sheet__title { display: flex; align-items: center; gap: 12px; }
+.watchlist-sheet__title img { flex: none; width: 56px; height: 84px; border-radius: 8px; object-fit: cover; }
+.watchlist-sheet__title > div { display: grid; gap: 3px; min-width: 0; font-size: 0.82rem; color: var(--muted); }
+.watchlist-sheet__title strong { font-size: 1.05rem; color: var(--text); }
+.watchlist-sheet__title em { font-style: normal; color: var(--accent); }
+
+.watchlist-sheet__panel--pick { align-items: center; text-align: center; }
+.watchlist-sheet__panel--pick small { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+.watchlist-sheet__panel--pick > img { width: 150px; aspect-ratio: 2 / 3; border-radius: 12px; object-fit: cover; }
+.watchlist-sheet__pick-copy { display: grid; gap: 3px; font-size: 0.82rem; color: var(--muted); }
+.watchlist-sheet__pick-copy strong { font-size: 1.2rem; color: var(--text); }
+.watchlist-sheet__pair { align-self: stretch; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+@media (max-width: 900px) {
+  .watchlist-toast {
+    left: 12px;
+    right: 12px;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px) + 68px);
+    z-index: 110;
+    max-width: none;
+    border-radius: 14px;
+    transform: none;
+  }
+  .watchlist-toast span { flex: 1; font-size: 0.84rem; }
+}
