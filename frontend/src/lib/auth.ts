@@ -617,6 +617,38 @@ export type ProfileSummary = {
   avatarUrl: string | null;
 };
 
+/**
+ * Igual que fetchProfileSummaries, pero deja afuera a quienes ocultaron su
+ * Watchlist: no puede aparecer como "tambien la quiere ver" alguien que eligio
+ * no mostrarla.
+ */
+export async function fetchWatchlistVisibleProfileSummaries(userIds: string[]): Promise<ProfileSummary[]> {
+  if (!supabase || userIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, username, display_name, avatar_url, visibility_settings")
+    .in("id", userIds);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? [])
+    .filter(
+      (row) =>
+        (row.visibility_settings as Partial<ProfileVisibilitySettings> | null)?.showWatchlist !== false
+    )
+    .map((row) => ({
+      id: row.id as string,
+      username: row.username as string,
+      displayName: (row.display_name as string) ?? (row.username as string),
+      avatarUrl: (row.avatar_url as string | null) ?? null
+    }));
+}
+
 export async function fetchProfileSummaries(userIds: string[]): Promise<ProfileSummary[]> {
   if (!supabase || userIds.length === 0) {
     return [];

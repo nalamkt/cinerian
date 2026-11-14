@@ -322,6 +322,36 @@ export async function fetchRatedReactionsForUserIds(
 }
 
 /**
+ * Quienes, entre `userIds`, tienen guardado en Watchlist alguno de `tmdbIds`.
+ * Se acota por titulo para no traer la Watchlist completa de cada persona.
+ */
+export async function fetchWatchlistReactionsForUserIds(
+  userIds: string[],
+  tmdbIds: number[]
+): Promise<Array<{ userId: string; tmdbId: number; mediaType: MediaType }>> {
+  if (!supabase || userIds.length === 0 || tmdbIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("media_reactions")
+    .select("user_id, tmdb_id, media_type")
+    .eq("reaction", "watchlist")
+    .in("user_id", userIds)
+    .in("tmdb_id", tmdbIds);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((entry) => ({
+    userId: entry.user_id as string,
+    tmdbId: Number(entry.tmdb_id),
+    mediaType: entry.media_type as MediaType
+  }));
+}
+
+/**
  * Resume la senal social de una ficha sin traer el historial completo.
  * Los contadores se calculan en Postgres y la lista se limita al circulo del
  * usuario para que no revele nombres de personas ajenas.

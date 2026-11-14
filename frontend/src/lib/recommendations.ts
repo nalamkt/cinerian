@@ -1,8 +1,13 @@
-import { fetchProfileSummaries, type ProfileSummary } from "./auth";
+import {
+  fetchProfileSummaries,
+  fetchWatchlistVisibleProfileSummaries,
+  type ProfileSummary
+} from "./auth";
 import { fetchFollowingUserIds } from "./follows";
 import {
   fetchRatedReactionsForUserIds,
   fetchStoredReactions,
+  fetchWatchlistReactionsForUserIds,
   type RatedReaction,
   type StoredReaction
 } from "./reactions";
@@ -317,6 +322,54 @@ export async function fetchCircleScores(userId: string): Promise<Map<string, Cir
       }
     ])
   );
+}
+
+/**
+ * Personas que seguis y que tambien guardaron en Watchlist alguno de estos
+ * titulos. La clave es `${mediaType}-${tmdbId}`; si no esta, nadie la guardo.
+ */
+export async function fetchCircleWatchlist(
+  userId: string,
+  items: Array<{ id: number; mediaType: MediaType }>
+): Promise<Map<string, ProfileSummary[]>> {
+  if (items.length === 0) {
+    return new Map();
+  }
+
+  const followingIds = await fetchFollowingUserIds(userId);
+  if (followingIds.length === 0) {
+    return new Map();
+  }
+
+  const wanted = new Set(items.map((item) => `${item.mediaType}-${item.id}`));
+  const saved = (
+    await fetchWatchlistReactionsForUserIds(
+      followingIds,
+      Array.from(new Set(items.map((item) => item.id)))
+    )
+  ).filter((entry) => wanted.has(`${entry.mediaType}-${entry.tmdbId}`));
+
+  if (saved.length === 0) {
+    return new Map();
+  }
+
+  const profiles = await fetchWatchlistVisibleProfileSummaries(
+    Array.from(new Set(saved.map((entry) => entry.userId)))
+  );
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  const byTitle = new Map<string, ProfileSummary[]>();
+
+  saved.forEach((entry) => {
+    const profile = profileById.get(entry.userId);
+    if (!profile) {
+      return;
+    }
+
+    const key = `${entry.mediaType}-${entry.tmdbId}`;
+    byTitle.set(key, [...(byTitle.get(key) ?? []), profile]);
+  });
+
+  return byTitle;
 }
 
 /** Una posicion del ranking personal, ya con el detalle del titulo. */

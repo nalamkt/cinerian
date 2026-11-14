@@ -477,7 +477,16 @@ function normalizeItem(item: Record<string, unknown>): DiscoveryItem {
     voteCount: typeof item.vote_count === "number" ? item.vote_count : 0,
     // Los listados de TMDB no mandan `type`: ahi queda null y el filtro de
     // miniseries simplemente no matchea, que es lo correcto.
-    seriesType: typeof item.type === "string" ? item.type : null
+    seriesType: typeof item.type === "string" ? item.type : null,
+    runtimeMinutes: typeof item.runtime === "number" && item.runtime > 0 ? item.runtime : null,
+    seasonCount:
+      typeof item.number_of_seasons === "number" && item.number_of_seasons > 0
+        ? item.number_of_seasons
+        : null,
+    episodeCount:
+      typeof item.number_of_episodes === "number" && item.number_of_episodes > 0
+        ? item.number_of_episodes
+        : null
   };
 }
 
@@ -1409,7 +1418,29 @@ function hasCurrentTheatricalRelease(payload: Record<string, unknown>, hasStream
   return elapsedDays >= 0 && elapsedDays <= 120;
 }
 
-export async function getWatchOptionsFor(
+/**
+ * Cache por sesion, guardando la promesa: la Watchlist pide las plataformas de
+ * cada titulo para filtrar y cada tarjeta las vuelve a pedir para mostrarlas.
+ */
+const watchOptionsCache = new Map<string, Promise<WatchOptions>>();
+
+export function getWatchOptionsFor(
+  tmdbId: number,
+  mediaType: MediaType,
+  title: string
+): Promise<WatchOptions> {
+  const cacheKey = `${mediaType}-${tmdbId}`;
+  const cached = watchOptionsCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const pending = fetchWatchOptionsFor(tmdbId, mediaType, title);
+  watchOptionsCache.set(cacheKey, pending);
+  return pending;
+}
+
+async function fetchWatchOptionsFor(
   tmdbId: number,
   mediaType: MediaType,
   title: string
