@@ -251,10 +251,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const [dragPreview, setDragPreview] = useState<{ item: DiscoveryItem; direction: "next" | "previous" } | null>(null);
   const [isTrailerDragging, setIsTrailerDragging] = useState(false);
   const [isTrailerReturning, setIsTrailerReturning] = useState(false);
-  const [showSwipeHint, setShowSwipeHint] = useState(() => {
-    try { return window.localStorage.getItem(`cinerian:trailer-swipe-learned:${userId}`) !== "1"; }
-    catch { return true; }
-  });
   const [trailerPayload, setTrailerPayload] = useState<{ key: string; payload: RecommendationPayload } | null>(null);
   const [trailerScan, setTrailerScan] = useState<{ items: DiscoveryItem[]; complete: boolean; failed: boolean }>({ items: [], complete: false, failed: false });
   const [progressState, setProgressState] = useState<{ scope: string; progress: TrailerProgress } | null>(null);
@@ -506,11 +502,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     if (trailerReturnTimerRef.current !== null) window.clearTimeout(trailerReturnTimerRef.current);
   }, []);
 
-  useEffect(() => {
-    if (!showSwipeHint || discoverMode !== "trailers" || !active) return;
-    const timer = window.setTimeout(() => setShowSwipeHint(false), 4500);
-    return () => window.clearTimeout(timer);
-  }, [showSwipeHint, discoverMode, active]);
   const preparedNextPayload =
     nextSpotlight && nextPayload?.key === itemKey(nextSpotlight) ? nextPayload.payload : null;
 
@@ -1354,9 +1345,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     if (pane && completesTrailerSwipe(start.offset, Date.now() - start.startedAt, pane.clientHeight, start.hasNeighbor)) {
       lastTrailerNavigationRef.current = Date.now();
       navigateTrailer(start.direction, start.offset);
-      setShowSwipeHint(false);
-      try { window.localStorage.setItem(`cinerian:trailer-swipe-learned:${userId}`, "1"); }
-      catch { /* El gesto funciona aunque no se pueda persistir la pista. */ }
       return;
     }
     cancelTrailerGesture();
@@ -1601,8 +1589,18 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
         setDiscoverMode(mode);
       }} />
 
-        <span className="discover-circle-badge" aria-label={badgeInsideCircle ? "En tu círculo" : "Fuera de tu círculo"}>
+        <span
+          className="discover-circle-badge"
+          aria-label={
+            badgeEntry?.rank != null
+              ? `${badgeEntry.rank}° en tu círculo`
+              : badgeInsideCircle ? "En tu círculo" : "Fuera de tu círculo"
+          }
+        >
           <span className="discover-circle-badge__dot" aria-hidden="true" />
+          {badgeEntry?.rank != null ? (
+            <span className="discover-circle-badge__rank">{badgeEntry.rank}° ·</span>
+          ) : null}
           <span className="discover-circle-badge__full">{badgeInsideCircle ? "En tu círculo" : "Fuera de tu círculo"}</span>
           <span className="discover-circle-badge__compact" aria-hidden="true">{badgeInsideCircle ? "Tu círculo" : "Fuera del círculo"}</span>
         </span>
@@ -1715,8 +1713,18 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
             {trailerPageError ? <p className="discover-trailer__history-note">No pudimos cargar más títulos. <button type="button" onClick={() => { setTrailerPageError(false); setPageRetryKey((value) => value + 1); }}>Reintentar</button></p> : null}
             {!trailerPageError && trailerScan.failed && page >= MAX_DECK_PAGES ? <p className="discover-trailer__history-note">Algunos tráilers no se pudieron revisar. <button type="button" onClick={() => setDeckReloadKey((value) => value + 1)}>Reintentar</button></p> : null}
             {hasReactedToShownTrailer ? <p className="discover-trailer__history-note">Ya valoraste este título. Podés seguir explorando.</p> : null}
+            {eligibleTrailerItems.length > 1 ? (
+              <button
+                type="button"
+                className="discover-trailer__swipe-hint"
+                aria-label="Siguiente tráiler"
+                disabled={isSyncing}
+                onClick={showNextTrailer}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+              </button>
+            ) : null}
             {renderDiscoverActions(shownTrailerItem, true)}
-            {showSwipeHint && eligibleTrailerItems.length > 1 ? <p className="discover-trailer__swipe-hint" aria-hidden="true"><span>↑</span> Deslizá para descubrir más</p> : null}
             <div className="discover-trailer__navigation">
               <button type="button" disabled={trailerHistoryIndex === null || trailerHistoryIndex === 0 || isSyncing} onClick={showPreviousTrailer}>Anterior</button>
               <span>Deslizá para explorar sin valorar</span>

@@ -233,10 +233,10 @@ test("acciones, plataformas y sinopsis reutilizan piezas de ambos modos", () => 
   assert.match(renderToStaticMarkup(createElement(DiscoverOverview, { text: "Sinopsis" })), /discover-overview__text--clamped/);
 });
 
-test("la pista se guarda solo tras un swipe y el filtro activo conserva un nombre accesible", () => {
+test("la pista de deslizar queda siempre visible y el filtro activo conserva un nombre accesible", () => {
   const source = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
-  assert.match(source, /trailer-swipe-learned:/);
-  assert.match(source, /completesTrailerSwipe\([\s\S]*?setShowSwipeHint\(false\)/);
+  assert.match(source, /eligibleTrailerItems\.length > 1 \? \([\s\S]*?discover-trailer__swipe-hint/);
+  assert.doesNotMatch(source, /trailer-swipe-learned:/);
   assert.match(source, /Filtros activos, abrir filtros/);
   assert.match(source, /discover-circle-badge/);
 });
