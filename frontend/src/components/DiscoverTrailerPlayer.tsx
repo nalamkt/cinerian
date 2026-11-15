@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { decideTrailerAutoplayRecovery, recoverBlockedTrailerAutoplay, requestTrailerAutoplay, shouldRestoreTrailerSound } from "../lib/trailerPlayback";
+import { youtubeThumbnailUrl } from "../lib/discoverTrailer";
 
 type DiscoverTrailerPlayerProps = {
   title: string;
   trailerUrl: string | null;
   posterUrl: string;
   active: boolean;
+  /** Carga el iframe oculto y en pausa para que al pasar al siguiente arranque sin esperar. */
+  preload?: boolean;
   soundEnabled: boolean;
   onSoundEnabledChange: (enabled: boolean) => void;
   onUnplayable?: () => void;
@@ -34,6 +37,17 @@ type YouTubeApi = {
 type YouTubeWindow = Window & { YT?: YouTubeApi; onYouTubeIframeAPIReady?: () => void };
 let apiPromise: Promise<YouTubeApi> | null = null;
 let nextDiagnosticPlayerId = 0;
+
+/*
+  Safari en iPhone pausa el video si se le activa el sonido sin un toque. La
+  primera vez que pasa lo recordamos: el resto de la sesión los tráileres
+  arrancan en silencio en vez de pelear con el navegador y quedar en pausa.
+*/
+let browserBlocksAutoplaySound = false;
+// Cuánto esperar a que el video arranque antes de pedir un toque: primero 4 s y después tandas de 2,5 s.
+const PLAYBACK_FIRST_WAIT_MS = 4000;
+const PLAYBACK_RETRY_WAIT_MS = 2500;
+const PLAYBACK_WATCH_ROUNDS = 6;
 
 function logTrailerDiagnostic(playerId: number, event: string, details: Record<string, unknown> = {}) {
   try {
@@ -95,7 +109,7 @@ export function isPermanentYouTubeError(code: number) {
   return code === 2 || code === 100 || code === 101 || code === 150;
 }
 
-export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, soundEnabled, onSoundEnabledChange, onUnplayable }: DiscoverTrailerPlayerProps) {
+export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, preload = false, soundEnabled, onSoundEnabledChange, onUnplayable }: DiscoverTrailerPlayerProps) {
   const diagnosticPlayerId = useRef(0);
   if (!diagnosticPlayerId.current) diagnosticPlayerId.current = ++nextDiagnosticPlayerId;
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -115,7 +129,9 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
   const postPlaySoundPendingRef = useRef(false);
   const postPlaySoundAttemptedRef = useRef(false);
   const hasPlayedRef = useRef(false);
-  const [hasMounted, setHasMounted] = useState(active);
+  const [hasMounted, setHasMounted] = useState(active || preload);
+  const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
+  const thumbnailUrl = useMemo(() => youtubeThumbnailUrl(trailerUrl), [trailerUrl]);
   const [apiReady, setApiReady] = useState(false);
   const [apiUnavailable, setApiUnavailable] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
@@ -129,8 +145,8 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
   const embedUrl = hasMounted ? availableUrl : null;
 
   useEffect(() => {
-    if (active) setHasMounted(true);
-  }, [active]);
+    if (active || preload) setHasMounted(true);
+  }, [active, preload]);
 
   function clearAutoplayTimer() {
     if (autoplayTimerRef.current !== null) window.clearTimeout(autoplayTimerRef.current);
@@ -149,7 +165,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
 
   function restorePreferredSoundAfterPlaying(player: YouTubePlayer) {
     const muted = player.isMuted();
-    if (!shouldRestoreTrailerSound(soundEnabledRef.current, postPlaySoundAttemptedRef.current, muted, activeRef.current)) return false;
+    if (browserBlocksAutoplaySound || !shouldRestoreTrailerSound(soundEnabledRef.current, postPlaySoundAttemptedRef.current, muted, activeRef.current)) return false;
     postPlaySoundAttemptedRef.current = true;
     postPlaySoundPendingRef.current = true;
     logTrailerDiagnostic(diagnosticPlayerId.current, "post_play_unmute_requested", { preferredSound: soundEnabledRef.current, muted });
@@ -168,6 +184,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
       const state = player.getPlayerState();
       logTrailerDiagnostic(diagnosticPlayerId.current, "post_play_unmute_result", { preferredSound: soundEnabledRef.current, muted: actualMuted, playerState: state });
       setIsMuted(actualMuted);
+      if (actualMuted || state === 2) browserBlocksAutoplaySound = true;
       if (state === 2 && !userPausedRef.current) {
         logTrailerDiagnostic(diagnosticPlayerId.current, "post_play_unmute_recovery", { reason: "playback_paused" });
         attemptPlayback(player, false);
@@ -182,6 +199,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
     autoplayAttemptRef.current = null;
     autoplayBlockedRef.current = false;
     hasPlayedRef.current = true;
+    setHasStartedPlaying(true);
     setPlaybackState("playing");
     setIsMuted(player.isMuted());
     if (!restorePreferredSoundAfterPlaying(player) && !postPlaySoundPendingRef.current) checkActualSound(player);
@@ -191,23 +209,46 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
     logTrailerDiagnostic(diagnosticPlayerId.current, "muted_retry_requested", { reason, preferredSound: soundEnabledRef.current });
     logTrailerDiagnostic(diagnosticPlayerId.current, "mute_requested", { reason });
     clearAutoplayTimer();
+    browserBlocksAutoplaySound = true;
     autoplayAttemptRef.current = "muted";
     setIsMuted(true);
     recoverBlockedTrailerAutoplay(player, "sound");
     if (autoplayAttemptRef.current !== "muted") return;
+    watchPlaybackStart(player);
+  }
+
+  // Vigila que el video arranque. Si YouTube sigue cargando, espera; si no arrancó, reintenta en silencio.
+  function watchPlaybackStart(player: YouTubePlayer, round = 0) {
+    clearAutoplayTimer();
     autoplayTimerRef.current = window.setTimeout(() => {
-      if (autoplayAttemptRef.current === "muted") {
-        const state = player.getPlayerState();
-        logTrailerDiagnostic(diagnosticPlayerId.current, "playback_timeout", { attempted: "muted", playerState: state, muted: player.isMuted(), preferredSound: soundEnabledRef.current });
-        if (state === 1) {
-          confirmPlaybackStarted(player, "timeout");
-          return;
-        }
-        autoplayAttemptRef.current = null;
-        autoplayBlockedRef.current = true;
-        setPlaybackState("blocked");
+      const attempted = autoplayAttemptRef.current;
+      if (!attempted || playerRef.current !== player) return;
+      const state = player.getPlayerState();
+      const decision = decideTrailerAutoplayRecovery("timeout", attempted, state);
+      logTrailerDiagnostic(diagnosticPlayerId.current, "playback_timeout", { attempted, round, playerState: state, muted: player.isMuted(), preferredSound: soundEnabledRef.current, decision });
+      if (decision === "playing") {
+        confirmPlaybackStarted(player, "timeout");
+        return;
       }
-    }, 6000);
+      const canRetry = activeRef.current && !userPausedRef.current;
+      if (decision === "retry-muted" && canRetry) {
+        retryAutoplayMuted(player, "timeout_not_playing");
+        return;
+      }
+      if (canRetry && round < PLAYBACK_WATCH_ROUNDS) {
+        // 3 = cargando: alcanza con seguir esperando.
+        if (state !== 3) {
+          autoplayAttemptRef.current = "muted";
+          setIsMuted(true);
+          requestTrailerAutoplay(player, false);
+        }
+        watchPlaybackStart(player, round + 1);
+        return;
+      }
+      autoplayAttemptRef.current = null;
+      autoplayBlockedRef.current = true;
+      setPlaybackState("blocked");
+    }, round === 0 ? PLAYBACK_FIRST_WAIT_MS : PLAYBACK_RETRY_WAIT_MS);
   }
 
   function attemptPlayback(player: YouTubePlayer, withSound: boolean) {
@@ -219,25 +260,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
     logTrailerDiagnostic(diagnosticPlayerId.current, "autoplay_requested", { active: activeRef.current, withSound });
     logTrailerDiagnostic(diagnosticPlayerId.current, withSound ? "unmute_requested" : "mute_requested", { reason: withSound ? "sound_preference" : hasPlayedRef.current ? "muted_recovery_or_resume" : "initial_autoplay" });
     requestTrailerAutoplay(player, withSound);
-    autoplayTimerRef.current = window.setTimeout(() => {
-      if (autoplayAttemptRef.current) {
-        const attempted = autoplayAttemptRef.current;
-        const state = player.getPlayerState();
-        const decision = decideTrailerAutoplayRecovery("timeout", attempted, state);
-        logTrailerDiagnostic(diagnosticPlayerId.current, "playback_timeout", { attempted, playerState: state, muted: player.isMuted(), preferredSound: soundEnabledRef.current, decision });
-        if (decision === "playing") {
-          confirmPlaybackStarted(player, "timeout");
-          return;
-        }
-        if (decision === "retry-muted" && playerRef.current === player && activeRef.current && !userPausedRef.current) {
-          retryAutoplayMuted(player, "timeout_not_playing");
-          return;
-        }
-        autoplayAttemptRef.current = null;
-        autoplayBlockedRef.current = true;
-        setPlaybackState("blocked");
-      }
-    }, 6000);
+    watchPlaybackStart(player);
   }
 
   useEffect(() => {
@@ -251,6 +274,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
     setApiReady(false);
     setApiUnavailable(false);
     setPlaybackState("loading");
+    setHasStartedPlaying(false);
     setIsMuted(true);
     setPlaybackError(false);
     void loadYouTubeApi().then((api) => {
@@ -270,6 +294,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
             if (playerRef.current) confirmPlaybackStarted(playerRef.current, "state_change");
           } else if (data === 2 || data === 0) {
             if (data === 2 && postPlaySoundPendingRef.current && activeRef.current && !userPausedRef.current && playerRef.current) {
+              browserBlocksAutoplaySound = true;
               postPlaySoundPendingRef.current = false;
               if (postPlaySoundTimerRef.current !== null) window.clearTimeout(postPlaySoundTimerRef.current);
               postPlaySoundTimerRef.current = null;
@@ -344,9 +369,21 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
       setPlaybackState("paused");
       return;
     }
-    if (!userPausedRef.current && !autoplayBlockedRef.current) attemptPlayback(player, hasPlayedRef.current && soundEnabledRef.current);
+    if (!userPausedRef.current && !autoplayBlockedRef.current) attemptPlayback(player, hasPlayedRef.current && soundEnabledRef.current && !browserBlocksAutoplaySound);
     else logTrailerDiagnostic(diagnosticPlayerId.current, "autoplay_skipped", { userPaused: userPausedRef.current, previousBlock: autoplayBlockedRef.current });
   }, [active, apiReady]);
+
+  useEffect(() => {
+    if (playbackState !== "blocked" || !active) return;
+    const resume = () => {
+      const player = playerRef.current;
+      if (!player || userPausedRef.current) return;
+      logTrailerDiagnostic(diagnosticPlayerId.current, "blocked_resume_on_touch");
+      attemptPlayback(player, false);
+    };
+    document.addEventListener("pointerdown", resume, { once: true, capture: true });
+    return () => document.removeEventListener("pointerdown", resume, { capture: true });
+  }, [playbackState, active]);
 
   function togglePlayback() {
     const player = playerRef.current;
@@ -369,6 +406,8 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
     if (postPlaySoundTimerRef.current !== null) window.clearTimeout(postPlaySoundTimerRef.current);
     postPlaySoundTimerRef.current = null;
     soundEnabledRef.current = enableSound;
+    // La persona tocó el parlante: el navegador puede volver a permitir sonido.
+    if (enableSound) browserBlocksAutoplaySound = false;
     onSoundEnabledChange(enableSound);
     logTrailerDiagnostic(diagnosticPlayerId.current, enableSound ? "unmute_requested" : "mute_requested", { reason: "user_toggle" });
     if (enableSound) player.unMute();
@@ -382,18 +421,30 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
   }
 
   return (
-    <div className="discover-trailer__media">
+    <div className={`discover-trailer__media${preload ? " is-preloading" : ""}`} aria-hidden={preload || undefined}>
       <div className="discover-trailer__frame">
         {embedUrl ? (
-          <iframe
-            key={`${embedUrl}:${retryCount}`}
-            ref={iframeRef}
-            src={embedUrl}
-            title={`Tráiler de ${title}`}
-            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
+          <>
+            <iframe
+              key={`${embedUrl}:${retryCount}`}
+              ref={iframeRef}
+              src={embedUrl}
+              title={`Tráiler de ${title}`}
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
+              tabIndex={preload ? -1 : undefined}
+            />
+            {/* Cubre el recuadro vacío mientras YouTube carga; se va cuando arranca el video. */}
+            {thumbnailUrl ? (
+              <img
+                className={`discover-trailer__cover${hasStartedPlaying ? " is-hidden" : ""}`}
+                src={thumbnailUrl}
+                alt=""
+                aria-hidden="true"
+              />
+            ) : null}
+          </>
         ) : posterUrl ? (
           <img src={posterUrl} alt={`Póster de ${title}`} />
         ) : (
@@ -416,7 +467,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, so
           </button>
         </div>
       ) : <p className="discover-trailer__no-video">{availableUrl ? "Tráiler en pausa." : "Tráiler no disponible para este título."}</p>}
-      {playbackState === "blocked" && !playbackError ? <p className="discover-trailer__sound-hint">El video no se inició automáticamente. Tocá Play para continuar.</p> : null}
+      {playbackState === "blocked" && !playbackError ? <p className="discover-trailer__sound-hint">El video no arrancó solo. Tocá en cualquier lugar para reproducirlo.</p> : null}
     </div>
   );
 }

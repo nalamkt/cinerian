@@ -86,7 +86,7 @@ test("un título nuevo intenta autoplay silenciado y conserva la preferencia par
     assert.deepEqual(calls, ["mute", "play"], direction);
   }
   assert.match(playerSource, /onReady: \(\{ target \}\) => \{[\s\S]*?setApiReady\(true\)/);
-  assert.match(playerSource, /if \(!userPausedRef\.current && !autoplayBlockedRef\.current\) attemptPlayback\(player, hasPlayedRef\.current && soundEnabledRef\.current\)/);
+  assert.match(playerSource, /if \(!userPausedRef\.current && !autoplayBlockedRef\.current\) attemptPlayback\(player, hasPlayedRef\.current && soundEnabledRef\.current && !browserBlocksAutoplaySound\)/);
   assert.match(playerSource, /hasPlayedRef\.current = true;[\s\S]*?restorePreferredSoundAfterPlaying\(player\)/);
   assert.match(deckSource, /<DiscoverTrailerPlayer\s+key=\{itemKey\(shownTrailerItem\)\}/);
 });
@@ -137,7 +137,7 @@ test("el autoplay silenciado no muestra avisos ni deja un bloque visual vacío",
   assert.doesNotMatch(playerSource, /El navegador inició el video sin sonido|Tocá el control para activarlo|audioRestricted/);
   assert.match(playerSource, /className="discover-trailer__sound-toggle"/);
   assert.match(playerSource, /"sound_state_confirmed"|"post_play_unmute_result"/);
-  assert.match(playerSource, /El video no se inició automáticamente\. Tocá Play para continuar\./);
+  assert.match(playerSource, /El video no arrancó solo\. Tocá en cualquier lugar para reproducirlo\./);
 });
 
 test("Play y Pausa usan el mismo control SVG, con foco visible y sin cubrir el iframe", () => {
@@ -156,4 +156,11 @@ test("el diagnóstico de autoplay es opt-in y distingue preparación, intento, b
   }
   assert.match(playerSource, /"autoplay_blocked", \{ active: activeRef\.current, attempted: autoplayAttemptRef\.current, playerState, muted:/);
   assert.doesNotMatch(playerSource, /logTrailerDiagnostic\([^\n]*title|logTrailerDiagnostic\([^\n]*trailerUrl/);
+});
+
+test("el tráiler arranca solo: espera mientras carga, reintenta en silencio y no pelea con Safari por el sonido", () => {
+  assert.match(playerSource, /if \(state !== 3\) \{[\s\S]*?requestTrailerAutoplay\(player, false\);[\s\S]*?watchPlaybackStart\(player, round \+ 1\)/);
+  assert.match(playerSource, /if \(browserBlocksAutoplaySound \|\| !shouldRestoreTrailerSound\(/);
+  assert.match(playerSource, /if \(playbackState !== "blocked" \|\| !active\) return;[\s\S]*?addEventListener\("pointerdown", resume/);
+  assert.doesNotMatch(playerSource, /\}, 6000\);/);
 });

@@ -9,7 +9,7 @@ const vite = await createServer({ server: { middlewareMode: true, hmr: false }, 
 after(() => vite.close());
 const { DiscoverModeSwitch } = await vite.ssrLoadModule("/src/components/DiscoverModeSwitch.tsx");
 const { DiscoverTrailerPlayer, buildDiscoverTrailerUrl } = await vite.ssrLoadModule("/src/components/DiscoverTrailerPlayer.tsx");
-const { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerAvailability, trailerDragOffset, trailerEmptyPhase } = await vite.ssrLoadModule("/src/lib/discoverTrailer.ts");
+const { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerAvailability, trailerDragOffset, trailerEmptyPhase, youtubeThumbnailUrl } = await vite.ssrLoadModule("/src/lib/discoverTrailer.ts");
 const { advanceTrailerProgress, parseTrailerProgress, serializeTrailerProgress, trailerProgressStorageKey } = await vite.ssrLoadModule("/src/lib/trailerProgress.ts");
 const { getTrailerUrl } = await vite.ssrLoadModule("/src/lib/tmdb.ts");
 const { DiscoverWatchOptions } = await vite.ssrLoadModule("/src/components/DiscoverWatchOptions.tsx");
@@ -292,4 +292,28 @@ test("abrir y cerrar la ficha pausa el video sin cambiar el título ni el modo g
   assert.doesNotMatch(source, /cinerian:discover-mode:/);
   const infoClick = source.slice(source.indexOf('className="discover-trailer__info"'), source.indexOf('<div className="discover-trailer__bottom">'));
   assert.doesNotMatch(infoClick, /setTrailerHistory|setTrailerHistoryIndex|setDiscoverMode/);
+});
+
+test("el tráiler siguiente se precarga oculto y el actual muestra un cuadro del video mientras carga", () => {
+  assert.equal(youtubeThumbnailUrl("https://www.youtube.com/embed/AbC_123-xy"), "https://i.ytimg.com/vi/AbC_123-xy/hqdefault.jpg");
+  assert.equal(youtubeThumbnailUrl("https://evil.example/embed/AbC_123-xy"), null);
+  assert.equal(youtubeThumbnailUrl(null), null);
+  const preloading = renderToStaticMarkup(createElement(DiscoverTrailerPlayer, {
+    title: "Dune", trailerUrl: "https://www.youtube.com/embed/AbC_123-xy", posterUrl: "/p.jpg",
+    active: false, preload: true, soundEnabled: true, onSoundEnabledChange: () => {}
+  }));
+  assert.match(preloading, /discover-trailer__media is-preloading/);
+  assert.match(preloading, /<iframe/);
+  assert.match(preloading, /discover-trailer__cover/);
+  const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /key=\{itemKey\(upcomingTrailerItem\)\}[\s\S]*?active=\{false\}[\s\S]*?preload/);
+});
+
+test("Tarjetas pasa como TikTok: anterior y siguiente se mueven pegadas a la actual", () => {
+  const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /renderNeighborCard\(previousEntry, preparedPreviousPayload, "previous"\)/);
+  assert.match(panel, /renderNeighborCard\(nextEntry, preparedNextPayload, "next"\)/);
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.discover-card--next \.discover-card__stage \{\s*transform: translate3d\(0, calc\(var\(--card-shift, 0px\) \+ var\(--card-drag, 0px\)\), 0\);/);
+  assert.doesNotMatch(css, /is-swipe-exiting/);
 });

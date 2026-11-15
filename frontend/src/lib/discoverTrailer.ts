@@ -95,3 +95,16 @@ export function moveTrailerCursor<T>(input: {
   const next = available.find((item) => !seen.has(key(item)));
   return next ? { history: [...history, next], index: history.length } : null;
 }
+
+// Cuadro del propio tráiler (no el póster): 4:3 con franjas negras, se recorta con object-fit: cover.
+export function youtubeThumbnailUrl(trailerUrl: string | null | undefined) {
+  if (!trailerUrl) return null;
+  try {
+    const source = new URL(trailerUrl);
+    const match = source.pathname.match(/^\/embed\/([A-Za-z0-9_-]+)$/);
+    if (source.origin !== "https://www.youtube.com" || !match) return null;
+    return `https://i.ytimg.com/vi/${match[1]}/hqdefault.jpg`;
+  } catch {
+    return null;
+  }
+}

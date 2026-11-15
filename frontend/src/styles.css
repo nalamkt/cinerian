@@ -4606,33 +4606,56 @@ textarea {
     z-index: 1;
   }
 
+  /*
+    Pase estilo TikTok: anterior y siguiente están pegadas arriba y abajo de
+    la actual y se mueven con ella. Cada una se recorta justo encima de la
+    fila de botones, así pasan por detrás sin taparlos. En reposo no se ven.
+  */
+  .discover-card-stack {
+    overflow: hidden;
+  }
+
   .discover-card-stack > .discover-card.discover-card--preview {
     z-index: 0;
     display: grid;
     pointer-events: none;
     visibility: hidden;
-    opacity: 0;
-    transform: scale(0.976) translateY(10px);
-    filter: brightness(0.8);
-    transition: opacity 90ms ease-out;
+    clip-path: inset(0 0 var(--card-actions-h, 0px) 0);
+  }
+
+  .discover-card-stack.is-card-moving > .discover-card.discover-card--preview {
+    visibility: visible;
   }
 
   .discover-card--preview .discover-card__poster {
     cursor: default;
   }
 
-  .discover-card-stack.is-revealing-next .discover-card--preview {
-    visibility: visible;
-    opacity: 1;
+  /* Mismo alto que la fila real: el escenario de la vecina mide igual que el de la actual. */
+  .discover-card-stack .discover-card--preview .discover-actions--placeholder {
+    min-height: var(--card-actions-row, 88px);
+    height: var(--card-actions-row, 88px);
   }
 
-  /* La tarjeta acompaña el dedo al deslizar; la salida hacia arriba arranca desde ahí. */
-  .discover-card-stack.is-card-dragging > .discover-card:not(.discover-card--preview) {
+  .discover-card-stack.is-card-moving > .discover-card:not(.discover-card--preview) .discover-card__stage {
     transform: translate3d(0, var(--card-drag, 0px), 0);
+    clip-path: inset(0 0 max(0px, var(--card-drag, 0px)) 0);
   }
 
-  .discover-card-stack.is-card-returning > .discover-card:not(.discover-card--preview) {
-    transition: transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  .discover-card-stack.is-card-moving > .discover-card--next .discover-card__stage {
+    transform: translate3d(0, calc(var(--card-shift, 0px) + var(--card-drag, 0px)), 0);
+  }
+
+  .discover-card-stack.is-card-moving > .discover-card--previous .discover-card__stage {
+    transform: translate3d(0, calc(var(--card-drag, 0px) - var(--card-shift, 0px)), 0);
+  }
+
+  .discover-card-stack.is-card-sliding .discover-card__stage {
+    transition: transform 300ms cubic-bezier(0.22, 0.8, 0.3, 1), clip-path 300ms cubic-bezier(0.22, 0.8, 0.3, 1);
+  }
+
+  .discover-card-stack.is-card-returning .discover-card__stage {
+    transition: transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1), clip-path 250ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
   .discover-card.panel {
@@ -5095,25 +5118,6 @@ textarea {
   .discover-quick-rate__target--up.is-selected {
     transform: translateX(-50%) scale(1.06);
   }
-
-  .discover-card.is-swipe-exiting {
-    pointer-events: none;
-    animation-duration: 280ms;
-    animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
-    animation-fill-mode: forwards;
-  }
-
-  .discover-card.is-swipe-exiting--left {
-    animation-name: discover-card-swipe-left;
-  }
-
-  .discover-card.is-swipe-exiting--right {
-    animation-name: discover-card-swipe-right;
-  }
-
-  .discover-card.is-swipe-exiting--up {
-    animation-name: discover-card-swipe-up;
-  }
 }
 
 @keyframes discover-quick-rate-enter {
@@ -5128,30 +5132,8 @@ textarea {
   }
 }
 
-@keyframes discover-card-swipe-left {
-  to {
-    opacity: 0;
-    transform: translate3d(-112%, 0, 0) rotate(-5deg);
-  }
-}
-
-@keyframes discover-card-swipe-right {
-  to {
-    opacity: 0;
-    transform: translate3d(112%, 0, 0) rotate(5deg);
-  }
-}
-
-@keyframes discover-card-swipe-up {
-  to {
-    opacity: 0;
-    transform: translate3d(0, -112%, 0) scale(0.96);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .discover-quick-rate,
-  .discover-card.is-swipe-exiting {
+  .discover-quick-rate {
     animation-duration: 1ms;
   }
 }
@@ -14337,6 +14319,26 @@ textarea {
   cursor: pointer;
 }
 .discover-trailer__media { position: relative; }
+/* Tráiler siguiente: cargado y en pausa, fuera del flujo y sin poder tocarse. */
+.discover-trailer__media.is-preloading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: min(100%, 700px);
+  visibility: hidden;
+  pointer-events: none;
+}
+.discover-trailer__frame { position: relative; }
+.discover-trailer__frame img.discover-trailer__cover {
+  position: absolute;
+  inset: 0;
+  object-fit: cover;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+.discover-trailer__frame img.discover-trailer__cover.is-hidden { opacity: 0; }
+.discover-trailer__preview img.is-video-frame { object-fit: cover; }
 .discover-trailer__playback button {
   display: grid;
   place-items: center;
