@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { deleteFeedComment, fetchFeedComments } from "../lib/feed";
 import {
@@ -31,6 +31,7 @@ import type {
 
 type InboxPanelProps = {
   userId: string;
+  active: boolean;
   onStartRecommendation?: () => void;
   openTarget?: { target: ActivityTarget; key: number } | null;
 };
@@ -147,7 +148,7 @@ function CommentPostPreviewModal({
   );
 }
 
-export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxPanelProps) {
+export function InboxPanel({ userId, active, onStartRecommendation, openTarget }: InboxPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 900px)").matches : false
@@ -410,7 +411,7 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
     return [...groups.values()];
   }, [filteredMessages, groupByFriend, userId]);
 
-  const isShowingMobileThread = isMobile && category === "recommendations" && Boolean(activeMessage);
+  const isShowingMobileThread = active && isMobile && category === "recommendations" && Boolean(activeMessage);
 
   useEffect(() => {
     if (category !== "recommendations") {
@@ -557,7 +558,7 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
     }
   }, [isShowingMobileThread]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof document === "undefined") {
       return;
     }
@@ -569,7 +570,7 @@ export function InboxPanel({ userId, onStartRecommendation, openTarget }: InboxP
     };
   }, [isShowingMobileThread]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isShowingMobileThread || typeof window === "undefined") {
       return;
     }

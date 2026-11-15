@@ -7701,11 +7701,18 @@ textarea {
     top: var(--inbox-viewport-top, 0px);
     right: 0;
     left: 0;
+    display: flex;
+    flex-direction: column;
     width: 100%;
     padding-bottom: 0;
   }
 
-  body.inbox-mobile-thread-open .workspace-grid,
+  body.inbox-mobile-thread-open .workspace-grid {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+  }
+
   body.inbox-mobile-thread-open .workspace-content,
   body.inbox-mobile-thread-open .workspace-content--inbox,
   body.inbox-mobile-thread-open .workspace-content--inbox > div:not([hidden]) {
@@ -14241,7 +14248,7 @@ textarea {
   .workspace-content--recommendations .discover-filterbar { padding-right: 16px; }
   .workspace-content--recommendations .discover-hub .search-panel { padding-right: 8px; }
   .workspace-content--recommendations .discover-hub .search-panel__browse-toggle { right: 18px; }
-  body.inbox-mobile-thread-open .app-topbar { display: none; }
+  body.inbox-mobile-thread-open .app-topbar { flex: none; }
   .app-topbar + .workspace-grid,
   .app-topbar + .workspace-grid .workspace-content { min-height: 0; }
 }

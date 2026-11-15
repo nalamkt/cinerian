@@ -69,11 +69,11 @@ async function connectChrome() {
 }
 
 const chatMarkup = `<div class="app-shell app-shell--immersive" style="--inbox-visible-height:800px;--inbox-viewport-top:0px">
-  <header class="app-topbar"></header><div class="workspace-grid"><main class="workspace-content workspace-content--inbox"><div>
+  <header class="app-topbar"><div class="app-topbar__navigation"><button class="app-topbar__brand">Cinerian</button></div><div class="app-topbar__actions"><button class="app-topbar__avatar">Perfil</button></div></header><div class="workspace-grid"><main class="workspace-content workspace-content--inbox"><div>
   <section class="feed-shell inbox-shell is-thread-open-mobile"><div class="feed-main inbox-main"><div class="inbox-category-tabs"></div>
   <div class="inbox-body is-mobile-thread-open"><div class="inbox-layout is-mobile"><div class="inbox-thread-column is-hidden-mobile"></div>
   <div class="inbox-thread-panel is-visible-mobile"><article class="inbox-thread-view">
-  <div class="inbox-thread-view__summary"><div class="inbox-thread-view__header is-mobile"><button class="inbox-thread-view__back">Atrás</button><button class="inbox-thread-view__poster-button">Póster</button><div class="inbox-thread-view__header-copy"><strong class="inbox-thread-view__title">Título recomendado</strong></div></div></div>
+  <div class="inbox-thread-view__summary"><div class="inbox-thread-view__header is-mobile"><button class="inbox-thread-view__back">Atrás</button><button class="inbox-thread-view__poster-button">Póster</button><div class="inbox-thread-view__header-copy"><button class="inbox-thread-view__title-button"><strong class="inbox-thread-view__title">Título recomendado</strong></button></div></div></div>
   <div class="inbox-thread-view__messages">${"<p>Mensaje de prueba</p>".repeat(60)}</div>
   <div class="inbox-thread-view__composer"><div class="inbox-thread-view__composer-row"><input aria-label="Respuesta"><button>Enviar</button></div></div>
   </article></div></div></div></div></section></div></main></div></div>`;
@@ -86,12 +86,14 @@ test("el hilo mantiene cabecera y compositor visibles mientras solo se desplazan
     for (const width of [320, 375, 390, 430]) {
       await browser.send("Emulation.setDeviceMetricsOverride", { width, height: 800, screenWidth: width, screenHeight: 800, deviceScaleFactor: 1, mobile: true });
       const result = await browser.send("Runtime.evaluate", {
-        expression: `(() => { document.body.className = 'inbox-mobile-thread-open'; document.querySelector('#root').innerHTML = ${JSON.stringify(chatMarkup)}; const header = document.querySelector('.inbox-thread-view__summary'); const messages = document.querySelector('.inbox-thread-view__messages'); const composer = document.querySelector('.inbox-thread-view__composer'); const before = header.getBoundingClientRect().top; messages.scrollTop = messages.scrollHeight; return { viewport: innerWidth, top: before, after: header.getBoundingClientRect().top, headerBottom: header.getBoundingClientRect().bottom, composerBottom: composer.getBoundingClientRect().bottom, messagesScrollable: messages.scrollHeight > messages.clientHeight, pageScroll: document.documentElement.scrollWidth > innerWidth }; })()`,
+        expression: `(() => { document.body.className = 'inbox-mobile-thread-open'; document.querySelector('#root').innerHTML = ${JSON.stringify(chatMarkup)}; const appHeader = document.querySelector('.app-topbar'); const header = document.querySelector('.inbox-thread-view__summary'); const title = document.querySelector('.inbox-thread-view__title-button'); const messages = document.querySelector('.inbox-thread-view__messages'); const composer = document.querySelector('.inbox-thread-view__composer'); const before = header.getBoundingClientRect().top; messages.scrollTop = messages.scrollHeight; return { viewport: innerWidth, appHeaderBottom: appHeader.getBoundingClientRect().bottom, appHeaderVisible: getComputedStyle(appHeader).display !== 'none', top: before, after: header.getBoundingClientRect().top, headerBottom: header.getBoundingClientRect().bottom, titleTop: title.getBoundingClientRect().top, titleBottom: title.getBoundingClientRect().bottom, composerBottom: composer.getBoundingClientRect().bottom, messagesScrollable: messages.scrollHeight > messages.clientHeight, pageScroll: document.documentElement.scrollWidth > innerWidth }; })()`,
         returnByValue: true
       });
       const measured = result.result.value;
       assert.equal(measured.viewport, width);
-      assert.ok(measured.top >= 0 && measured.headerBottom < 800, `${width}px: cabecera fuera del viewport: ${JSON.stringify(measured)}`);
+      assert.equal(measured.appHeaderVisible, true, `${width}px: la barra superior está oculta`);
+      assert.ok(measured.top >= measured.appHeaderBottom && measured.headerBottom < 800, `${width}px: cabecera superpuesta a la barra: ${JSON.stringify(measured)}`);
+      assert.ok(measured.titleTop >= measured.top && measured.titleBottom <= measured.headerBottom, `${width}px: título o acceso a ficha recortado`);
       assert.equal(measured.after, measured.top, `${width}px: se desplazó el panel completo`);
       assert.ok(measured.composerBottom <= 800, `${width}px: compositor fuera del viewport: ${JSON.stringify(measured)}`);
       assert.equal(measured.messagesScrollable, true, `${width}px: los mensajes no tienen scroll interno`);
@@ -99,12 +101,28 @@ test("el hilo mantiene cabecera y compositor visibles mientras solo se desplazan
 
       await browser.send("Emulation.setDeviceMetricsOverride", { width, height: 500, screenWidth: width, screenHeight: 800, deviceScaleFactor: 1, mobile: true });
       const keyboard = await browser.send("Runtime.evaluate", {
-        expression: "(() => { document.querySelector('.app-shell--immersive').style.setProperty('--inbox-visible-height', '500px'); document.querySelector('.inbox-thread-view__composer input').focus(); return { headerTop: document.querySelector('.inbox-thread-view__summary').getBoundingClientRect().top, composerBottom: document.querySelector('.inbox-thread-view__composer').getBoundingClientRect().bottom, messagesScrollable: document.querySelector('.inbox-thread-view__messages').scrollHeight > document.querySelector('.inbox-thread-view__messages').clientHeight }; })()",
+        expression: "(() => { document.querySelector('.app-shell--immersive').style.setProperty('--inbox-visible-height', '500px'); document.querySelector('.inbox-thread-view__composer input').focus(); return { appHeaderBottom: document.querySelector('.app-topbar').getBoundingClientRect().bottom, headerTop: document.querySelector('.inbox-thread-view__summary').getBoundingClientRect().top, composerBottom: document.querySelector('.inbox-thread-view__composer').getBoundingClientRect().bottom, messagesScrollable: document.querySelector('.inbox-thread-view__messages').scrollHeight > document.querySelector('.inbox-thread-view__messages').clientHeight }; })()",
         returnByValue: true
       });
-      assert.ok(keyboard.result.value.headerTop >= 0, `${width}px: teclado recortó la cabecera`);
+      assert.ok(keyboard.result.value.headerTop >= keyboard.result.value.appHeaderBottom, `${width}px: teclado recortó la cabecera`);
       assert.ok(keyboard.result.value.composerBottom <= 500, `${width}px: teclado tapó el compositor: ${JSON.stringify(keyboard.result.value)}`);
       assert.equal(keyboard.result.value.messagesScrollable, true);
+
+      await browser.send("Emulation.setDeviceMetricsOverride", { width, height: 800, screenWidth: width, screenHeight: 800, deviceScaleFactor: 1, mobile: true });
+      const returnToThread = await browser.send("Runtime.evaluate", {
+        expression: "(() => { document.querySelector('.app-shell--immersive').style.setProperty('--inbox-visible-height', '800px'); document.querySelector('.inbox-thread-view__title').textContent = 'Otra película recomendada'; const title = document.querySelector('.inbox-thread-view__title-button').getBoundingClientRect(); return { titleTop: title.top, titleBottom: title.bottom, appHeaderBottom: document.querySelector('.app-topbar').getBoundingClientRect().bottom }; })()",
+        returnByValue: true
+      });
+      assert.ok(returnToThread.result.value.titleTop >= returnToThread.result.value.appHeaderBottom, `${width}px: otra conversación se superpone con la barra`);
+      assert.ok(returnToThread.result.value.titleBottom < 800);
+
+      const shiftedViewport = await browser.send("Runtime.evaluate", {
+        expression: "(() => { const shell = document.querySelector('.app-shell--immersive'); shell.style.setProperty('--inbox-viewport-top', '80px'); shell.style.setProperty('--inbox-visible-height', '500px'); const appHeader = document.querySelector('.app-topbar').getBoundingClientRect(); const summary = document.querySelector('.inbox-thread-view__summary').getBoundingClientRect(); const composer = document.querySelector('.inbox-thread-view__composer').getBoundingClientRect(); return { appHeaderTop: appHeader.top, appHeaderBottom: appHeader.bottom, summaryTop: summary.top, composerBottom: composer.bottom }; })()",
+        returnByValue: true
+      });
+      assert.ok(shiftedViewport.result.value.appHeaderTop >= 80, `${width}px: barra fuera del viewport desplazado`);
+      assert.ok(shiftedViewport.result.value.summaryTop >= shiftedViewport.result.value.appHeaderBottom, `${width}px: hilo invade la barra con visualViewport desplazado`);
+      assert.ok(shiftedViewport.result.value.composerBottom <= 580, `${width}px: compositor fuera del viewport desplazado`);
     }
   } finally { browser.close(); }
 });

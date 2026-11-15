@@ -17,6 +17,8 @@ test("Descubrí ocupa el viewport visible y reserva el dock una sola vez", () =>
 });
 
 test("el chat conserva el encabezado y desplaza solo los mensajes", () => {
+  assert.match(app, /<InboxPanel[\s\S]*?active=\{activeView === "inbox" && !selectedProfileRoute\}/);
+  assert.match(inbox, /const isShowingMobileThread = active && isMobile && category === "recommendations" && Boolean\(activeMessage\)/);
   assert.match(inbox, /const container = messagesContainerRef\.current;\s*if \(container\) container\.scrollTop = container\.scrollHeight;/);
   assert.match(inbox, /className="inbox-thread-view__messages" ref=\{messagesContainerRef\}/);
   assert.doesNotMatch(inbox, /messagesEndRef|scrollIntoView\(\{ block: "end" \}\)|window\.scrollTo\(0, 0\)/);

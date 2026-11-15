@@ -846,6 +846,7 @@ export default function App() {
         inbox={accessControl.canAccessView("inbox") ? (
           <InboxPanel
             userId={session!.user.id}
+            active={activeView === "inbox" && !selectedProfileRoute}
             openTarget={inboxTarget}
             onStartRecommendation={canSearch ? () => handleChangeView("search") : undefined}
           />
