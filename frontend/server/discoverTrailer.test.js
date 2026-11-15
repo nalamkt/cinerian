@@ -235,7 +235,7 @@ test("acciones, plataformas y sinopsis reutilizan piezas de ambos modos", () => 
 
 test("la pista de deslizar queda siempre visible y el filtro activo conserva un nombre accesible", () => {
   const source = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
-  assert.match(source, /eligibleTrailerItems\.length > 1 \? \([\s\S]*?discover-trailer__swipe-hint/);
+  assert.match(source, /eligibleTrailerItems\.length > 1 \? \([\s\S]*?discover-swipe-hint/);
   assert.doesNotMatch(source, /trailer-swipe-learned:/);
   assert.match(source, /Filtros activos, abrir filtros/);
   assert.match(source, /discover-circle-badge/);
@@ -288,8 +288,8 @@ test("abrir y cerrar la ficha pausa el video sin cambiar el título ni el modo g
   assert.equal(shouldPlayDiscoverTrailer({ ...state, detailsOpen: false }), true);
   assert.equal(history[0], current);
   const source = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
-  assert.match(source, /localStorage\.getItem\(`cinerian:discover-mode:\$\{userId\}`\)/);
-  assert.match(source, /localStorage\.setItem\(`cinerian:discover-mode:\$\{userId\}`, discoverMode\)/);
+  assert.match(source, /useState<DiscoverMode>\("trailers"\)/);
+  assert.doesNotMatch(source, /cinerian:discover-mode:/);
   const infoClick = source.slice(source.indexOf('className="discover-trailer__info"'), source.indexOf('<div className="discover-trailer__bottom">'));
   assert.doesNotMatch(infoClick, /setTrailerHistory|setTrailerHistoryIndex|setDiscoverMode/);
 });

@@ -26,19 +26,16 @@ function controls() {
   };
 }
 
-test("la preferencia de sonido persiste por cuenta y no se mezcla entre usuarios", () => {
+test("el sonido arranca encendido y respeta por cuenta a quien lo apagó", () => {
   const values = new Map();
   const storage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
-  assert.equal(readTrailerSoundPreference(storage, "isidoro"), false);
-  saveTrailerSoundPreference(storage, "isidoro", true);
-  assert.equal(readTrailerSoundPreference(storage, "isidoro"), true);
-  assert.equal(readTrailerSoundPreference(storage, "mauro"), false);
-  saveTrailerSoundPreference(storage, "mauro", false);
-  assert.equal(readTrailerSoundPreference(storage, "mauro"), false);
   assert.equal(readTrailerSoundPreference(storage, "isidoro"), true);
   saveTrailerSoundPreference(storage, "isidoro", false);
   assert.equal(readTrailerSoundPreference(storage, "isidoro"), false);
-  assert.equal(readTrailerSoundPreference(null, "isidoro"), false);
+  assert.equal(readTrailerSoundPreference(storage, "mauro"), true);
+  saveTrailerSoundPreference(storage, "isidoro", true);
+  assert.equal(readTrailerSoundPreference(storage, "isidoro"), true);
+  assert.equal(readTrailerSoundPreference(null, "isidoro"), true);
 });
 
 test("cada iframe nace silenciado para preservar autoplay sin cambiar la URL al alternar sonido", () => {

@@ -10,10 +10,11 @@ export function trailerSoundKey(userId: string) {
   return `cinerian:trailer-sound:${userId}`;
 }
 
+// Sonido encendido salvo que la persona lo haya apagado a mano.
 export function readTrailerSoundPreference(storage: TrailerSoundStorage | null, userId: string) {
-  if (!storage) return false;
-  try { return storage.getItem(trailerSoundKey(userId)) === "on"; }
-  catch { return false; }
+  if (!storage) return true;
+  try { return storage.getItem(trailerSoundKey(userId)) !== "off"; }
+  catch { return true; }
 }
 
 export function saveTrailerSoundPreference(storage: TrailerSoundStorage | null, userId: string, enabled: boolean) {

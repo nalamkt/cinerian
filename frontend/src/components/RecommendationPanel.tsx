@@ -236,13 +236,11 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const [deckReloadKey, setDeckReloadKey] = useState(0);
   const [isInitialCardReady, setIsInitialCardReady] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [discoverMode, setDiscoverMode] = useState<DiscoverMode>(() => {
-    try { return window.localStorage.getItem(`cinerian:discover-mode:${userId}`) === "trailers" ? "trailers" : "cards"; }
-    catch { return "cards"; }
-  });
+  // La app siempre abre en Tráilers; el modo elegido solo dura la sesión.
+  const [discoverMode, setDiscoverMode] = useState<DiscoverMode>("trailers");
   const [trailerSoundEnabled, setTrailerSoundEnabled] = useState(() => {
     try { return readTrailerSoundPreference(window.localStorage, userId); }
-    catch { return false; }
+    catch { return true; }
   });
   const [trailerHistory, setTrailerHistory] = useState<DiscoveryItem[]>([]);
   const [trailerHistoryIndex, setTrailerHistoryIndex] = useState<number | null>(null);
@@ -295,6 +293,12 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const suppressWatchedClickRef = useRef(false);
   const trailerGestureStartRef = useRef<{ y: number; startedAt: number; offset: number; direction: "next" | "previous" | null; hasNeighbor: boolean } | null>(null);
   const suppressTrailerInfoClickUntilRef = useRef(0);
+  const cardStackRef = useRef<HTMLDivElement>(null);
+  const cardGestureRef = useRef<{ x: number; y: number; startedAt: number; delta: number; axis: "x" | "y" | null } | null>(null);
+  const cardReturnTimerRef = useRef<number | null>(null);
+  const isCardNavigatingRef = useRef(false);
+  const suppressCardClickUntilRef = useRef(0);
+  const [cardDrag, setCardDrag] = useState<"next" | "previous" | "returning" | null>(null);
   const trailerPaneRef = useRef<HTMLElement>(null);
   const lastTrailerNavigationRef = useRef(0);
   const trailerTransitionTimerRef = useRef<number | null>(null);
@@ -319,11 +323,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     try { window.localStorage.setItem(progressScope, serializeTrailerProgress(progress)); }
     catch { /* La navegacion no depende de la persistencia local. */ }
   }
-
-  useEffect(() => {
-    try { window.localStorage.setItem(`cinerian:discover-mode:${userId}`, discoverMode); }
-    catch { /* El modo sigue funcionando sin almacenamiento local. */ }
-  }, [discoverMode, userId]);
 
   useEffect(() => {
     const updateVisibility = () => setIsDocumentVisible(!document.hidden);
@@ -1350,6 +1349,86 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     cancelTrailerGesture();
   }
 
+  function clearCardDrag() {
+    if (cardReturnTimerRef.current !== null) window.clearTimeout(cardReturnTimerRef.current);
+    cardReturnTimerRef.current = null;
+    cardStackRef.current?.style.removeProperty("--card-drag");
+    setCardDrag(null);
+  }
+
+  function returnCardToPlace() {
+    cardStackRef.current?.style.setProperty("--card-drag", "0px");
+    setCardDrag("returning");
+    if (cardReturnTimerRef.current !== null) window.clearTimeout(cardReturnTimerRef.current);
+    cardReturnTimerRef.current = window.setTimeout(clearCardDrag, 250);
+  }
+
+  // Pasar de tarjeta sin valorarla, igual que deslizar en Tráilers.
+  async function navigateCard(direction: "next" | "previous") {
+    const length = circleEntries.length;
+    if (isCardNavigatingRef.current || isSyncing || !spotlight || length < 2) {
+      returnCardToPlace();
+      return;
+    }
+    if (direction === "previous") {
+      setCurrentIndex((index) => ((index % length) - 1 + length) % length);
+      returnCardToPlace();
+      return;
+    }
+    isCardNavigatingRef.current = true;
+    try {
+      await animateCurrentCardOut(spotlight);
+      setCurrentIndex((index) => (index % length) + 1);
+    } finally {
+      isCardNavigatingRef.current = false;
+      clearCardDrag();
+    }
+  }
+
+  function handleCardTouchStart(event: ReactTouchEvent<HTMLElement>) {
+    if (event.touches.length !== 1 || isSyncing || isCardNavigatingRef.current || circleEntries.length < 2 ||
+      (event.target as Element).closest("button, a, input, select, textarea, .discover-overview p:not(.discover-overview__text--clamped)")) return;
+    if (cardReturnTimerRef.current !== null) clearCardDrag();
+    const touch = event.touches[0];
+    cardGestureRef.current = { x: touch.clientX, y: touch.clientY, startedAt: Date.now(), delta: 0, axis: null };
+  }
+
+  useEffect(() => {
+    const stack = cardStackRef.current;
+    if (discoverMode !== "cards" || !stack) return;
+    const move = (event: TouchEvent) => {
+      const start = cardGestureRef.current;
+      if (!start || event.touches.length !== 1) return;
+      const deltaX = event.touches[0].clientX - start.x;
+      const deltaY = event.touches[0].clientY - start.y;
+      if (!start.axis) {
+        if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 8) return;
+        start.axis = Math.abs(deltaY) > Math.abs(deltaX) ? "y" : "x";
+      }
+      if (start.axis !== "y") return;
+      event.preventDefault();
+      suppressCardClickUntilRef.current = Date.now() + 350;
+      start.delta = deltaY;
+      // Hacia abajo no hay tarjeta revelada debajo: el arrastre ofrece resistencia.
+      stack.style.setProperty("--card-drag", `${deltaY < 0 ? deltaY : deltaY * 0.35}px`);
+      setCardDrag(deltaY < 0 ? "next" : "previous");
+    };
+    stack.addEventListener("touchmove", move, { passive: false });
+    return () => stack.removeEventListener("touchmove", move);
+  }, [discoverMode, spotlight]);
+
+  function handleCardTouchEnd() {
+    const start = cardGestureRef.current;
+    cardGestureRef.current = null;
+    if (!start || start.axis !== "y" || !start.delta) return;
+    const stack = cardStackRef.current;
+    if (stack && completesTrailerSwipe(start.delta, Date.now() - start.startedAt, stack.clientHeight, true)) {
+      void navigateCard(start.delta < 0 ? "next" : "previous");
+      return;
+    }
+    returnCardToPlace();
+  }
+
   async function handleReviewSubmit(input: { reaction: RatedReaction; comment: string }) {
     if (!reviewItem) {
       return;
@@ -1440,6 +1519,17 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   function renderDiscoverActions(item: DiscoveryItem, trailer = false) {
     const disabled = isSyncing || (trailer && reactedKeys.has(itemKey(item)));
     return <div className="discover-actions">
+      {!trailer && circleEntries.length > 1 ? (
+        <button
+          type="button"
+          className="discover-swipe-hint"
+          aria-label="Siguiente tarjeta"
+          disabled={isSyncing}
+          onClick={() => void navigateCard("next")}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+      ) : null}
       <div className="discover-action">
         <button type="button" className="discover-action__button" onClick={() => void registerReaction("ignored", item)} disabled={disabled} aria-label="No me interesa">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -1716,7 +1806,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
             {eligibleTrailerItems.length > 1 ? (
               <button
                 type="button"
-                className="discover-trailer__swipe-hint"
+                className="discover-swipe-hint"
                 aria-label="Siguiente tráiler"
                 disabled={isSyncing}
                 onClick={showNextTrailer}
@@ -1745,7 +1835,15 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
           </> : <LoadingState label="Buscando tráilers disponibles..." />}
         </div>
       ) : spotlight && current ? (
-        <div className={`discover-card-stack${cardExitDirection ? " is-revealing-next" : ""}`}>
+        <div
+          ref={cardStackRef}
+          className={`discover-card-stack${cardExitDirection || cardDrag === "next" ? " is-revealing-next" : ""}${
+            cardDrag ? " is-card-dragging" : ""
+          }${cardDrag === "returning" ? " is-card-returning" : ""}`}
+          onTouchStart={handleCardTouchStart}
+          onTouchEnd={handleCardTouchEnd}
+          onTouchCancel={handleCardTouchEnd}
+        >
           {nextSpotlight && nextEntry && preparedNextPayload ? (
             <article className="discover-card panel discover-card--preview" aria-hidden="true">
               <div className="discover-card__stage">
@@ -1819,7 +1917,10 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
           <div className="discover-card__stage">
             <div
               className="discover-card__poster"
-              onClick={() => openMediaDetails(spotlight)}
+              onClick={() => {
+                if (Date.now() < suppressCardClickUntilRef.current) return;
+                openMediaDetails(spotlight);
+              }}
               role="button"
               tabIndex={0}
               onKeyDown={(event) => {

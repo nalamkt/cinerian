@@ -67,7 +67,7 @@ test("tráilers desktop muestra sinopsis completa y controles compactos sin ayud
   const desktop = styles.match(/\/\* El trailer aprovecha[\s\S]*?@media \(min-width: 901px\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
   assert.match(desktop, /\.discover-trailer__info \.discover-overview \{ height: auto; overflow: visible; \}/);
   assert.match(desktop, /\.discover-trailer__info \.discover-overview p,[\s\S]*?overflow: visible;[\s\S]*?-webkit-line-clamp: unset;/);
-  assert.match(desktop, /\.discover-trailer__info \.discover-overview__more,[\s\S]*?\.discover-trailer__navigation,[\s\S]*?\.discover-trailer__swipe-hint \{ display: none; \}/);
+  assert.match(desktop, /\.discover-trailer__info \.discover-overview__more,[\s\S]*?\.discover-trailer__navigation,[\s\S]*?\.discover-swipe-hint \{ display: none; \}/);
   assert.match(styles, /\.discover-trailer__playback \{ position: absolute;[^}]*pointer-events: none;/);
   assert.match(styles, /\.discover-trailer__playback button \{\s*display: grid;[^}]*pointer-events: auto;/);
 });

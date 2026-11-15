@@ -4626,6 +4626,15 @@ textarea {
     opacity: 1;
   }
 
+  /* La tarjeta acompaña el dedo al deslizar; la salida hacia arriba arranca desde ahí. */
+  .discover-card-stack.is-card-dragging > .discover-card:not(.discover-card--preview) {
+    transform: translate3d(0, var(--card-drag, 0px), 0);
+  }
+
+  .discover-card-stack.is-card-returning > .discover-card:not(.discover-card--preview) {
+    transition: transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
   .discover-card.panel {
     flex: 1;
     min-height: 0;
@@ -14491,7 +14500,7 @@ textarea {
   }
   .discover-trailer__info .discover-overview__more,
   .discover-trailer__navigation,
-  .discover-trailer__swipe-hint { display: none; }
+  .discover-swipe-hint { display: none; }
 }
 
 .discover-mode-select { display: none; }
@@ -14693,8 +14702,8 @@ textarea {
   .discover-trailer.is-dragging .discover-trailer__current,
   .discover-trailer.is-returning .discover-trailer__current,
   .discover-trailer.is-transitioning .discover-trailer__current { position: relative; z-index: 2; }
-  /* Chevron en el espacio libre sobre los botones: pista de deslizar y atajo al siguiente tráiler. */
-  .discover-trailer__swipe-hint {
+  /* Chevron en el espacio libre sobre los botones: pista de deslizar y atajo al siguiente título. */
+  .discover-swipe-hint {
     position: absolute;
     left: 50%;
     bottom: calc(100% + 10px);
@@ -14713,10 +14722,13 @@ textarea {
     animation: trailer-hint 1.7s ease-in-out infinite;
   }
   /* Área táctil de 46px sin agrandar el círculo visible. */
-  .discover-trailer__swipe-hint::before { content: ""; position: absolute; inset: -8px; border-radius: 999px; }
-  .discover-trailer__swipe-hint:active:not(:disabled) { background: rgba(252, 195, 95, 0.16); }
-  .discover-trailer__swipe-hint:disabled { opacity: 0.4; cursor: default; }
-  .discover-trailer__swipe-hint svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .discover-swipe-hint::before { content: ""; position: absolute; inset: -8px; border-radius: 999px; }
+  .discover-swipe-hint:active:not(:disabled) { background: rgba(252, 195, 95, 0.16); }
+  .discover-swipe-hint:disabled { opacity: 0.4; cursor: default; }
+  .discover-swipe-hint svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  /* En Tarjetas va anclado a la fila de botones; solo existe con el mazo mobile. */
+  .discover-card .discover-actions { position: relative; }
+  .discover-card:has(.discover-card__body.is-overview-open) .discover-swipe-hint { display: none; }
   .discover-trailer.is-transitioning--next .discover-trailer__current { animation: trailer-exit-up 300ms ease both; }
   .discover-trailer.is-transitioning--previous .discover-trailer__current { animation: trailer-exit-down 300ms ease both; }
   .discover-trailer.is-transitioning--next .discover-trailer__preview { animation: trailer-enter-up 300ms ease both; }
@@ -14772,7 +14784,7 @@ textarea {
   .discover-trailer__info .discover-overview__more { margin-top: 2px; }
   .discover-trailer__info .discover-watch { margin-top: 3px; }
   .discover-trailer__bottom { padding-top: 0; }
-  .discover-trailer__swipe-hint { display: none; }
+  .discover-swipe-hint { display: none; }
 }
 
 @media (max-width: 900px) and (min-height: 651px) and (max-height: 800px) {
@@ -14803,7 +14815,7 @@ textarea {
   .discover-trailer.is-transitioning > * { animation-duration: 1ms !important; }
   .discover-trailer.is-returning .discover-trailer__current,
   .discover-trailer.is-returning .discover-trailer__preview { transition-duration: 1ms !important; }
-  .discover-trailer__swipe-hint { animation: none; opacity: 0.8; }
+  .discover-swipe-hint { animation: none; opacity: 0.8; }
 }
 
 /*
@@ -15447,4 +15459,9 @@ textarea {
   }
   body { overscroll-behavior-x: none; }
   #root { max-width: 100%; overflow-x: clip; }
+}
+
+/* El chevron de Tarjetas acompaña al mazo deslizable, que solo existe hasta 680px. */
+@media (min-width: 681px) {
+  .discover-card .discover-swipe-hint { display: none; }
 }
