@@ -15114,11 +15114,30 @@ textarea {
   padding: 10px 0;
   transition: background 160ms ease;
 }
-/* Pegado arriba toma fondo a todo el ancho, sin depender del padding del panel. */
-.watchlist-mobile-header.is-stuck {
+/*
+  Pegado arriba toma fondo de borde a borde de la pantalla. El fondo es un
+  pseudo-elemento de 100vw centrado sobre el encabezado (que esta centrado en
+  la pantalla), asi no depende del padding del panel. Lo que sobre a los
+  costados lo recorta la raiz, que en mobile no scrollea de lado.
+*/
+.watchlist-mobile-header { isolation: isolate; }
+.watchlist-mobile-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  z-index: -1;
+  width: 100vw;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  transform: translateX(-50%);
+  transition: background 160ms ease, border-color 160ms ease;
+  pointer-events: none;
+}
+.watchlist-mobile-header.is-stuck::before {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
   background: rgba(18, 20, 25, 0.97);
-  box-shadow: 0 0 0 100vmax rgba(18, 20, 25, 0.97);
-  clip-path: inset(0 -100vmax);
 }
 .watchlist-mobile-header__row { display: flex; align-items: center; gap: 12px; }
 .watchlist-mobile-header__title { flex: 1; min-width: 0; }
@@ -15382,4 +15401,19 @@ textarea {
     transform: none;
   }
   .watchlist-toast span { flex: 1; font-size: 0.84rem; }
+}
+
+/*
+  En mobile la pagina no se desplaza hacia los costados. `body` ya recorta su
+  contenido, pero en iOS quien scrollea es la raiz: sin esto, cualquier cosa
+  que asome por un borde deja arrastrar toda la pantalla de lado.
+*/
+@media (max-width: 900px) {
+  html {
+    overflow-x: hidden;
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+  }
+  body { overscroll-behavior-x: none; }
+  #root { max-width: 100%; overflow-x: clip; }
 }
