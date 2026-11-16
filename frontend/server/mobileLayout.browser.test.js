@@ -144,3 +144,44 @@ test("el buscador global mobile no dispara el umbral de autozoom ni ensancha Wat
     }
   } finally { browser.close(); }
 });
+
+const hybridMarkup = (variant) => `<section class="discover discover--trailers" style="height:800px">
+  <div class="discover-filterbar"><span class="discover-circle-badge">En tu círculo</span><button class="discover-filterbar__button">Filtros</button></div>
+  <article class="discover-trailer"><div class="discover-trailer__stage"><div class="discover-trailer__current">
+    <div class="discover-trailer__media${variant === "video" ? "" : " is-poster"}"><div class="discover-trailer__frame">${variant === "video" ? '<iframe title="Tráiler"></iframe>' : variant === "backdrop" ? '<img class="discover-trailer__backdrop" alt="Imagen horizontal">' : variant === "poster" ? '<img class="discover-trailer__poster-fallback" alt="Póster">' : '<div class="discover-trailer__missing-image">Título sin imagen</div>'}</div></div>
+    <div class="discover-trailer__info"><div class="discover-title-row"><h2 class="discover-title">Cafarnaúm: La ciudad olvidada</h2><p class="discover-kind">Película</p><h2 class="discover-title discover-trailer__title-mobile">Cafarnaúm: La ciudad <span class="discover-trailer__title-tail">olvidada&nbsp;<span class="discover-kind">Película</span></span></h2></div>
+      <div class="discover-circle">A una persona le gustó</div><p class="discover-facts">2024 · Drama · 2h 10min · <span class="discover-trailer__score">TMDB 8.2</span></p>
+      <div class="discover-watch">Ver en: Netflix</div><div class="discover-overview"><p class="discover-overview__text--clamped">Una sinopsis de la película.</p></div>
+    </div></div></div><div class="discover-trailer__bottom"><div class="discover-actions"><button>No me interesa</button><button>Ya la vi</button><button>Guardar</button></div></div>
+  </article></section>`;
+
+test("el feed híbrido conserva proporción, jerarquía y acciones con video o imagen de respaldo", { skip: !existsSync(chromePath) }, async () => {
+  const browser = await connectChrome();
+  try {
+    for (const width of [320, 375, 390, 430, 1024, 1280, 1440, 1920]) {
+      await browser.send("Emulation.setDeviceMetricsOverride", { width, height: 800, screenWidth: width, screenHeight: 800, deviceScaleFactor: 1, mobile: width < 901 });
+      for (const variant of ["video", "backdrop", "poster", "missing"]) {
+        const result = await browser.send("Runtime.evaluate", {
+          expression: `(() => { document.querySelector('#root').innerHTML = ${JSON.stringify(hybridMarkup(variant))}; const rect = (selector) => { const r = document.querySelector(selector).getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; }; const media = document.querySelector('.discover-trailer__frame'); const image = media.querySelector('iframe, img, .discover-trailer__missing-image'); return { viewport: innerWidth, pageWidth: document.documentElement.scrollWidth, media: rect('.discover-trailer__frame'), circleBadge: rect('.discover-filterbar .discover-circle-badge'), filterButton: rect('.discover-filterbar__button'), bar: rect('.discover-filterbar'), badge: rect(innerWidth <= 680 ? '.discover-trailer__title-mobile .discover-kind' : '.discover-title-row > .discover-kind'), title: rect(innerWidth <= 680 ? '.discover-trailer__title-mobile' : '.discover-title-row > .discover-title'), score: rect('.discover-trailer__score'), social: rect('.discover-circle'), facts: rect('.discover-facts'), watch: rect('.discover-watch'), overview: rect('.discover-overview'), actions: rect('.discover-trailer__bottom'), image: rect('.discover-trailer__frame iframe, .discover-trailer__frame img, .discover-trailer__missing-image'), fit: image instanceof HTMLImageElement ? getComputedStyle(image).objectFit : null, floatingScore: Boolean(document.querySelector('.discover-trailer__score-overlay')) }; })()`,
+          returnByValue: true
+        });
+        const m = result.result.value;
+        assert.equal(m.viewport, width);
+        assert.ok(m.pageWidth <= width, `${width}px: desborde horizontal ${JSON.stringify(m)}`);
+        assert.ok(m.circleBadge.left >= m.bar.left && m.circleBadge.right < m.filterButton.left, `${width}px: badge no queda a la izquierda`);
+        assert.ok(m.circleBadge.top < m.filterButton.bottom && m.filterButton.top < m.circleBadge.bottom, `${width}px: badge y filtros no comparten fila`);
+        assert.ok(m.media.width > 0 && m.image.width > 0, `${width}px/${variant}: medio vacío`);
+        assert.ok(Math.abs(m.media.width / m.media.height - 16 / 9) < 0.03, `${width}px/${variant}: medio no es 16:9`);
+        assert.equal(m.floatingScore, false, `${width}px/${variant}: puntuación sobre el medio`);
+        assert.ok(m.score.top >= m.facts.top && m.score.bottom <= m.facts.bottom + 1, `${width}px/${variant}: puntuación fuera de los metadatos`);
+        if (variant === "backdrop") assert.equal(m.fit, "cover");
+        if (variant === "poster") assert.equal(m.fit, "contain");
+        assert.ok(m.badge.right <= width && m.badge.top >= m.title.top, `${width}px: badge fuera del título`);
+        if (width <= 680) assert.ok(m.badge.bottom <= m.title.bottom + 3, `${width}px: badge separado de la última palabra`);
+        assert.ok(m.social.top >= m.title.top && m.facts.top >= m.social.top && m.watch.top >= m.facts.top && m.overview.top >= m.watch.top, `${width}px: bloques fuera de orden`);
+        assert.ok(m.actions.left >= 0 && m.actions.right <= width, `${width}px: acciones fuera del viewport`);
+        if (width < 901) assert.ok(m.overview.bottom <= m.actions.top && m.actions.bottom <= 800, `${width}px: información o acciones recortadas`);
+      }
+    }
+  } finally { browser.close(); }
+});

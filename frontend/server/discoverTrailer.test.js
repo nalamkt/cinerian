@@ -7,7 +7,6 @@ import { readFileSync } from "node:fs";
 
 const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
 after(() => vite.close());
-const { DiscoverModeSwitch } = await vite.ssrLoadModule("/src/components/DiscoverModeSwitch.tsx");
 const { DiscoverTrailerPlayer, buildDiscoverTrailerUrl } = await vite.ssrLoadModule("/src/components/DiscoverTrailerPlayer.tsx");
 const { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerAvailability, trailerDragOffset, trailerEmptyPhase, youtubeThumbnailUrl } = await vite.ssrLoadModule("/src/lib/discoverTrailer.ts");
 const { advanceTrailerProgress, parseTrailerProgress, serializeTrailerProgress, trailerProgressStorageKey } = await vite.ssrLoadModule("/src/lib/trailerProgress.ts");
@@ -15,20 +14,10 @@ const { getTrailerUrl } = await vite.ssrLoadModule("/src/lib/tmdb.ts");
 const { DiscoverWatchOptions } = await vite.ssrLoadModule("/src/components/DiscoverWatchOptions.tsx");
 const { DiscoverOverview } = await vite.ssrLoadModule("/src/components/DiscoverOverview.tsx");
 
-test("el selector alterna entre Tarjetas y Tráilers sin agregar otro mazo", () => {
-  const changes = [];
-  const cards = DiscoverModeSwitch({ mode: "cards", disabled: false, onChange: (mode) => changes.push(mode) });
-  const [segmented, selector] = cards.props.children;
-  const [trailersButton, cardsButton] = segmented.props.children;
-  trailersButton.props.onClick();
-  cardsButton.props.onClick();
-  assert.deepEqual(changes, ["trailers", "cards"]);
-  selector.props.children[1].props.onChange({ target: { value: "trailers" } });
-  assert.deepEqual(changes, ["trailers", "cards", "trailers"]);
-  assert.match(renderToStaticMarkup(cards), /Tráilers<\/button><button[^>]+aria-pressed="true"[^>]*>Tarjetas/);
-  const trailers = renderToStaticMarkup(createElement(DiscoverModeSwitch, { mode: "trailers", disabled: false, onChange: () => {} }));
-  assert.match(trailers, /aria-pressed="true"[^>]*>Tráilers/);
-  assert.match(trailers, /aria-pressed="false"[^>]*>Tarjetas/);
+test("Descubrí usa un feed único y no guarda el modo anterior", () => {
+  const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(panel, /<DiscoverModeSwitch|cinerian:discover-mode:|setDiscoverMode/);
+  assert.match(panel, /const eligibleTrailerItems = useMemo\(\(\) => circleEntries\.map\(\(entry\) => entry\.item\)/);
 });
 
 test("el tráiler solo utiliza embeds seguros y conserva formato horizontal", () => {
@@ -63,9 +52,42 @@ test("el título mobile conserva la última palabra junto al badge sin alterar T
 
 test("sin tráiler muestra póster y acciones de reproducción ausentes", () => {
   const html = renderToStaticMarkup(createElement(DiscoverTrailerPlayer, { title: "Título", trailerUrl: null, posterUrl: "/poster.jpg", active: true, soundEnabled: false, onSoundEnabledChange: () => {} }));
-  assert.match(html, /Póster de Título/);
-  assert.match(html, /Tráiler no disponible/);
+  assert.match(html, /Imagen de Título/);
+  assert.match(html, /discover-trailer__poster-fallback/);
+  assert.match(html, /is-poster/);
+  assert.doesNotMatch(html, /Tráiler no disponible/);
   assert.doesNotMatch(html, /<iframe|Activar sonido|Pausar/);
+});
+
+test("backdrop disponible tiene prioridad sobre el póster y no muestra puntuación flotante", () => {
+  const html = renderToStaticMarkup(createElement(DiscoverTrailerPlayer, {
+    title: "Una película", trailerUrl: "https://example.com/video", posterUrl: "/poster.jpg",
+    backdropUrl: "https://image.tmdb.org/t/p/w780/backdrop.jpg", active: true, soundEnabled: false, onSoundEnabledChange: () => {}
+  }));
+  assert.match(html, /discover-trailer__backdrop/);
+  assert.match(html, /backdrop\.jpg/);
+  assert.doesNotMatch(html, /poster\.jpg|TMDB 8\.2|score-overlay/);
+  assert.doesNotMatch(html, /<iframe|Reproducir tráiler/);
+});
+
+test("sin backdrop ni póster muestra el placeholder del título", () => {
+  for (const posterUrl of ["", "/images/base.png"]) {
+    const html = renderToStaticMarkup(createElement(DiscoverTrailerPlayer, {
+      title: "Título sin imagen", trailerUrl: null, posterUrl, active: true, soundEnabled: false, onSoundEnabledChange: () => {}
+    }));
+    assert.match(html, /discover-trailer__missing-image/);
+    assert.doesNotMatch(html, /<img|<iframe/);
+  }
+});
+
+test("si YouTube falla, ofrece el póster sin saltar ni valorar el título", () => {
+  const player = readFileSync(new URL("../src/components/DiscoverTrailerPlayer.tsx", import.meta.url), "utf8");
+  const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
+  assert.match(player, /onError: \(\{ data \}\) => \{[\s\S]*?setCanRetry\(!isPermanentYouTubeError\(data\)\);\s*setPlaybackError\(true\)/);
+  assert.match(player, /embedUrl && !playbackError && !apiUnavailable \? \(/);
+  assert.match(player, /playbackError && canRetry \? <button type="button" className="discover-trailer__retry"/);
+  assert.doesNotMatch(panel, /onUnplayable=|blockedTrailerKeys/);
+  assert.doesNotMatch(player, /saveStoredReaction|registerReaction/);
 });
 
 test("al ocultar la vista desmonta el video; solo el activo puede reproducirse", () => {
@@ -73,10 +95,11 @@ test("al ocultar la vista desmonta el video; solo el activo puede reproducirse",
   const playing = renderToStaticMarkup(createElement(DiscoverTrailerPlayer, { ...props, active: true }));
   const paused = renderToStaticMarkup(createElement(DiscoverTrailerPlayer, { ...props, active: false }));
   assert.equal((playing.match(/<iframe/g) ?? []).length, 1);
-  assert.match(playing, /Reproducir tráiler/);
+  assert.doesNotMatch(playing, /Reproducir tráiler|Pausar tráiler|discover-trailer__playback-toggle/);
   assert.match(playing, /Activar sonido/);
+  assert.doesNotMatch(playing, /score-overlay|TMDB/);
   assert.doesNotMatch(paused, /<iframe/);
-  assert.match(paused, /Tráiler en pausa/);
+  assert.match(paused, /Imagen de Título/);
 });
 
 test("búsqueda, ficha, filtros, pestaña oculta y cambio de modo apagan el video", () => {
@@ -103,6 +126,21 @@ test("avanzar y volver en Tráilers solo cambia el cursor, sin valorar títulos"
   assert.deepEqual(items, [{ id: 1 }, { id: 2 }, { id: 3 }]);
 });
 
+test("video y póster comparten el mismo cursor y progreso", () => {
+  const items = [
+    { id: 1, kind: "video" }, { id: 2, kind: "poster" }, { id: 3, kind: "video" }
+  ];
+  const key = (item) => `movie-${item.id}`;
+  const second = moveTrailerCursor({ available: items, history: [], index: null, current: items[0], direction: "next", key });
+  assert.equal(second.history[second.index].kind, "poster");
+  const progress = advanceTrailerProgress(parseTrailerProgress(null), second.history.map(key), second.index);
+  assert.equal(parseTrailerProgress(serializeTrailerProgress(progress)).currentKey, "movie-2");
+  const third = moveTrailerCursor({ available: items, ...second, current: items[1], direction: "next", key });
+  assert.equal(third.history[third.index].kind, "video");
+  const back = moveTrailerCursor({ available: items, ...third, current: items[2], direction: "previous", key });
+  assert.equal(back.history[back.index].kind, "poster");
+});
+
 test("el swipe acompaña el dedo y vuelve si no alcanza distancia o velocidad", () => {
   assert.equal(trailerDragOffset(-47, true), -47);
   assert.equal(trailerDragOffset(100, false), 18);
@@ -112,15 +150,14 @@ test("el swipe acompaña el dedo y vuelve si no alcanza distancia o velocidad", 
   assert.equal(completesTrailerSwipe(300, 50, 600, false), false);
 });
 
-test("Tráilers omite ausencias confirmadas y conserva errores temporales para reintentar", () => {
+test("el feed conserva títulos sin video y errores temporales", () => {
   assert.equal(trailerAvailability({ trailerUrl: "https://www.youtube.com/embed/abc" }), "playable");
   assert.equal(trailerAvailability({ trailerUrl: null, trailerLookupComplete: true }), "missing");
   assert.equal(trailerAvailability({ trailerUrl: null, trailerLookupComplete: false }), "unknown");
   assert.equal(trailerAvailability(null), "unknown");
   const source = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
-  assert.match(source, /for \(const entry of circleEntries\)/);
-  assert.match(source, /availability === "playable"/);
-  assert.match(source, /setTrailerScan\(\{ items: \[\.\.\.items\], complete: false, failed \}\)/);
+  assert.match(source, /const eligibleTrailerItems = useMemo\(\(\) => circleEntries\.map\(\(entry\) => entry\.item\)/);
+  assert.doesNotMatch(source, /blockedTrailerKeys|availability === "playable"/);
   assert.match(source, /const current = circleEntries\.length/);
 });
 
@@ -279,7 +316,7 @@ test("tocar información abre ficha; plataformas, controles y sinopsis no la abr
   assert.match(overview, /className="discover-overview__more"/);
 });
 
-test("abrir y cerrar la ficha pausa el video sin cambiar el título ni el modo guardado", () => {
+test("abrir y cerrar la ficha pausa el video sin cambiar el título", () => {
   const state = { active: true, documentVisible: true, mode: "trailers", detailsOpen: false, reviewOpen: false, filtersOpen: false, syncing: false };
   const current = { id: 12 };
   const history = [current, { id: 13 }];
@@ -288,7 +325,7 @@ test("abrir y cerrar la ficha pausa el video sin cambiar el título ni el modo g
   assert.equal(shouldPlayDiscoverTrailer({ ...state, detailsOpen: false }), true);
   assert.equal(history[0], current);
   const source = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
-  assert.match(source, /useState<DiscoverMode>\("trailers"\)/);
+  assert.match(source, /const discoverMode: DiscoverMode = "trailers"/);
   assert.doesNotMatch(source, /cinerian:discover-mode:/);
   const infoClick = source.slice(source.indexOf('className="discover-trailer__info"'), source.indexOf('<div className="discover-trailer__bottom">'));
   assert.doesNotMatch(infoClick, /setTrailerHistory|setTrailerHistoryIndex|setDiscoverMode/);
@@ -305,8 +342,10 @@ test("el tráiler siguiente se precarga oculto y el actual muestra un cuadro del
   assert.match(preloading, /discover-trailer__media is-preloading/);
   assert.match(preloading, /<iframe/);
   assert.match(preloading, /discover-trailer__cover/);
+  assert.doesNotMatch(preloading, /discover-trailer__sound-toggle|discover-trailer__resume/);
   const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /key=\{itemKey\(upcomingTrailerItem\)\}[\s\S]*?active=\{false\}[\s\S]*?preload/);
+  assert.match(panel, /const previewImage = previewTrailerFrame \|\| previewBackdrop \|\| \(item\.posterUrl !== "\/images\/base\.png"/);
 });
 
 test("Tarjetas pasa como TikTok: anterior y siguiente se mueven pegadas a la actual", () => {

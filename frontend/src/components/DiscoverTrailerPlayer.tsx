@@ -6,12 +6,12 @@ type DiscoverTrailerPlayerProps = {
   title: string;
   trailerUrl: string | null;
   posterUrl: string;
+  backdropUrl?: string | null;
   active: boolean;
   /** Carga el iframe oculto y en pausa para que al pasar al siguiente arranque sin esperar. */
   preload?: boolean;
   soundEnabled: boolean;
   onSoundEnabledChange: (enabled: boolean) => void;
-  onUnplayable?: () => void;
 };
 
 type YouTubePlayer = {
@@ -109,7 +109,7 @@ export function isPermanentYouTubeError(code: number) {
   return code === 2 || code === 100 || code === 101 || code === 150;
 }
 
-export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, preload = false, soundEnabled, onSoundEnabledChange, onUnplayable }: DiscoverTrailerPlayerProps) {
+export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUrl, active, preload = false, soundEnabled, onSoundEnabledChange }: DiscoverTrailerPlayerProps) {
   const diagnosticPlayerId = useRef(0);
   if (!diagnosticPlayerId.current) diagnosticPlayerId.current = ++nextDiagnosticPlayerId;
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -118,8 +118,6 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, pr
   activeRef.current = active;
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
-  const onUnplayableRef = useRef(onUnplayable);
-  onUnplayableRef.current = onUnplayable;
   const autoplayAttemptRef = useRef<"sound" | "muted" | null>(null);
   const autoplayBlockedRef = useRef(false);
   const userPausedRef = useRef(false);
@@ -137,12 +135,14 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, pr
   const [isMuted, setIsMuted] = useState(true);
   const [playbackState, setPlaybackState] = useState<"loading" | "playing" | "paused" | "blocked">("loading");
   const [playbackError, setPlaybackError] = useState(false);
+  const [canRetry, setCanRetry] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
   const availableUrl = useMemo(
     () => buildDiscoverTrailerUrl(trailerUrl, typeof window === "undefined" ? "https://cinerian.app" : window.location.origin),
     [trailerUrl, retryCount]
   );
   const embedUrl = hasMounted ? availableUrl : null;
+  const artworkUrl = backdropUrl || (posterUrl && posterUrl !== "/images/base.png" ? posterUrl : null);
 
   useEffect(() => {
     if (active || preload) setHasMounted(true);
@@ -277,6 +277,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, pr
     setHasStartedPlaying(false);
     setIsMuted(true);
     setPlaybackError(false);
+    setCanRetry(true);
     void loadYouTubeApi().then((api) => {
       if (cancelled || !iframe.isConnected) return;
       logTrailerDiagnostic(diagnosticPlayerId.current, "player_constructing", { active: activeRef.current, initiallyMuted: new URL(embedUrl).searchParams.get("mute") === "1", preferredSound: soundEnabledRef.current });
@@ -328,8 +329,8 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, pr
           logTrailerDiagnostic(diagnosticPlayerId.current, "playback_failed", { youtubeError: data, permanent: isPermanentYouTubeError(data) });
           clearAutoplayTimer();
           autoplayAttemptRef.current = null;
-          if (isPermanentYouTubeError(data)) onUnplayableRef.current?.();
-          else setPlaybackError(true);
+          setCanRetry(!isPermanentYouTubeError(data));
+          setPlaybackError(true);
         }
       } });
     }).catch((error: unknown) => {
@@ -373,28 +374,12 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, pr
     else logTrailerDiagnostic(diagnosticPlayerId.current, "autoplay_skipped", { userPaused: userPausedRef.current, previousBlock: autoplayBlockedRef.current });
   }, [active, apiReady]);
 
-  useEffect(() => {
-    if (playbackState !== "blocked" || !active) return;
-    const resume = () => {
-      const player = playerRef.current;
-      if (!player || userPausedRef.current) return;
-      logTrailerDiagnostic(diagnosticPlayerId.current, "blocked_resume_on_touch");
-      attemptPlayback(player, false);
-    };
-    document.addEventListener("pointerdown", resume, { once: true, capture: true });
-    return () => document.removeEventListener("pointerdown", resume, { capture: true });
-  }, [playbackState, active]);
-
-  function togglePlayback() {
+  function resumeBlockedPlayback() {
     const player = playerRef.current;
     if (!player) return;
-    if (player.getPlayerState() === 1) {
-      userPausedRef.current = true;
-      player.pauseVideo();
-    } else {
-      userPausedRef.current = false;
-      attemptPlayback(player, soundEnabledRef.current);
-    }
+    userPausedRef.current = false;
+    logTrailerDiagnostic(diagnosticPlayerId.current, "blocked_resume_requested");
+    attemptPlayback(player, false);
   }
 
   function toggleSound() {
@@ -421,9 +406,9 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, pr
   }
 
   return (
-    <div className={`discover-trailer__media${preload ? " is-preloading" : ""}`} aria-hidden={preload || undefined}>
+    <div className={`discover-trailer__media${preload ? " is-preloading" : ""}${!embedUrl || playbackError || apiUnavailable ? " is-poster" : ""}`} aria-hidden={preload || undefined}>
       <div className="discover-trailer__frame">
-        {embedUrl ? (
+        {embedUrl && !playbackError && !apiUnavailable ? (
           <>
             <iframe
               key={`${embedUrl}:${retryCount}`}
@@ -435,39 +420,24 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, active, pr
               referrerPolicy="strict-origin-when-cross-origin"
               tabIndex={preload ? -1 : undefined}
             />
-            {/* Cubre el recuadro vacío mientras YouTube carga; se va cuando arranca el video. */}
-            {thumbnailUrl ? (
-              <img
-                className={`discover-trailer__cover${hasStartedPlaying ? " is-hidden" : ""}`}
-                src={thumbnailUrl}
-                alt=""
-                aria-hidden="true"
-              />
-            ) : null}
+            {thumbnailUrl ? <img className={`discover-trailer__cover${hasStartedPlaying || playbackState === "blocked" ? " is-hidden" : ""}`} src={thumbnailUrl} alt="" aria-hidden="true" /> : null}
           </>
-        ) : posterUrl ? (
-          <img src={posterUrl} alt={`Póster de ${title}`} />
+        ) : artworkUrl ? (
+          <img className={backdropUrl ? "discover-trailer__backdrop" : "discover-trailer__poster-fallback"} src={artworkUrl} alt={`Imagen de ${title}`} />
         ) : (
           <div className="discover-trailer__missing-image">{title}</div>
         )}
       </div>
-      {playbackError ? <div className="discover-trailer__video-error" role="status">
-        <span>No pudimos reproducir este tráiler ahora.</span>
-        <button type="button" onClick={() => { setPlaybackError(false); setRetryCount((value) => value + 1); }}>Reintentar</button>
-      </div> : null}
-      {embedUrl && !apiUnavailable ? (
-        <div className={`discover-trailer__playback${playbackState === "playing" ? " is-playing" : ""}`} aria-label="Controles del tráiler">
-          <button type="button" className="discover-trailer__playback-toggle" onClick={togglePlayback} disabled={!apiReady} aria-label={playbackState === "playing" ? "Pausar tráiler" : "Reproducir tráiler"}>
-            <span className="discover-trailer__playback-label">{playbackState === "playing" ? "Pausar" : "Reproducir"}</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true">{playbackState === "playing" ? <><rect x="7" y="5" width="3" height="14" rx="1" /><rect x="14" y="5" width="3" height="14" rx="1" /></> : <path d="M8 5.5 19 12 8 18.5Z" />}</svg>
-          </button>
+      {playbackError && canRetry ? <button type="button" className="discover-trailer__retry" onClick={() => { setPlaybackError(false); setRetryCount((value) => value + 1); }}>Reintentar tráiler</button> : null}
+      {embedUrl && !apiUnavailable && !playbackError && !preload ? (
+        <div className="discover-trailer__playback" aria-label="Sonido del tráiler">
+          {playbackState === "blocked" && active && apiReady ? <button type="button" className="discover-trailer__resume" onClick={resumeBlockedPlayback}>Reproducir tráiler</button> : null}
           <button type="button" className="discover-trailer__sound-toggle" disabled={!apiReady} aria-label={isMuted ? "Activar sonido del tráiler" : "Silenciar tráiler"} onClick={toggleSound}>
             <span className="discover-trailer__playback-label">{isMuted ? "Activar sonido" : "Silenciar"}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" />{isMuted ? <path d="m17 9 5 6m0-6-5 6" /> : <><path d="M17 9a4 4 0 0 1 0 6" /><path d="M20 6a8 8 0 0 1 0 12" /></>}</svg>
           </button>
         </div>
-      ) : <p className="discover-trailer__no-video">{availableUrl ? "Tráiler en pausa." : "Tráiler no disponible para este título."}</p>}
-      {playbackState === "blocked" && !playbackError ? <p className="discover-trailer__sound-hint">El video no arrancó solo. Tocá en cualquier lugar para reproducirlo.</p> : null}
+      ) : null}
     </div>
   );
 }

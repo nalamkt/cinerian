@@ -137,16 +137,17 @@ test("el autoplay silenciado no muestra avisos ni deja un bloque visual vacío",
   assert.doesNotMatch(playerSource, /El navegador inició el video sin sonido|Tocá el control para activarlo|audioRestricted/);
   assert.match(playerSource, /className="discover-trailer__sound-toggle"/);
   assert.match(playerSource, /"sound_state_confirmed"|"post_play_unmute_result"/);
-  assert.match(playerSource, /El video no arrancó solo\. Tocá en cualquier lugar para reproducirlo\./);
+  assert.doesNotMatch(playerSource, /El video no arrancó solo|El video no se inició automáticamente|autoplay-hint|sound-hint/);
 });
 
-test("Play y Pausa usan el mismo control SVG, con foco visible y sin cubrir el iframe", () => {
-  assert.match(playerSource, /aria-label=\{playbackState === "playing" \? "Pausar tráiler" : "Reproducir tráiler"\}/);
-  assert.match(playerSource, /<svg viewBox="0 0 24 24" aria-hidden="true">\{playbackState === "playing"/);
+test("no superpone Play/Pausa propio y conserva solo el control de sonido", () => {
+  assert.equal(new URL(buildDiscoverTrailerUrl("https://www.youtube.com/embed/AbC_123-xy", "https://cinerian.app")).searchParams.get("controls"), "0");
+  assert.doesNotMatch(playerSource, /discover-trailer__playback-toggle|function togglePlayback/);
+  assert.doesNotMatch(styles, /\.discover-trailer__playback-toggle/);
+  assert.match(playerSource, /className="discover-trailer__sound-toggle"/);
   assert.match(styles, /\.discover-trailer__playback \{[^}]*pointer-events: none;/);
   assert.match(styles, /\.discover-trailer__playback button \{[^}]*border: 1px solid var\(--accent\);[^}]*pointer-events: auto;/);
   assert.match(styles, /\.discover-trailer__playback button:focus-visible \{ outline: 2px solid #fff;/);
-  assert.doesNotMatch(playerSource, /▶|Ⅱ|♪/);
 });
 
 test("el diagnóstico de autoplay es opt-in y distingue preparación, intento, bloqueo, inicio y error", () => {
@@ -161,6 +162,7 @@ test("el diagnóstico de autoplay es opt-in y distingue preparación, intento, b
 test("el tráiler arranca solo: espera mientras carga, reintenta en silencio y no pelea con Safari por el sonido", () => {
   assert.match(playerSource, /if \(state !== 3\) \{[\s\S]*?requestTrailerAutoplay\(player, false\);[\s\S]*?watchPlaybackStart\(player, round \+ 1\)/);
   assert.match(playerSource, /if \(browserBlocksAutoplaySound \|\| !shouldRestoreTrailerSound\(/);
-  assert.match(playerSource, /if \(playbackState !== "blocked" \|\| !active\) return;[\s\S]*?addEventListener\("pointerdown", resume/);
+  assert.match(playerSource, /playbackState === "blocked" && active && apiReady \? <button type="button" className="discover-trailer__resume"/);
+  assert.doesNotMatch(playerSource, /addEventListener\("pointerdown", resume/);
   assert.doesNotMatch(playerSource, /\}, 6000\);/);
 });

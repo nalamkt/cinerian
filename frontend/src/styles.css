@@ -14244,30 +14244,6 @@ textarea {
   .app-topbar + .workspace-grid .workspace-content { min-height: 0; }
 }
 
-.discover-mode-switch {
-  display: flex;
-  flex: none;
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid rgba(252, 195, 95, 0.2);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-}
-.discover-mode-switch button {
-  min-width: 92px;
-  min-height: 34px;
-  padding: 5px 13px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.discover-mode-switch button.is-active { background: var(--accent); color: #211609; }
-.discover-mode-switch button:focus-visible,
 .discover-trailer button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .discover-trailer {
@@ -14301,6 +14277,9 @@ textarea {
 .discover-trailer__frame iframe { width: 100%; height: 100%; border: 0; }
 .discover-trailer__frame img,
 .discover-trailer__preparing img { width: 100%; height: 100%; object-fit: contain; }
+.discover-trailer__frame img.discover-trailer__backdrop,
+.discover-trailer__preparing img.is-backdrop { object-fit: cover; }
+.discover-trailer__frame img.discover-trailer__poster-fallback { object-fit: contain; }
 .discover-trailer__preparing { position: relative; flex: none; width: min(100%, 700px); margin: 0 auto; }
 .discover-trailer__preparing span { position: absolute; bottom: 14px; padding: 6px 12px; border-radius: 999px; background: rgba(0, 0, 0, 0.8); }
 .discover-trailer__missing-image { padding: 18px; color: var(--muted); text-align: center; }
@@ -14360,19 +14339,14 @@ textarea {
 .discover-trailer__playback button:hover { background: rgba(255, 255, 255, 0.28); }
 .discover-trailer__playback button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 .discover-trailer__playback button:disabled { opacity: 0.65; }
-.discover-trailer__playback-toggle { top: 50%; left: 50%; transform: translate(-50%, -50%); }
-.discover-trailer__playback.is-playing .discover-trailer__playback-toggle { top: 10px; left: 10px; width: 42px; height: 42px; min-height: 42px; transform: none; opacity: 0.78; }
-.discover-trailer__playback.is-playing .discover-trailer__playback-toggle:hover,
-.discover-trailer__playback.is-playing .discover-trailer__playback-toggle:focus-visible { opacity: 1; }
 .discover-trailer__sound-toggle { top: 10px; right: 10px; width: 42px !important; height: 42px !important; min-height: 42px !important; }
+.discover-trailer__playback .discover-trailer__resume { bottom: 10px; left: 10px; width: auto; height: 44px; min-height: 44px; padding: 0 14px; border-radius: 999px; background: rgba(6, 7, 10, 0.82); font-size: 0.78rem; }
 .discover-trailer__playback svg { width: 22px; height: 22px; fill: currentColor; }
 .discover-trailer__sound-toggle svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .discover-trailer__playback-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.discover-trailer__sound-hint { margin: 8px 0 0; color: var(--muted-strong); font-size: 0.78rem; }
-.discover-trailer__no-video { margin: 7px 0 0; color: var(--muted); font-size: 0.8rem; }
-.discover-trailer__video-error { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 0.8rem; }
-.discover-trailer__video-error button { border: 0; background: none; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
+.discover-trailer__retry { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 3; border: 1px solid var(--accent); border-radius: 999px; padding: 7px 12px; background: rgba(6, 7, 10, 0.82); color: var(--text); font: inherit; font-size: 0.78rem; cursor: pointer; }
 .discover-trailer__info { width: min(100%, 700px); margin: 0 auto; cursor: pointer; }
+.discover-trailer__info .discover-circle { cursor: default; }
 .discover-trailer__info .discover-title-row .discover-trailer__title-mobile { display: none; }
 .discover-trailer__circle { display: none; }
 .discover-trailer__info .discover-title-row,
@@ -14410,7 +14384,6 @@ textarea {
 .discover-trailer button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 @media (max-width: 680px) {
-  .discover-mode-switch { align-self: center; }
   .discover-trailer { gap: 9px; padding: 0 10px 14px; }
   .discover-trailer__playback button { width: 48px; height: 48px; min-height: 48px; }
   .discover-trailer__overview { -webkit-line-clamp: 2; }
@@ -14467,7 +14440,6 @@ textarea {
 
 /* El trailer aprovecha el ancho horizontal disponible en escritorio. */
 @media (min-width: 901px) {
-  .discover .discover-filterbar .discover-circle-badge { display: none; }
   .discover-hub:has(.discover--trailers) { height: auto; min-height: calc(100dvh - 64px); overflow: visible; }
   .discover-hub__deck:has(.discover--trailers) { flex: 0 0 auto; overflow: visible; }
   .discover-hub__deck .discover--trailers { height: auto; min-height: calc(100dvh - 110px); justify-content: flex-start; overflow: visible; }
@@ -14489,7 +14461,6 @@ textarea {
   .discover-trailer__preparing { grid-column: 1; grid-row: 1 / 3; align-self: start; width: 100%; }
   .discover-trailer__info { grid-column: 2; grid-row: 1; width: 100%; margin: 0; align-self: start; }
   .discover-trailer__bottom { grid-column: 2; grid-row: 2; width: 100%; margin: 0; align-self: start; }
-  .discover-trailer__info .discover-trailer__circle { display: block; margin-bottom: 6px; }
   .discover-trailer__info .discover-trailer__circle.discover-rank--outside { display: inline-flex; }
   .discover-trailer__info .discover-overview { height: auto; overflow: visible; }
   .discover-trailer__info .discover-overview p,
@@ -14504,8 +14475,6 @@ textarea {
   .discover-trailer__navigation,
   .discover-swipe-hint { display: none; }
 }
-
-.discover-mode-select { display: none; }
 
 @media (max-width: 900px) {
   .app-shell--immersive { --mobile-dock-reserve: calc(74px + env(safe-area-inset-bottom, 0px)); min-height: 100dvh; padding-bottom: 0; }
@@ -14524,9 +14493,6 @@ textarea {
   .app-topbar .dock__button--mobile-profile { display: grid; }
   .app-topbar .dock__button { min-height: 56px; }
   .app-topbar .dock__label { font-size: clamp(0.62rem, 2.5vw, 0.7rem); }
-  .discover-mode-switch { display: none; }
-  .discover-mode-select { display: block; flex: none; align-self: center; }
-  .discover-mode-select select { min-height: 40px; padding: 5px 30px 5px 14px; border: 1px solid rgba(252, 195, 95, 0.32); border-radius: 999px; background: #211d19; color: var(--accent); font: inherit; font-weight: 800; }
   .discover-provider-summary__trigger > .discover-provider-summary__name { display: none; }
   .discover-chip__logo-fallback { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-size: 0.75rem; font-weight: 900; }
   body:has(input:focus, textarea:focus) .app-topbar .dock { display: none; }
@@ -14551,38 +14517,29 @@ textarea {
   .app-topbar .dock__icon svg { width: 23px; height: 23px; }
 }
 
-/* La barra conserva todos los controles en una sola fila. */
+/* El círculo queda a la izquierda y los filtros a la derecha. */
 .discover .discover-filterbar,
 .discover:not(.is-filtered) .discover-filterbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: clamp(6px, 1.5vw, 16px);
   flex-wrap: nowrap;
   min-height: 56px;
   padding: 4px clamp(10px, 2vw, 30px);
 }
-.discover .discover-filterbar__chips,
-.discover:not(.is-filtered) .discover-filterbar__chips {
-  display: flex;
-  grid-column: 1;
-  min-width: 0;
-  flex-wrap: nowrap;
-}
-.discover-filterbar .discover-mode-switch,
-.discover-filterbar .discover-mode-select { grid-column: 2; justify-self: center; }
 .discover .discover-filterbar__button,
 .discover:not(.is-filtered) .discover-filterbar__button {
   position: static;
-  grid-column: 4;
+  grid-column: 2;
   justify-self: end;
   margin: 0;
 }
 .discover-circle-badge {
   display: inline-flex;
-  grid-column: 3;
+  grid-column: 1;
   align-items: center;
-  justify-self: center;
+  justify-self: start;
   gap: 7px;
   min-width: 0;
   min-height: 35px;
@@ -14596,8 +14553,7 @@ textarea {
 }
 .discover-circle-badge__dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .discover-circle-badge__compact { display: none; }
-/* En desktop el ranking ya figura en la ficha; en mobile solo queda el badge. */
-.discover-circle-badge__rank { display: none; flex: none; margin-right: -3px; }
+.discover-circle-badge__rank { display: inline; flex: none; margin-right: -3px; }
 .discover-filterbar__button.is-active {
   border-color: var(--accent);
   color: var(--accent);
@@ -14612,24 +14568,10 @@ textarea {
   }
   .discover .discover-filterbar,
   .discover:not(.is-filtered) .discover-filterbar {
-    grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 4px;
     min-height: 52px;
     padding: 4px 8px;
-  }
-  .discover-filterbar__chips .discover-chip--plain { display: none; }
-  .discover-filterbar .discover-mode-select select {
-    min-height: 38px;
-    max-width: 108px;
-    padding: 3px 21px 5px 10px;
-    font-size: 0.78rem;
-  }
-  .discover-filterbar .discover-provider-summary__trigger {
-    min-height: 44px;
-    max-width: 100%;
-    gap: 3px;
-    padding-inline: 5px;
-    white-space: nowrap;
   }
   .discover-filterbar .discover-filterbar__button { min-width: 38px; min-height: 38px; padding: 6px; }
   .discover-filterbar__button .discover-filterbar__label { display: none; }
@@ -14647,27 +14589,23 @@ textarea {
   .app-shell--immersive { width: 100%; }
   .app-topbar { width: 100%; }
   .app-topbar__avatar { display: none; }
-  .discover-trailer__info .discover-trailer__circle { display: none; }
   .discover-card__body > .discover-rank,
   .discover-card__rank-overlay { display: none; }
-  /* Badge con el ranking a la izquierda (alineado con el tráiler), selector de modo al centro. */
+  /* Círculo y filtros comparten una fila. */
   .discover .discover-filterbar,
   .discover:not(.is-filtered) .discover-filterbar {
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     min-height: 44px;
     padding: 2px 8px;
   }
   .discover { padding-top: 0; gap: 8px; }
-  .discover .discover-filterbar__chips,
-  .discover:not(.is-filtered) .discover-filterbar__chips { display: none; }
-  .discover-filterbar .discover-mode-select { grid-column: 2; grid-row: 1; justify-self: center; }
-  .discover-circle-badge { grid-column: 1; grid-row: 1; justify-self: start; max-width: 100%; overflow: hidden; font-size: 0.72rem; }
+  .discover-circle-badge { grid-column: 1; grid-row: 1; max-width: 100%; overflow: hidden; font-size: 0.72rem; }
   .discover-circle-badge__rank { display: inline; }
   .discover-circle-badge:has(.discover-circle-badge__rank) { padding-inline: 10px; }
   .discover-circle-badge:has(.discover-circle-badge__rank) .discover-circle-badge__dot { display: none; }
   .discover-circle-badge__full { overflow: hidden; text-overflow: ellipsis; }
   .discover .discover-filterbar__button,
-  .discover:not(.is-filtered) .discover-filterbar__button { grid-column: 3; grid-row: 1; justify-self: end; }
+  .discover:not(.is-filtered) .discover-filterbar__button { grid-column: 2; grid-row: 1; justify-self: end; }
   .discover-trailer__navigation { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .discover-trailer__navigation:focus-within { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
   .discover-trailer .discover-actions { width: 100%; }
@@ -14675,14 +14613,10 @@ textarea {
   .discover-trailer__stage { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   .discover-trailer__current { position: relative; z-index: 2; min-height: 0; gap: 7px; }
   .discover-trailer__info { display: flex; flex-direction: column; }
-  .discover-trailer__info .discover-title-row { display: flex; flex-direction: column-reverse; align-items: flex-start; }
-  .discover-trailer__info .discover-title { display: block; font-size: 1.3rem; line-height: 1.08; }
-  .discover-trailer__info .discover-kind { margin: 0 0 4px; padding: 0; border: 0; border-radius: 0; background: none; color: var(--accent); font-size: 0.7rem; letter-spacing: 0.18em; }
-  .discover-trailer__info .discover-facts { order: 1; margin: 5px 0; font-size: 0.88rem; }
-  .discover-trailer__score { display: none; }
-  .discover-trailer__info .discover-overview { order: 2; }
-  .discover-trailer__info .discover-watch { order: 3; }
-  .discover-trailer__info .discover-trailer__details { order: 4; }
+  .discover-trailer__info .discover-title-row { display: block; }
+  .discover-trailer__info .discover-title { display: inline; font-size: 1.55rem; line-height: 1.08; }
+  .discover-trailer__info .discover-kind { font-size: 0.6rem; }
+  .discover-trailer__info .discover-facts { margin: 5px 0; font-size: 0.84rem; }
   .discover-trailer__info .discover-overview { height: clamp(67px, 10dvh, 90px); margin-top: 5px; }
   .discover-trailer__info .discover-watch { margin-top: 6px; }
   .discover-trailer__bottom { padding-top: 3px; }
@@ -14743,7 +14677,7 @@ textarea {
   .discover-trailer__info .discover-title-row > .discover-kind { display: none; }
   .discover-trailer__info .discover-title-row .discover-trailer__title-mobile {
     display: block;
-    font-size: 1.3rem;
+    font-size: 1.55rem;
     line-height: 1.08;
   }
   .discover-trailer__title-tail { display: inline-block; white-space: nowrap; }

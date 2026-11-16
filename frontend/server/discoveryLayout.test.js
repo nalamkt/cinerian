@@ -5,17 +5,19 @@ import { test } from "node:test";
 const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
-test("plataformas, modo, círculo y filtros comparten la barra de Descubrí", () => {
+test("círculo y filtros comparten la barra sin selector de plataformas", () => {
   const bar = panel.indexOf('<div className="discover-filterbar">');
-  const mode = panel.indexOf("<DiscoverModeSwitch", bar);
-  const circle = panel.indexOf('className="discover-circle-badge"', mode);
+  const circle = panel.indexOf('className="discover-circle-badge"', bar);
   const filter = panel.indexOf('className={`discover-filterbar__button', circle);
   const barEnd = panel.indexOf("</div>", filter);
 
-  assert.ok(bar >= 0 && mode > bar && circle > mode && filter > circle && barEnd > filter);
+  assert.ok(bar >= 0 && circle > bar && filter > circle && barEnd > filter);
+  assert.doesNotMatch(panel, /<DiscoverModeSwitch/);
   assert.match(styles, /\.discover \.discover-filterbar,\s*\.discover:not\(\.is-filtered\) \.discover-filterbar\s*\{\s*display: grid;/);
-  assert.match(styles, /grid-template-columns: minmax\(0, 1fr\) auto auto minmax\(0, 1fr\)/);
-  assert.match(styles, /grid-template-columns: auto minmax\(0, 1fr\) auto;/);
+  assert.match(styles, /grid-template-columns: minmax\(0, 1fr\) auto;/);
+  assert.doesNotMatch(panel.slice(bar, barEnd), /discover-provider-summary|discover-filterbar__chips/);
+  assert.match(styles, /\.discover-circle-badge\s*\{[^}]*grid-column: 1;[^}]*justify-self: start;/);
+  assert.match(styles, /\.discover \.discover-filterbar__button,[\s\S]*?grid-column: 2;/);
   assert.doesNotMatch(styles, /\.discover:not\(\.is-filtered\) \.discover-filterbar\s*\{\s*display: contents;/);
   assert.doesNotMatch(panel, /discover-circle-select|setCircleChoice/);
   assert.match(styles, /\.discover-circle-badge\s*\{[^}]*background: #291e13;/);
@@ -35,19 +37,18 @@ test("desktop conserva dos columnas, badge y acciones a la derecha", () => {
   assert.match(desktop, /\.discover-trailer__media,[\s\S]*?grid-column: 1;[\s\S]*?align-self: start;/);
   assert.match(desktop, /\.discover-trailer__info \{ grid-column: 2; grid-row: 1;[^}]*align-self: start;/);
   assert.match(desktop, /\.discover-trailer__bottom \{ grid-column: 2; grid-row: 2;/);
-  assert.match(desktop, /\.discover-trailer__info \.discover-trailer__circle \{ display: block;/);
-  assert.match(desktop, /\.discover \.discover-filterbar \.discover-circle-badge \{ display: none;/);
-  const info = panel.slice(panel.indexOf('className="discover-trailer__info"'), panel.indexOf('className="discover-title-row"', panel.indexOf('className="discover-trailer__info"')));
-  assert.match(info, /DiscoverCircleRank[^>]+className="discover-trailer__circle"/);
+  assert.doesNotMatch(desktop, /\.discover \.discover-filterbar \.discover-circle-badge \{ display: none;/);
+  const info = panel.slice(panel.indexOf('className="discover-trailer__info"'), panel.indexOf('className="discover-trailer__bottom"'));
+  assert.doesNotMatch(info, /DiscoverCircleRank[^>]+className="discover-trailer__circle"/);
 });
 
 test("tráilers desktop comparte la jerarquía informativa de Tarjetas", () => {
   const trailer = panel.slice(panel.indexOf('className="discover-trailer__info"'), panel.indexOf('className="discover-trailer__bottom"'));
   const order = [
-    'className="discover-trailer__circle"',
     'className="discover-title-row"',
     'className="discover-title"',
     'className="discover-kind"',
+    '<DiscoverSocialLine line={trailerSocialLine}',
     'className="discover-facts"',
     '<DiscoverWatchOptions options={shownTrailerWatchOptions}',
     '<DiscoverOverview key={itemKey(shownTrailerItem)}'
@@ -55,12 +56,18 @@ test("tráilers desktop comparte la jerarquía informativa de Tarjetas", () => {
   assert.ok(order.every((position) => position >= 0));
   assert.ok(order.every((position, index) => index === 0 || position > order[index - 1]));
   assert.match(trailer, /shownTrailerItem\.score \? <span className="discover-trailer__score">/);
-  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*?\.discover-trailer__info \.discover-overview \{ order: 2; \}[\s\S]*?\.discover-trailer__info \.discover-watch \{ order: 3; \}/);
+  assert.match(panel, /shownTrailerDetails\?\.runtimeLabel,[\s\S]*?shownTrailerSeasonCount \? `\$\{shownTrailerSeasonCount\} temporada/);
+  assert.match(trailer, /\{shownTrailerFacts\}/);
+  assert.doesNotMatch(styles, /\.discover-trailer__info \.discover-overview \{ order: 2; \}/);
+  assert.doesNotMatch(styles, /\.discover-trailer__score-overlay\s*\{/);
+  assert.match(panel, /<DiscoverSocialLine line=\{socialLine\} onOpenUserProfile=\{onOpenUserProfile\}/);
 });
 
-test("el círculo aparece una vez por modo según el ancho", () => {
-  assert.match(styles, /@media \(min-width: 901px\) \{\s*\.discover \.discover-filterbar \.discover-circle-badge \{ display: none; \}/);
-  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*?\.discover-trailer__info \.discover-trailer__circle \{ display: none; \}[\s\S]*?\.discover-card__body > \.discover-rank,\s*\.discover-card__rank-overlay \{ display: none; \}/);
+test("el círculo se muestra en la barra en mobile y desktop", () => {
+  assert.match(panel, /<span\s+className="discover-circle-badge"/);
+  assert.doesNotMatch(panel, /className="discover-trailer__circle"/);
+  assert.doesNotMatch(styles, /\.discover \.discover-filterbar \.discover-circle-badge \{ display: none; \}/);
+  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*?\.discover-circle-badge \{ grid-column: 1; grid-row: 1;/);
 });
 
 test("tráilers desktop muestra sinopsis completa y controles compactos sin ayudas táctiles", () => {

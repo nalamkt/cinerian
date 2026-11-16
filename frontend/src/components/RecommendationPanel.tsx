@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEven
 import { flushSync } from "react-dom";
 import { CircleFriendAvatar, useMediaDetails } from "./MediaDetailsModal";
 import { DiscoverTrailerPlayer } from "./DiscoverTrailerPlayer";
-import { DiscoverModeSwitch } from "./DiscoverModeSwitch";
 import { DiscoverOverview } from "./DiscoverOverview";
 import { DiscoverWatchOptions } from "./DiscoverWatchOptions";
 import { WatchReviewModal } from "./WatchReviewModal";
@@ -20,22 +19,19 @@ import {
 import { DiscoverFiltersModal } from "./DiscoverFiltersModal";
 import {
   countActiveFilters,
-  CONTENT_TYPE_LABEL,
   fetchDiscoverFilters,
   saveDiscoverFilters
 } from "../lib/discoverFilters";
 import { fetchSocialRecommendations, type RankedRecommendation, type Watcher } from "../lib/recommendations";
 import { buildWatchedPostBody } from "../lib/reviews";
-import { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerAvailability, trailerDragOffset, trailerEmptyPhase, youtubeThumbnailUrl, type DiscoverMode } from "../lib/discoverTrailer";
+import { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerDragOffset, trailerEmptyPhase, youtubeThumbnailUrl, type DiscoverMode } from "../lib/discoverTrailer";
 import { advanceTrailerProgress, EMPTY_TRAILER_PROGRESS, parseTrailerProgress, serializeTrailerProgress, trailerProgressStorageKey, type TrailerProgress } from "../lib/trailerProgress";
 import { readTrailerSoundPreference, saveTrailerSoundPreference } from "../lib/trailerPlayback";
 import {
-  getProviderCatalog,
   getTitleDetails,
   getWatchOptionsFor,
   NO_FILTERS,
   type DiscoverFilters,
-  type ProviderOption,
   type WatchOptions
 } from "../lib/tmdb";
 import type { DiscoveryItem, MediaDetails } from "../types";
@@ -52,7 +48,6 @@ type RecommendationPanelProps = {
  * con muchisimo historial no dispare pedidos sin fin.
  */
 const MAX_DECK_PAGES = 20;
-const CARD_PREFETCH_PAGES = 3;
 const EMPTY_WATCH: WatchOptions = { flatrate: [], hasRentOrBuy: false, link: null };
 const LONG_PRESS_MS = 420;
 const QUICK_RATE_DISTANCE_PX = 34;
@@ -108,7 +103,7 @@ function preloadRecommendationArtwork(item: Pick<DiscoveryItem, "posterUrl" | "b
   // del título anterior mientras Safari resuelve el nuevo src.
   return Promise.all(
     [item.posterUrl, item.backdropUrl]
-      .filter((imageUrl): imageUrl is string => Boolean(imageUrl))
+      .filter((imageUrl): imageUrl is string => Boolean(imageUrl && imageUrl !== "/images/base.png"))
       .map(preloadImage)
   ).then(() => undefined);
 }
@@ -234,6 +229,18 @@ function buildSocialLine(watchers: Watcher[]) {
   return { first, others, verb, faces: positive.slice(0, 3) };
 }
 
+function DiscoverSocialLine({ line, onOpenUserProfile }: {
+  line: NonNullable<ReturnType<typeof buildSocialLine>>;
+  onOpenUserProfile?: RecommendationPanelProps["onOpenUserProfile"];
+}) {
+  return <div className="discover-circle">
+    <div className="discover-circle__faces media-modal__friend-avatars">
+      {line.faces.map((watcher) => <CircleFriendAvatar key={watcher.id} friend={watcher} onOpenUserProfile={onOpenUserProfile} />)}
+    </div>
+    <div className="discover-circle__copy"><p>A <strong>{line.first.displayName}</strong>{line.others} {line.verb}</p></div>
+  </div>;
+}
+
 function DiscoverCircleRank({ rank, inside, className = "" }: { rank: number | null; inside: boolean; className?: string }) {
   return <p className={`discover-rank${rank === null && !inside ? " discover-rank--outside" : ""}${className ? ` ${className}` : ""}`}>
     {rank !== null ? `${rank}° · en tu círculo` : inside ? "en tu círculo" : "Fuera de tu círculo"}
@@ -247,10 +254,8 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   // pintara Interstellar por un instante antes de llegar las recomendaciones.
   const [filters, setFilters] = useState<DiscoverFilters>(NO_FILTERS);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [isProviderSummaryOpen, setIsProviderSummaryOpen] = useState(false);
   const [isSavingFilters, setIsSavingFilters] = useState(false);
   const [areFiltersReady, setAreFiltersReady] = useState(false);
-  const [providerCatalog, setProviderCatalog] = useState<ProviderOption[]>([]);
   const [entries, setEntries] = useState<RankedRecommendation[]>([]);
   const [entriesScope, setEntriesScope] = useState<string | null>(null);
   const [isLoadingDeck, setIsLoadingDeck] = useState(true);
@@ -258,8 +263,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const [deckReloadKey, setDeckReloadKey] = useState(0);
   const [isInitialCardReady, setIsInitialCardReady] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  // La app siempre abre en Tráilers; el modo elegido solo dura la sesión.
-  const [discoverMode, setDiscoverMode] = useState<DiscoverMode>("trailers");
+  const discoverMode: DiscoverMode = "trailers";
   const [trailerSoundEnabled, setTrailerSoundEnabled] = useState(() => {
     try { return readTrailerSoundPreference(window.localStorage, userId); }
     catch { return true; }
@@ -273,12 +277,10 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const [isTrailerReturning, setIsTrailerReturning] = useState(false);
   const [trailerPayloads, setTrailerPayloads] = useState<Record<string, RecommendationPayload>>({});
   const [trailerDetails, setTrailerDetails] = useState<Record<string, MediaDetails | null>>({});
-  const [trailerScan, setTrailerScan] = useState<{ items: DiscoveryItem[]; complete: boolean; failed: boolean }>({ items: [], complete: false, failed: false });
   const [progressState, setProgressState] = useState<{ scope: string; progress: TrailerProgress } | null>(null);
   const [trailerPageError, setTrailerPageError] = useState(false);
   const [pageRetryKey, setPageRetryKey] = useState(0);
   const [previewPayload, setPreviewPayload] = useState<{ key: string; payload: RecommendationPayload } | null>(null);
-  const [blockedTrailerKeys, setBlockedTrailerKeys] = useState<Set<string>>(() => new Set());
   const [isDocumentVisible, setIsDocumentVisible] = useState(() => typeof document === "undefined" || !document.hidden);
   const [page, setPage] = useState(1);
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
@@ -305,7 +307,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const [quickRateChoice, setQuickRateChoice] = useState<QuickRateChoice | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const overviewRef = useRef<HTMLParagraphElement | null>(null);
-  const providerSummaryRef = useRef<HTMLDivElement | null>(null);
   const reactionsRequestRef = useRef(0);
   const hasReactionSnapshotRef = useRef(false);
   const quickRateGestureRef = useRef<{
@@ -331,8 +332,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const trailerReturnTimerRef = useRef<number | null>(null);
   const loadingPageRef = useRef<number | null>(null);
   const deckGenerationRef = useRef(0);
-  const trailerAvailabilityCacheRef = useRef(new Map<string, ReturnType<typeof trailerAvailability>>());
-  const trailerScanScopeRef = useRef("");
   const progressScope = trailerProgressStorageKey(userId, filters.contentType, filters.providerIds);
   const deckScope = `${progressScope}:${deckReloadKey}`;
   const trailerProgress = progressState?.scope === progressScope ? progressState.progress : null;
@@ -356,32 +355,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     return () => document.removeEventListener("visibilitychange", updateVisibility);
   }, []);
 
-  useEffect(() => {
-    if (!isProviderSummaryOpen) {
-      return;
-    }
-
-    function closeWhenClickingOutside(event: PointerEvent) {
-      if (!providerSummaryRef.current?.contains(event.target as Node)) {
-        setIsProviderSummaryOpen(false);
-      }
-    }
-
-    function closeWithEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setIsProviderSummaryOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", closeWhenClickingOutside);
-    document.addEventListener("keydown", closeWithEscape);
-
-    return () => {
-      document.removeEventListener("pointerdown", closeWhenClickingOutside);
-      document.removeEventListener("keydown", closeWithEscape);
-    };
-  }, [isProviderSummaryOpen]);
-
   const reactedKeys = useMemo(
     () => new Set(storedReactions.map((entry) => `${entry.mediaType}-${entry.tmdbId}`)),
     [storedReactions]
@@ -392,43 +365,12 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     [entries, reactedKeys]
   );
   const circleEntries = availableEntries;
-  const eligibleTrailerItems = useMemo(() => trailerScan.items.filter((item) => !blockedTrailerKeys.has(itemKey(item))), [trailerScan.items, blockedTrailerKeys]);
+  const eligibleTrailerItems = useMemo(() => circleEntries.map((entry) => entry.item), [circleEntries]);
+  const trailerScan = { complete: !isLoadingDeck && entriesScope === deckScope, failed: false };
   const unexploredTrailerItems = useMemo(() => {
     const visited = new Set(trailerProgress?.visitedKeys ?? []);
     return eligibleTrailerItems.filter((item) => !visited.has(itemKey(item)));
   }, [eligibleTrailerItems, trailerProgress]);
-
-  useEffect(() => {
-    if (discoverMode !== "trailers" || isLoadingDeck || entriesScope !== deckScope) return;
-    let activeScan = true;
-    if (trailerScanScopeRef.current !== deckScope) {
-      trailerScanScopeRef.current = deckScope;
-      trailerAvailabilityCacheRef.current.clear();
-    }
-    const cached = trailerAvailabilityCacheRef.current;
-    const cachedItems = circleEntries.filter((entry) => cached.get(itemKey(entry.item)) === "playable").map((entry) => entry.item);
-    setTrailerScan({ items: cachedItems, complete: false, failed: circleEntries.some((entry) => cached.get(itemKey(entry.item)) === "unknown") });
-    void (async () => {
-      const items: DiscoveryItem[] = [];
-      let failed = false;
-      for (const entry of circleEntries) {
-        const key = itemKey(entry.item);
-        let availability = cached.get(key);
-        if (!availability) {
-          const { details } = await loadRecommendationPayload(entry.item);
-          if (!activeScan) return;
-          availability = trailerAvailability(details);
-          cached.set(key, availability);
-        }
-        if (!activeScan) return;
-        if (availability === "playable") items.push(entry.item);
-        if (availability === "unknown") failed = true;
-        setTrailerScan({ items: [...items], complete: false, failed });
-      }
-      if (activeScan) setTrailerScan({ items, complete: true, failed });
-    })();
-    return () => { activeScan = false; };
-  }, [circleEntries, discoverMode, isLoadingDeck, entriesScope, deckScope]);
 
   const current = circleEntries.length
     ? circleEntries[currentIndex % circleEntries.length]
@@ -449,7 +391,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const nextSpotlight = nextEntry?.item ?? null;
   const shownTrailerItem = trailerHistoryIndex !== null
     ? trailerHistory[trailerHistoryIndex] ?? null
-    : trailerProgress?.currentKey
+    : trailerProgress?.currentKey && !reactedKeys.has(trailerProgress.currentKey)
       ? eligibleTrailerItems.find((item) => itemKey(item) === trailerProgress.currentKey) ??
         (page >= MAX_DECK_PAGES && trailerScan.complete ? unexploredTrailerItems[0] ?? null : null)
       : unexploredTrailerItems[0] ?? null;
@@ -467,14 +409,13 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     const historyKeys = new Set(trailerHistory.map(itemKey));
     if (unexploredTrailerItems.some((item) => !historyKeys.has(itemKey(item)))) setIsTrailerEnd(false);
   }, [isTrailerEnd, trailerHistory, unexploredTrailerItems]);
-  const badgeEntry = discoverMode === "trailers"
-    ? entries.find((entry) => shownTrailerItem && itemKey(entry.item) === itemKey(shownTrailerItem))
-    : current;
-  const badgeInsideCircle = badgeEntry ? badgeEntry.rank !== null || Boolean(buildSocialLine(badgeEntry.watchers)) : false;
+  const badgeEntry = entries.find((entry) => shownTrailerItem && itemKey(entry.item) === itemKey(shownTrailerItem));
+  const trailerSocialLine = badgeEntry ? buildSocialLine(badgeEntry.watchers) : null;
+  const badgeInsideCircle = badgeEntry ? badgeEntry.rank !== null || Boolean(trailerSocialLine) : false;
   const hasReactedToShownTrailer = shownTrailerItem ? reactedKeys.has(itemKey(shownTrailerItem)) : false;
 
   useEffect(() => {
-    if (discoverMode !== "trailers" || !shownTrailerItem) return;
+    if (!shownTrailerItem) return;
     let mounted = true;
     void preloadRecommendationArtwork(shownTrailerItem);
     const seen = new Set(trailerHistory.map(itemKey));
@@ -487,7 +428,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
       });
     }
     return () => { mounted = false; };
-  }, [discoverMode, shownTrailerItem, trailerHistory, unexploredTrailerItems]);
+  }, [shownTrailerItem, trailerHistory, unexploredTrailerItems]);
 
   useEffect(() => {
     if (!shownTrailerItem || trailerHistoryIndex !== null || !trailerProgress?.historyKeys.length) return;
@@ -510,7 +451,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
 
   // El siguiente al deslizar: se precarga para que arranque sin esperar a YouTube.
   const upcomingTrailerItem = useMemo(() => {
-    if (discoverMode !== "trailers" || !shownTrailerItem) return null;
+    if (!shownTrailerItem) return null;
     const movement = moveTrailerCursor({
       available: unexploredTrailerItems,
       history: trailerHistory,
@@ -521,17 +462,16 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     });
     const item = movement ? movement.history[movement.index] : null;
     return item && itemKey(item) !== itemKey(shownTrailerItem) ? item : null;
-  }, [discoverMode, shownTrailerItem, unexploredTrailerItems, trailerHistory, trailerHistoryIndex]);
+  }, [shownTrailerItem, unexploredTrailerItems, trailerHistory, trailerHistoryIndex]);
 
   // El anterior también queda cargado: volver arranca igual de rápido que avanzar.
   const previousTrailerItem = useMemo(() => {
-    if (discoverMode !== "trailers" || !shownTrailerItem || trailerHistoryIndex === null || trailerHistoryIndex < 1) return null;
+    if (!shownTrailerItem || trailerHistoryIndex === null || trailerHistoryIndex < 1) return null;
     const item = trailerHistory[trailerHistoryIndex - 1] ?? null;
     return item && itemKey(item) !== itemKey(shownTrailerItem) ? item : null;
-  }, [discoverMode, shownTrailerItem, trailerHistory, trailerHistoryIndex]);
+  }, [shownTrailerItem, trailerHistory, trailerHistoryIndex]);
 
   useEffect(() => {
-    if (discoverMode !== "trailers") return;
     let isMounted = true;
     for (const item of [shownTrailerItem, upcomingTrailerItem, previousTrailerItem]) {
       if (!item) continue;
@@ -548,7 +488,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
       });
     }
     return () => { isMounted = false; };
-  }, [discoverMode, shownTrailerItem, upcomingTrailerItem, previousTrailerItem]);
+  }, [shownTrailerItem, upcomingTrailerItem, previousTrailerItem]);
 
   useEffect(() => {
     if (trailerTransitionTimerRef.current !== null) window.clearTimeout(trailerTransitionTimerRef.current);
@@ -596,6 +536,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   // La ficha siguiente se deja lista mientras la actual esta en pantalla. El
   // cache comparte estos pedidos con el efecto que pinta sus datos al avanzar.
   useEffect(() => {
+    if (discoverMode === "trailers") return;
     if (!nextSpotlight) {
       setNextPayload(null);
       return;
@@ -651,24 +592,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
       isMounted = false;
     };
   }, [userId]);
-
-  // El catalogo es solo para dibujar el logo de los chips de la barra.
-  useEffect(() => {
-    if (!filters.providerIds.length || providerCatalog.length) {
-      return;
-    }
-
-    let isMounted = true;
-    void getProviderCatalog().then((results) => {
-      if (isMounted) {
-        setProviderCatalog(results);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [filters.providerIds.length, providerCatalog.length]);
 
   useEffect(() => {
     if (!areFiltersReady || !areReactionsReady) {
@@ -744,16 +667,14 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   useEffect(() => {
     // El guard va por isLoadingDeck y no por entries.length: si la primera
     // pagina viene vacia, igual hay que seguir buscando en las siguientes.
-    const needsMore = discoverMode === "trailers"
-      ? Boolean(trailerProgress) && shouldFetchMoreTrailerPages({
+    const needsMore = Boolean(trailerProgress) && shouldFetchMoreTrailerPages({
         scanComplete: trailerScan.complete,
         unexploredCount: unexploredTrailerItems.length,
         hasCurrent: Boolean(shownTrailerItem),
         page,
         maxPages: MAX_DECK_PAGES,
         failed: trailerPageError
-      })
-      : circleEntries.length < 6 && page < CARD_PREFETCH_PAGES;
+      });
     if (entriesScope !== deckScope || isLoadingDeck || trailerPageError || !needsMore || page >= MAX_DECK_PAGES || loadingPageRef.current !== null) {
       return;
     }
@@ -785,12 +706,12 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
         });
       })
       .catch(() => {
-        if (generation === deckGenerationRef.current && discoverMode === "trailers") setTrailerPageError(true);
+        if (generation === deckGenerationRef.current) setTrailerPageError(true);
       })
       .finally(() => {
         if (generation === deckGenerationRef.current) loadingPageRef.current = null;
       });
-  }, [circleEntries.length, isLoadingDeck, page, userId, filters, storedReactions, discoverMode, trailerScan, unexploredTrailerItems.length, shownTrailerItem, trailerProgress, trailerPageError, pageRetryKey, entriesScope, deckScope]);
+  }, [circleEntries.length, isLoadingDeck, page, userId, filters, storedReactions, trailerScan.complete, unexploredTrailerItems.length, shownTrailerItem, trailerProgress, trailerPageError, pageRetryKey, entriesScope, deckScope]);
 
   useEffect(() => {
     let isMounted = true;
@@ -868,6 +789,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   }
 
   useEffect(() => {
+    if (discoverMode === "trailers") return;
     setIsOverviewOpen(false);
     // Sin esto la tarjeta siguiente arranca a mitad del texto de la anterior.
     bodyRef.current?.scrollTo({ top: 0 });
@@ -1116,7 +1038,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     reaction: StoredReaction["reaction"],
     itemOverride?: DiscoveryItem
   ) {
-    const target = itemOverride ?? spotlight;
+    const target = itemOverride ?? shownTrailerItem;
     if (!target) {
       return;
     }
@@ -1136,7 +1058,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
         });
       }
 
-      if (discoverMode === "trailers") {
+      if (shownTrailerItem) {
         const next = moveTrailerCursor({
           available: unexploredTrailerItems.filter((item) => itemKey(item) !== itemKey(target)),
           history: trailerHistory,
@@ -1304,20 +1226,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   async function handleApplyFilters(next: DiscoverFilters) {
     await persistFilters(next);
     setIsFiltersOpen(false);
-  }
-
-  function handleRemoveProvider(providerId: number) {
-    const nextIds = filters.providerIds.filter((id) => id !== providerId);
-    if (nextIds.length === 0) {
-      // Sin plataformas el summary desaparece: dejar el dropdown "abierto"
-      // ensuciaba el estado la proxima vez que aparecia.
-      setIsProviderSummaryOpen(false);
-    }
-    void persistFilters({ ...filters, providerIds: nextIds });
-  }
-
-  function handleClearContentType() {
-    void persistFilters({ ...filters, contentType: "all" });
   }
 
   function handleSave(item = spotlight) {
@@ -1514,7 +1422,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
 
   useEffect(() => {
     const stack = cardStackRef.current;
-    if (discoverMode !== "cards" || !stack) return;
+    if (!stack) return;
     const move = (event: TouchEvent) => {
       const start = cardGestureRef.current;
       if (!start || event.touches.length !== 1) return;
@@ -1579,11 +1487,20 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
         });
       }
       setReviewItem(null);
-      if (discoverMode === "cards" && isCurrentCard(reviewItem)) {
-        await slideCard("next", () => replaceStoredReaction(reviewItem, watchedReaction));
-      } else {
-        replaceStoredReaction(reviewItem, watchedReaction);
+      const next = moveTrailerCursor({
+        available: unexploredTrailerItems.filter((item) => itemKey(item) !== itemKey(reviewItem)),
+        history: trailerHistory,
+        index: trailerHistoryIndex,
+        current: shownTrailerItem,
+        direction: "next",
+        key: itemKey
+      });
+      if (next) startTrailerTransition(next, "next");
+      else {
+        setTrailerHistory([]);
+        setTrailerHistoryIndex(null);
       }
+      replaceStoredReaction(reviewItem, watchedReaction);
     } catch (error) {
       clearCardDrag();
       setSyncMessage(getReactionSaveErrorMessage(error));
@@ -1606,13 +1523,8 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   ].filter((fact): fact is string => Boolean(fact));
 
   const activeFilterCount = countActiveFilters(filters);
-  const selectedProviders = providerCatalog.filter((provider) =>
-    filters.providerIds.includes(provider.id)
-  );
-  const primaryProvider = selectedProviders[0] ?? null;
-  const additionalProviderCount = Math.max(0, selectedProviders.length - 1);
   const isDiscoverBooting =
-    !areFiltersReady || (!areReactionsReady && !reactionSyncError) || isLoadingDeck || !isInitialCardReady;
+    !areFiltersReady || (!areReactionsReady && !reactionSyncError) || isLoadingDeck;
   const shownTrailerKey = shownTrailerItem ? itemKey(shownTrailerItem) : null;
   const shownTrailerPayload = shownTrailerKey ? trailerPayloads[shownTrailerKey] ?? null : null;
   // El reproductor arranca apenas está la ficha; las plataformas llegan después sin frenarlo.
@@ -1621,6 +1533,18 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const shownTrailerWatchOptions = shownTrailerPayload?.watchOptions ?? EMPTY_WATCH;
   const upcomingTrailerUrl = upcomingTrailerItem ? trailerDetails[itemKey(upcomingTrailerItem)]?.trailerUrl ?? null : null;
   const previousTrailerUrl = previousTrailerItem ? trailerDetails[itemKey(previousTrailerItem)]?.trailerUrl ?? null : null;
+  const shownTrailerBackdrop = shownTrailerItem?.backdropUrl || shownTrailerDetails?.backdropUrl || null;
+  const shownTrailerArtwork = shownTrailerBackdrop || (shownTrailerItem?.posterUrl !== "/images/base.png" ? shownTrailerItem?.posterUrl : null);
+  const shownTrailerGenres = shownTrailerDetails?.genres.length ? shownTrailerDetails.genres : shownTrailerItem?.genres ?? [];
+  const shownTrailerSeasonCount = shownTrailerItem?.mediaType === "tv"
+    ? shownTrailerItem.seasonCount ?? shownTrailerDetails?.seasons.filter((season) => season.seasonNumber > 0).length
+    : null;
+  const shownTrailerFacts = [
+    shownTrailerItem?.year,
+    shownTrailerGenres.length ? shownTrailerGenres.join(" · ") : null,
+    shownTrailerDetails?.runtimeLabel,
+    shownTrailerSeasonCount ? `${shownTrailerSeasonCount} temporada${shownTrailerSeasonCount === 1 ? "" : "s"}` : null
+  ].filter(Boolean).join(" · ");
   const canPlayTrailer = shouldPlayDiscoverTrailer({
     active,
     documentVisible: isDocumentVisible,
@@ -1779,91 +1703,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
       ) : (
         <>
       <div className="discover-filterbar">
-        <div className="discover-filterbar__chips">
-          {activeFilterCount === 0 ? null : (
-            <>
-              {filters.contentType === "all" ? null : (
-                <span className="discover-chip discover-chip--plain">
-                  {CONTENT_TYPE_LABEL[filters.contentType]}
-                  <button
-                    type="button"
-                    className="discover-chip__remove"
-                    onClick={handleClearContentType}
-                    aria-label={`Quitar filtro ${CONTENT_TYPE_LABEL[filters.contentType]}`}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                  </button>
-                </span>
-              )}
-              {primaryProvider ? (
-                <div className="discover-provider-summary" ref={providerSummaryRef}>
-                  <button
-                    type="button"
-                    className="discover-chip discover-provider-summary__trigger"
-                    aria-expanded={isProviderSummaryOpen}
-                    aria-controls="discover-selected-providers"
-                    onClick={() => setIsProviderSummaryOpen((current) => !current)}
-                  >
-                    {primaryProvider.logoUrl ? (
-                      <img src={primaryProvider.logoUrl} alt="" className="discover-chip__logo" />
-                    ) : <span className="discover-chip__logo-fallback" aria-hidden="true">{primaryProvider.name.charAt(0)}</span>}
-                    <span className="discover-provider-summary__name">{primaryProvider.name}</span>
-                    {additionalProviderCount ? <strong>+{additionalProviderCount}</strong> : null}
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="m7 10 5 5 5-5" />
-                    </svg>
-                  </button>
-
-                  {isProviderSummaryOpen ? (
-                    <div
-                      className="discover-provider-summary__menu"
-                      id="discover-selected-providers"
-                      role="list"
-                      aria-label="Plataformas seleccionadas"
-                    >
-                      {selectedProviders.map((provider) => (
-                        <div
-                          className="discover-provider-summary__item"
-                          key={provider.id}
-                          role="listitem"
-                        >
-                          {provider.logoUrl ? <img src={provider.logoUrl} alt="" /> : null}
-                          <span className="discover-provider-summary__name">{provider.name}</span>
-                          <button
-                            type="button"
-                            className="discover-chip__remove"
-                            onClick={() => handleRemoveProvider(provider.id)}
-                            aria-label={`Quitar ${provider.name} de los filtros`}
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M6 6l12 12M18 6L6 18" />
-                            </svg>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </>
-          )}
-        </div>
-
-      <DiscoverModeSwitch mode={discoverMode} disabled={isSyncing} onChange={(mode) => {
-        if (trailerTransitionTimerRef.current !== null) window.clearTimeout(trailerTransitionTimerRef.current);
-        trailerTransitionTimerRef.current = null;
-        if (mode === "cards" && shownTrailerItem) {
-          const index = circleEntries.findIndex((entry) => itemKey(entry.item) === itemKey(shownTrailerItem));
-          if (index >= 0) setCurrentIndex(index);
-        }
-        setTrailerHistory([]);
-        setTrailerHistoryIndex(null);
-        setTrailerTransition(null);
-        setDiscoverMode(mode);
-      }} />
-
         <span
           className="discover-circle-badge"
           aria-label={
@@ -1914,13 +1753,13 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
               const item = trailerTransition?.next ?? dragPreview?.item;
               if (!item) return null;
               // Mismo cuadro que muestra el tráiler precargado, así el pase no tiene saltos.
-              const previewTrailerFrame = youtubeThumbnailUrl(
-                trailerDetails[itemKey(item)]?.trailerUrl ?? (trailerPayloads[itemKey(item)] ?? (previewPayload?.key === itemKey(item) ? previewPayload.payload : null))?.details?.trailerUrl
-              );
-              const previewImage = previewTrailerFrame || item.backdropUrl || item.posterUrl;
+              const previewDetails = trailerDetails[itemKey(item)] ?? (trailerPayloads[itemKey(item)] ?? (previewPayload?.key === itemKey(item) ? previewPayload.payload : null))?.details;
+              const previewTrailerFrame = youtubeThumbnailUrl(previewDetails?.trailerUrl);
+              const previewBackdrop = item.backdropUrl || previewDetails?.backdropUrl;
+              const previewImage = previewTrailerFrame || previewBackdrop || (item.posterUrl !== "/images/base.png" ? item.posterUrl : null);
               return <>
                 <div className="discover-trailer__preview-media">
-                  {previewImage ? <img className={previewTrailerFrame ? "is-video-frame" : undefined} src={previewImage} alt="" /> : null}
+                  {previewImage ? <img className={previewTrailerFrame || previewBackdrop ? "is-video-frame" : undefined} src={previewImage} alt="" /> : null}
                 </div>
                 <div className="discover-trailer__preview-info">
                   <p className="section-eyebrow">{item.mediaType === "tv" ? "Serie" : "Película"}</p>
@@ -1944,6 +1783,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
               title={previousTrailerItem.title}
               trailerUrl={previousTrailerUrl}
               posterUrl={previousTrailerItem.posterUrl}
+              backdropUrl={previousTrailerItem.backdropUrl}
               active={false}
               preload
               soundEnabled={trailerSoundEnabled}
@@ -1952,8 +1792,8 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
           ) : null}
           {!trailerDetailsReady ? (
             <div key={`preparing:${itemKey(shownTrailerItem)}`} className="discover-trailer__preparing" role="status">
-              {shownTrailerItem.posterUrl ? <img src={shownTrailerItem.posterUrl} alt="" /> : null}
-              <span>Preparando tráiler...</span>
+              {shownTrailerArtwork ? <img className={shownTrailerBackdrop ? "is-backdrop" : ""} src={shownTrailerArtwork} alt="" /> : null}
+              <span>Preparando este título...</span>
             </div>
           ) : (
             <DiscoverTrailerPlayer
@@ -1961,16 +1801,10 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
               title={shownTrailerItem.title}
               trailerUrl={shownTrailerDetails?.trailerUrl ?? null}
               posterUrl={shownTrailerItem.posterUrl}
+              backdropUrl={shownTrailerBackdrop}
               active={canPlayTrailer}
               soundEnabled={trailerSoundEnabled}
               onSoundEnabledChange={changeTrailerSound}
-              onUnplayable={() => {
-                const key = itemKey(shownTrailerItem);
-                setBlockedTrailerKeys((current) => new Set(current).add(key));
-                const next = unexploredTrailerItems.find((item) => itemKey(item) !== key);
-                setTrailerHistory(next ? [next] : []);
-                setTrailerHistoryIndex(next ? 0 : null);
-              }}
             />
           )}
           {upcomingTrailerItem && upcomingTrailerUrl ? (
@@ -1979,14 +1813,11 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
               title={upcomingTrailerItem.title}
               trailerUrl={upcomingTrailerUrl}
               posterUrl={upcomingTrailerItem.posterUrl}
+              backdropUrl={upcomingTrailerItem.backdropUrl}
               active={false}
               preload
               soundEnabled={trailerSoundEnabled}
               onSoundEnabledChange={changeTrailerSound}
-              onUnplayable={() => {
-                const key = itemKey(upcomingTrailerItem);
-                setBlockedTrailerKeys((current) => new Set(current).add(key));
-              }}
             />
           ) : null}
           <div className="discover-trailer__info"
@@ -2001,7 +1832,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
                 openMediaDetails(shownTrailerItem);
               }
             }}>
-            <DiscoverCircleRank rank={badgeEntry?.rank ?? null} inside={badgeInsideCircle} className="discover-trailer__circle" />
             <div className="discover-title-row">
               <h2 className="discover-title">{shownTrailerItem.title}</h2>
               <p className="discover-kind">{shownTrailerItem.mediaType === "tv" ? "Serie" : "Película"}</p>
@@ -2013,10 +1843,10 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
               </h2>
             </div>
             <button type="button" className="discover-trailer__details" onClick={() => openMediaDetails(shownTrailerItem)}>Ver ficha</button>
+            {trailerSocialLine ? <DiscoverSocialLine line={trailerSocialLine} onOpenUserProfile={onOpenUserProfile} /> : null}
             <p className="discover-facts">
-              {[shownTrailerItem.year, ...(shownTrailerDetails?.genres.length ? shownTrailerDetails.genres : shownTrailerItem.genres), shownTrailerDetails?.runtimeLabel]
-                .filter(Boolean).join(" · ")}
-              {shownTrailerItem.score ? <span className="discover-trailer__score"> · ★ {shownTrailerItem.score}</span> : null}
+              {shownTrailerFacts}
+              {shownTrailerItem.score ? <span className="discover-trailer__score">{shownTrailerFacts ? " · " : ""}TMDB {shownTrailerItem.score}</span> : null}
             </p>
             <DiscoverWatchOptions options={shownTrailerWatchOptions} />
             <DiscoverOverview key={itemKey(shownTrailerItem)} text={shownTrailerDetails?.overview || shownTrailerItem.overview || "Todavía no hay sinopsis para este título."} />
@@ -2025,7 +1855,6 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
           </div>
           <div className="discover-trailer__bottom">
             {trailerPageError ? <p className="discover-trailer__history-note">No pudimos cargar más títulos. <button type="button" onClick={() => { setTrailerPageError(false); setPageRetryKey((value) => value + 1); }}>Reintentar</button></p> : null}
-            {!trailerPageError && trailerScan.failed && page >= MAX_DECK_PAGES ? <p className="discover-trailer__history-note">Algunos tráilers no se pudieron revisar. <button type="button" onClick={() => setDeckReloadKey((value) => value + 1)}>Reintentar</button></p> : null}
             {hasReactedToShownTrailer ? <p className="discover-trailer__history-note">Ya valoraste este título. Podés seguir explorando.</p> : null}
             {eligibleTrailerItems.length > 1 ? (
               <button
@@ -2048,15 +1877,15 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
         </article>
       ) : discoverMode === "trailers" ? (
         <div className="discover-empty-state" role="status">
-          <p className="section-eyebrow">Tráilers</p>
+          <p className="section-eyebrow">Descubrí</p>
           {isTrailerEnd || trailerEmptyPhase({ scanComplete: trailerScan.complete, page, maxPages: MAX_DECK_PAGES, failed: trailerPageError }) !== "loading" ? <>
-            <h2>{trailerPageError || trailerScan.failed ? "No pudimos completar la búsqueda de tráilers" : "Terminaste este recorrido"}</h2>
-            <p>{trailerPageError || trailerScan.failed ? "Algunas consultas fallaron. Podés reintentar sin cambiar tus filtros." : "No quedan títulos sin explorar en las recomendaciones revisadas para estos filtros."}</p>
+            <h2>{trailerPageError ? "No pudimos completar las recomendaciones" : !eligibleTrailerItems.length && !trailerProgress?.visitedKeys.length ? "No encontramos títulos con estos filtros" : "Terminaste este recorrido"}</h2>
+            <p>{trailerPageError ? "Algunas consultas fallaron. Podés reintentar sin cambiar tus filtros." : !eligibleTrailerItems.length && !trailerProgress?.visitedKeys.length ? "Probá ampliar tus plataformas o cambiar el tipo de contenido." : "No quedan títulos sin explorar en las recomendaciones revisadas para estos filtros."}</p>
             {trailerPageError ? <button type="button" className="primary-button" onClick={() => { setTrailerPageError(false); setPageRetryKey((value) => value + 1); }}>Reintentar</button> : null}
-            {!trailerPageError && trailerScan.failed ? <button type="button" className="primary-button" onClick={() => setDeckReloadKey((value) => value + 1)}>Reintentar</button> : null}
+            {!trailerPageError && !eligibleTrailerItems.length && !trailerProgress?.visitedKeys.length ? <button type="button" className="primary-button" onClick={() => setIsFiltersOpen(true)}>Revisar filtros</button> : null}
             {isTrailerJourneyComplete && trailerProgress?.visitedKeys.length ? <button type="button" className="primary-button" onClick={resetTrailerProgress}>Volver a explorar</button> : null}
             {isTrailerEnd && shownTrailerItem ? <button type="button" className="discover-empty-state__back" onClick={() => setIsTrailerEnd(false)}>Volver al último título</button> : null}
-          </> : <LoadingState label="Buscando tráilers disponibles..." />}
+          </> : <LoadingState label="Buscando más títulos..." />}
         </div>
       ) : spotlight && current ? (
         <div
@@ -2147,25 +1976,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
                 </p>
               </div>
 
-              {socialLine ? (
-                <div className="discover-circle">
-                  <div className="discover-circle__faces media-modal__friend-avatars">
-                    {socialLine.faces.map((watcher) => (
-                      <CircleFriendAvatar
-                        key={watcher.id}
-                        friend={watcher}
-                        onOpenUserProfile={onOpenUserProfile}
-                      />
-                    ))}
-                  </div>
-                  <div className="discover-circle__copy">
-                    <p>
-                      A <strong>{socialLine.first.displayName}</strong>
-                      {socialLine.others} {socialLine.verb}
-                    </p>
-                  </div>
-                </div>
-              ) : null}
+              {socialLine ? <DiscoverSocialLine line={socialLine} onOpenUserProfile={onOpenUserProfile} /> : null}
 
               {primaryFacts.length ? (
                 <p className="discover-facts">{primaryFacts.join(" · ")}</p>
