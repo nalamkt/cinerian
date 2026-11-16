@@ -15428,17 +15428,31 @@ textarea {
   .discover-synopsis-button:active { background: rgba(255, 255, 255, 0.1); }
   .discover-synopsis-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  /* Chevron apoyado sobre la línea de los botones: nunca tapa texto. */
+  /* Chevron flotando en el espacio libre, separado de "Ya la vi". */
   .discover-actions { position: relative; }
-  .discover-actions:has(> .discover-swipe-hint) { padding-top: 16px; }
-  .discover-swipe-hint {
-    top: -13px;
-    bottom: auto;
-    width: 26px;
-    height: 26px;
-    background: #1a1813;
-  }
-  .discover-swipe-hint:active:not(:disabled) { background: #2a2418; }
+  .discover-swipe-hint { bottom: calc(100% + 14px); }
+}
+
+/*
+  Ficha mobile en tres grupos: qué es, quién la recomienda y cómo es, dónde
+  verla. Más aire entre grupos que dentro de cada uno; el margen crece con el
+  alto de la pantalla para que en teléfonos chicos siga entrando todo.
+*/
+.discover-watch__label-stacked { display: none; }
+@media (max-width: 900px) and (min-height: 651px) {
+  .discover-trailer__info .discover-title-row { margin-top: clamp(3px, 1.1dvh, 9px); }
+  .discover-trailer__info .discover-circle { margin-top: clamp(10px, 1.8dvh, 16px); }
+  .discover-trailer__info .discover-facts { margin: clamp(7px, 1.2dvh, 10px) 0 0; }
+  .discover-trailer__info .discover-watch { margin-top: clamp(14px, 3dvh, 26px); }
+  .discover-trailer__info .discover-synopsis-button { margin-top: clamp(10px, 1.8dvh, 16px); }
+}
+/* Con alto de sobra, "Dónde verla" va arriba de las plataformas como rótulo. */
+@media (max-width: 900px) and (min-height: 700px) {
+  .discover-trailer__info .discover-watch { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .discover-trailer__info .discover-watch__label { color: var(--muted); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+  .discover-trailer__info .discover-watch__label::after { content: none; }
+  .discover-trailer__info .discover-watch__label-inline { display: none; }
+  .discover-trailer__info .discover-watch__label-stacked { display: inline; }
 }
 
 .discover-synopsis-sheet { position: fixed; inset: 0; z-index: 150; display: flex; align-items: flex-end; }
