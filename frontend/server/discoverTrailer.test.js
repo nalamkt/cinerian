@@ -272,7 +272,7 @@ test("acciones, plataformas y sinopsis reutilizan piezas de ambos modos", () => 
 
 test("la pista de deslizar queda siempre visible y el filtro activo conserva un nombre accesible", () => {
   const source = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
-  assert.match(source, /eligibleTrailerItems\.length > 1 \? \([\s\S]*?discover-swipe-hint/);
+  assert.match(source, /\(trailer \? eligibleTrailerItems\.length > 1 : circleEntries\.length > 1\) \? \([\s\S]*?discover-swipe-hint/);
   assert.doesNotMatch(source, /trailer-swipe-learned:/);
   assert.match(source, /Filtros activos, abrir filtros/);
   assert.match(source, /discover-circle-badge/);
@@ -355,4 +355,14 @@ test("Tarjetas pasa como TikTok: anterior y siguiente se mueven pegadas a la act
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(css, /\.discover-card--next \.discover-card__stage \{\s*transform: translate3d\(0, calc\(var\(--card-shift, 0px\) \+ var\(--card-drag, 0px\)\), 0\);/);
   assert.doesNotMatch(css, /is-swipe-exiting/);
+});
+
+test("en mobile la sinopsis se abre en una hoja desde abajo, fuera del tráiler", () => {
+  const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
+  const sheet = readFileSync(new URL("../src/components/DiscoverSynopsisSheet.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(panel, /className="discover-synopsis-button"[\s\S]*?setIsSynopsisOpen\(true\)/);
+  assert.match(panel, /<\/article>[\s\S]*?<DiscoverSynopsisSheet/);
+  assert.match(sheet, /createPortal\(/);
+  assert.match(css, /\.discover-synopsis-button \{ display: none; \}\n@media \(max-width: 900px\) \{\n  \.discover-trailer__info \.discover-overview \{ display: none; \}/);
 });

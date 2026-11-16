@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { CircleFriendAvatar, useMediaDetails } from "./MediaDetailsModal";
 import { DiscoverTrailerPlayer } from "./DiscoverTrailerPlayer";
 import { DiscoverOverview } from "./DiscoverOverview";
+import { DiscoverSynopsisSheet } from "./DiscoverSynopsisSheet";
 import { DiscoverWatchOptions } from "./DiscoverWatchOptions";
 import { WatchReviewModal } from "./WatchReviewModal";
 import { LoadingState } from "./LoadingState";
@@ -277,6 +278,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const [isTrailerReturning, setIsTrailerReturning] = useState(false);
   const [trailerPayloads, setTrailerPayloads] = useState<Record<string, RecommendationPayload>>({});
   const [trailerDetails, setTrailerDetails] = useState<Record<string, MediaDetails | null>>({});
+  const [isSynopsisOpen, setIsSynopsisOpen] = useState(false);
   const [progressState, setProgressState] = useState<{ scope: string; progress: TrailerProgress } | null>(null);
   const [trailerPageError, setTrailerPageError] = useState(false);
   const [pageRetryKey, setPageRetryKey] = useState(0);
@@ -450,6 +452,12 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   }, [neighboringTrailerItem]);
 
   // El siguiente al deslizar: se precarga para que arranque sin esperar a YouTube.
+  // Al pasar de película, la hoja de sinopsis se cierra sola.
+  const shownTrailerItemKey = shownTrailerItem ? itemKey(shownTrailerItem) : null;
+  useEffect(() => {
+    setIsSynopsisOpen(false);
+  }, [shownTrailerItemKey]);
+
   const upcomingTrailerItem = useMemo(() => {
     if (!shownTrailerItem) return null;
     const movement = moveTrailerCursor({
@@ -1545,6 +1553,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     shownTrailerDetails?.runtimeLabel,
     shownTrailerSeasonCount ? `${shownTrailerSeasonCount} temporada${shownTrailerSeasonCount === 1 ? "" : "s"}` : null
   ].filter(Boolean).join(" · ");
+  const shownTrailerSynopsis = shownTrailerDetails?.overview || shownTrailerItem?.overview || "Todavía no hay sinopsis para este título.";
   const canPlayTrailer = shouldPlayDiscoverTrailer({
     active,
     documentVisible: isDocumentVisible,
@@ -1628,13 +1637,13 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   function renderDiscoverActions(item: DiscoveryItem, trailer = false) {
     const disabled = isSyncing || (trailer && reactedKeys.has(itemKey(item)));
     return <div className="discover-actions">
-      {!trailer && circleEntries.length > 1 ? (
+      {(trailer ? eligibleTrailerItems.length > 1 : circleEntries.length > 1) ? (
         <button
           type="button"
           className="discover-swipe-hint"
-          aria-label="Siguiente tarjeta"
+          aria-label={trailer ? "Siguiente tráiler" : "Siguiente tarjeta"}
           disabled={isSyncing}
-          onClick={() => void navigateCard("next")}
+          onClick={trailer ? showNextTrailer : () => void navigateCard("next")}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </button>
@@ -1849,24 +1858,17 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
               {shownTrailerItem.score ? <span className="discover-trailer__score">{shownTrailerFacts ? " · " : ""}TMDB {shownTrailerItem.score}</span> : null}
             </p>
             <DiscoverWatchOptions options={shownTrailerWatchOptions} />
-            <DiscoverOverview key={itemKey(shownTrailerItem)} text={shownTrailerDetails?.overview || shownTrailerItem.overview || "Todavía no hay sinopsis para este título."} />
+            <DiscoverOverview key={itemKey(shownTrailerItem)} text={shownTrailerSynopsis} />
+            <button type="button" className="discover-synopsis-button" aria-haspopup="dialog" onClick={() => setIsSynopsisOpen(true)}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9" /></svg>
+              Sinopsis
+            </button>
           </div>
           </div>
           </div>
           <div className="discover-trailer__bottom">
             {trailerPageError ? <p className="discover-trailer__history-note">No pudimos cargar más títulos. <button type="button" onClick={() => { setTrailerPageError(false); setPageRetryKey((value) => value + 1); }}>Reintentar</button></p> : null}
             {hasReactedToShownTrailer ? <p className="discover-trailer__history-note">Ya valoraste este título. Podés seguir explorando.</p> : null}
-            {eligibleTrailerItems.length > 1 ? (
-              <button
-                type="button"
-                className="discover-swipe-hint"
-                aria-label="Siguiente tráiler"
-                disabled={isSyncing}
-                onClick={showNextTrailer}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-              </button>
-            ) : null}
             {renderDiscoverActions(shownTrailerItem, true)}
             <div className="discover-trailer__navigation">
               <button type="button" disabled={trailerHistoryIndex === null || trailerHistoryIndex === 0 || isSyncing} onClick={showPreviousTrailer}>Anterior</button>
@@ -2053,6 +2055,12 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
         isSaving={isSyncing}
         onClose={() => setReviewItem(null)}
         onSubmit={(input) => void handleReviewSubmit(input)}
+      />
+
+      <DiscoverSynopsisSheet
+        open={isSynopsisOpen && Boolean(shownTrailerItem)}
+        text={shownTrailerSynopsis}
+        onClose={() => setIsSynopsisOpen(false)}
       />
     </section>
   );
