@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { CONTENT_TYPE_LABEL } from "../lib/discoverFilters";
-import { getProviderCatalog, type DiscoverFilters, type ProviderOption } from "../lib/tmdb";
+import { DISCOVER_GENRES, DISCOVER_REGIONS } from "../lib/discoverTaxonomy";
+import { getProviderCatalog, NO_FILTERS, type DiscoverFilters, type ProviderOption } from "../lib/tmdb";
 
 type DiscoverFiltersModalProps = {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export function DiscoverFiltersModal({
   const [draft, setDraft] = useState<DiscoverFilters>(filters);
   const [query, setQuery] = useState("");
   const [catalog, setCatalog] = useState<ProviderOption[]>([]);
+  const id = useId();
 
   useEffect(() => {
     if (!isOpen) {
@@ -79,6 +81,24 @@ export function DiscoverFiltersModal({
     }));
   }
 
+  function toggleGenre(id: number) {
+    setDraft((current) => ({
+      ...current,
+      genreIds: (current.genreIds ?? []).includes(id)
+        ? (current.genreIds ?? []).filter((entry) => entry !== id)
+        : [...(current.genreIds ?? []), id]
+    }));
+  }
+
+  function toggleRegion(id: (typeof DISCOVER_REGIONS)[number]["id"]) {
+    setDraft((current) => ({
+      ...current,
+      productionRegions: (current.productionRegions ?? []).includes(id)
+        ? (current.productionRegions ?? []).filter((entry) => entry !== id)
+        : [...(current.productionRegions ?? []), id]
+    }));
+  }
+
   return (
     <div className="filters-modal__backdrop" role="presentation" onClick={onClose}>
       <div
@@ -95,6 +115,7 @@ export function DiscoverFiltersModal({
         <h3 className="filters-modal__title">Filtros</h3>
         <p className="filters-modal__sub">Se guardan para la próxima vez que entres.</p>
 
+        <div className="filters-modal__body">
         <div className="filters-group">
           <p className="filters-group__label">Qué querés ver</p>
           <p className="filters-group__help">Elegí uno.</p>
@@ -112,6 +133,40 @@ export function DiscoverFiltersModal({
             ))}
           </div>
         </div>
+
+        <fieldset className="filters-group filters-group--choices">
+          <legend className="filters-group__label">Género</legend>
+          <div className="filters-group__actions">
+            <p className="filters-group__help">Podés elegir varios. Sin selección, aparecen todos.</p>
+            <button type="button" className="filters-modal__clear" onClick={() => setDraft((current) => ({ ...current, genreIds: [] }))} disabled={!draft.genreIds?.length}>Limpiar género</button>
+          </div>
+          <div className="filters-choice-grid">
+            {DISCOVER_GENRES.map((genre) => (
+              <div className="filters-choice" key={genre.id}>
+                <input id={`${id}-genre-${genre.id}`} type="checkbox" checked={(draft.genreIds ?? []).includes(genre.id)} onChange={() => toggleGenre(genre.id)} />
+                <label htmlFor={`${id}-genre-${genre.id}`}>
+                  {genre.label}{genre.mediaTypes.length === 1 ? ` · ${genre.mediaTypes[0] === "movie" ? "Películas" : "Series"}` : ""}
+                </label>
+              </div>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="filters-group filters-group--choices">
+          <legend className="filters-group__label">Región de producción</legend>
+          <div className="filters-group__actions">
+            <p className="filters-group__help">Según países de producción de TMDB, no según idioma. Podés elegir varias.</p>
+            <button type="button" className="filters-modal__clear" onClick={() => setDraft((current) => ({ ...current, productionRegions: [] }))} disabled={!draft.productionRegions?.length}>Limpiar región</button>
+          </div>
+          <div className="filters-choice-grid">
+            {DISCOVER_REGIONS.map((region) => (
+              <div className="filters-choice" key={region.id}>
+                <input id={`${id}-region-${region.id}`} type="checkbox" checked={(draft.productionRegions ?? []).includes(region.id)} onChange={() => toggleRegion(region.id)} />
+                <label htmlFor={`${id}-region-${region.id}`}>{region.label}</label>
+              </div>
+            ))}
+          </div>
+        </fieldset>
 
         <div className="filters-group">
           <p className="filters-group__label">Tus plataformas</p>
@@ -166,12 +221,13 @@ export function DiscoverFiltersModal({
             <p className="filters-platforms__empty">Cargando plataformas…</p>
           )}
         </div>
+        </div>
 
         <div className="filters-modal__foot">
           <button
             type="button"
             className="filters-modal__clear"
-            onClick={() => setDraft({ providerIds: [], contentType: "all" })}
+            onClick={() => setDraft({ ...NO_FILTERS, providerIds: [], genreIds: [], productionRegions: [] })}
             disabled={isSaving}
           >
             Limpiar filtros

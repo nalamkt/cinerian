@@ -59,6 +59,8 @@ import {
   type WatchOptions
 } from "../lib/tmdb";
 import type { DiscoveryItem, FeedEntry, SeriesAiringInfo } from "../types";
+import { argentinaToday, orderWatchingItems } from "../lib/watchingOrder";
+import { sharedWatchlistKeys } from "../lib/mutualWatchlist";
 
 type ProfileTabsProps = {
   userId: string;
@@ -770,16 +772,11 @@ export function ProfileTabs({
   }, [reactions, titles, viewerReactions]);
 
   const mutualWatchlistItems = useMemo(() => {
-    const viewerWatchlistKeys = new Set(
-      viewerReactions
-        .filter((entry) => entry.reaction === "watchlist")
-        .map((entry) => `${entry.mediaType}-${entry.tmdbId}`)
-    );
-
-    return reactions
-      .filter((entry) => entry.reaction === "watchlist")
-      .filter((entry) => viewerWatchlistKeys.has(`${entry.mediaType}-${entry.tmdbId}`))
-      .map((entry) => titles[`${entry.mediaType}-${entry.tmdbId}`])
+    return sharedWatchlistKeys(
+      viewerReactions.filter((entry) => entry.reaction === "watchlist"),
+      reactions.filter((entry) => entry.reaction === "watchlist")
+    )
+      .map((key) => titles[key])
       .filter((item): item is DiscoveryItem => Boolean(item));
   }, [reactions, titles, viewerReactions]);
 
@@ -1043,6 +1040,7 @@ export function ProfileTabs({
     watching: watchingEntries.length,
     posts: posts.length
   };
+  const watchingGroups = orderWatchingItems(watchingItems, argentinaToday());
 
   async function handleRemove(item: DiscoveryItem) {
     const tabReactions = TAB_REACTIONS[activeTab];
@@ -1123,7 +1121,7 @@ export function ProfileTabs({
           { tmdbId: item.id, mediaType: "tv", addedAt: new Date().toISOString() },
           ...previousEntries
         ];
-        onProfileUpdated(await saveCurrentWatchingEntries(profile.id, nextEntries));
+        onProfileUpdated(await saveCurrentWatchingEntries(profile.id, nextEntries, previousEntries));
         setWatchingEntries(nextEntries);
       }
 
@@ -1314,7 +1312,7 @@ export function ProfileTabs({
     try {
       setIsSyncing(true);
       setSyncMessage(null);
-      const nextProfile = await saveCurrentWatchingEntries(profile.id, nextEntries);
+      const nextProfile = await saveCurrentWatchingEntries(profile.id, nextEntries, watchingEntries);
       onProfileUpdated(nextProfile);
       setWatchingEntries(nextEntries);
     } catch {
@@ -1562,8 +1560,16 @@ export function ProfileTabs({
           ) : null}
 
           {watchingItems.length ? (
-            <div className="profile-watching__list">
-              {watchingItems.map(({ entry, item, airing }) => (
+            <div className="profile-watching__groups">
+              {([
+                { label: "En emisión", items: watchingGroups.active },
+                { label: "Próximos estrenos", items: watchingGroups.upcoming },
+                { label: "En espera", items: watchingGroups.waiting }
+              ] as const).filter((group) => group.items.length).map((group) => (
+                <section key={group.label} className="profile-watching__group" aria-label={group.label}>
+                  <h4>{group.label}</h4>
+                  <div className="profile-watching__list">
+              {group.items.map(({ entry, item, airing }) => (
                 <article key={entry.tmdbId} className="profile-watching-card">
                   <div className="detail-poster detail-poster--grid" onClick={() => openMediaDetails(item)}>
                     <img
@@ -1584,7 +1590,7 @@ export function ProfileTabs({
                         </strong>
                         <span>
                           Serie{item.year ? ` • ${item.year}` : ""}
-                          {airing?.statusLabel ? ` • ${airing.statusLabel}` : ""}
+                          {airing?.statusLabel ? ` • TMDB: ${airing.statusLabel}` : ""}
                         </span>
                       </div>
 
@@ -1614,6 +1620,9 @@ export function ProfileTabs({
                     <WatchNowRow item={item} />
                   </div>
                 </article>
+              ))}
+                  </div>
+                </section>
               ))}
             </div>
           ) : (

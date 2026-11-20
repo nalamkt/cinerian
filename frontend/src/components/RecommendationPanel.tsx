@@ -9,6 +9,7 @@ import { WatchReviewModal } from "./WatchReviewModal";
 import { LoadingState } from "./LoadingState";
 import { RatedReactionIcon } from "./RatedReactionIcon";
 import { createFeedPost, removeFeedEvent } from "../lib/feed";
+import { trackProductEvent } from "../lib/analytics";
 import {
   fetchStoredReactions,
   getReactionSaveErrorMessage,
@@ -334,7 +335,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const trailerReturnTimerRef = useRef<number | null>(null);
   const loadingPageRef = useRef<number | null>(null);
   const deckGenerationRef = useRef(0);
-  const progressScope = trailerProgressStorageKey(userId, filters.contentType, filters.providerIds);
+  const progressScope = trailerProgressStorageKey(userId, filters.contentType, filters.providerIds, filters.genreIds, filters.productionRegions);
   const deckScope = `${progressScope}:${deckReloadKey}`;
   const trailerProgress = progressState?.scope === progressScope ? progressState.progress : null;
 
@@ -1222,6 +1223,9 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     try {
       setIsSavingFilters(true);
       await saveDiscoverFilters(userId, next);
+      if (JSON.stringify(filters) !== JSON.stringify(next)) {
+        void trackProductEvent({ eventName: "discover_filters_applied", userId, featureKey: "recommendations" });
+      }
       setIsInitialCardReady(false);
       setFilters(next);
     } catch {
@@ -2031,7 +2035,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
         <div className="discover-empty-state">
           <p className="section-eyebrow">Descubrí</p>
           <h2>No encontramos títulos con estos filtros</h2>
-          <p>Probá ampliar tus plataformas o cambiar el tipo de contenido para seguir descubriendo.</p>
+          <p>Probá ampliar los géneros, regiones o plataformas para seguir descubriendo.</p>
           <button type="button" className="primary-button" onClick={() => setIsFiltersOpen(true)}>
             Revisar filtros
           </button>

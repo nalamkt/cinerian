@@ -13,9 +13,11 @@ export const EMPTY_TRAILER_PROGRESS: TrailerProgress = {
   visitedKeys: [], currentKey: null, historyKeys: []
 };
 
-export function trailerProgressStorageKey(userId: string, contentType: string, providerIds: number[]) {
+export function trailerProgressStorageKey(userId: string, contentType: string, providerIds: number[], genreIds: number[] = [], productionRegions: string[] = []) {
   const providers = [...providerIds].sort((a, b) => a - b).join(",") || "all";
-  return `cinerian:trailer-progress:v${VERSION}:${userId}:${contentType}:${providers}`;
+  const base = `cinerian:trailer-progress:v${VERSION}:${userId}:${contentType}:${providers}`;
+  if (!genreIds.length && !productionRegions.length) return base;
+  return `${base}:genres=${[...new Set(genreIds)].sort((a, b) => a - b).join(",") || "all"}:regions=${[...new Set(productionRegions)].sort().join(",") || "all"}`;
 }
 
 export function parseTrailerProgress(raw: string | null): TrailerProgress {

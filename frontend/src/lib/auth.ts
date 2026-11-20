@@ -578,7 +578,7 @@ export async function updateProfile(input: UpdateProfileInput): Promise<Profile>
   return normalizeProfileRow(data);
 }
 
-export async function saveCurrentWatchingEntries(userId: string, entries: CurrentWatchingEntry[]): Promise<Profile> {
+export async function saveCurrentWatchingEntries(userId: string, entries: CurrentWatchingEntry[], previousEntries?: CurrentWatchingEntry[]): Promise<Profile> {
   if (!supabase) {
     throw new Error("Supabase no esta configurado.");
   }
@@ -594,6 +594,11 @@ export async function saveCurrentWatchingEntries(userId: string, entries: Curren
     throw error ?? new Error("No pude actualizar las series que estás viendo.");
   }
 
+  if (previousEntries?.length !== undefined && entries.some((entry) =>
+    !previousEntries.some((previous) => previous.tmdbId === entry.tmdbId && previous.mediaType === entry.mediaType)
+  )) {
+    void trackProductEvent({ eventName: "watching_title_added", userId, featureKey: "user", metadata: { mediaType: "tv" } });
+  }
   return normalizeProfileRow(data);
 }
 

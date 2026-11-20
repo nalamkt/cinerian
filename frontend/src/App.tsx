@@ -21,7 +21,7 @@ import { usePublicFeatureFlags } from "./hooks/usePublicFeatureFlags";
 import { getAccessControl, isAppView, type AppView } from "./lib/access";
 import type { ActivityTarget } from "./lib/activity";
 import { MAIN_NAV_ITEMS, MOBILE_NAV_ITEMS, requestedApbView, resolveApbView } from "./lib/apbNavigation";
-import { trackProductEvent } from "./lib/analytics";
+import { recordAppActivity, trackProductEvent } from "./lib/analytics";
 import { signOut } from "./lib/auth";
 import { fetchDiscoverFilters } from "./lib/discoverFilters";
 import { shouldCompactGlobalSearch } from "./lib/globalSearchLayout";
@@ -169,6 +169,7 @@ export default function App() {
   const hasAppliedDefaultViewRef = useRef(false);
   const restoredActiveViewUserRef = useRef<string | null>(null);
   const persistedActiveViewUserRef = useRef<string | null>(null);
+  const lastMeasuredViewRef = useRef<string | null>(null);
   const accessControl = useMemo(
     () =>
       getAccessControl({
@@ -347,10 +348,45 @@ export default function App() {
   }, [sessionUserId]);
 
   useEffect(() => {
+    if (!sessionUserId) return;
+    const userId = sessionUserId;
+    function activityIfVisible() {
+      if (document.visibilityState === "visible") recordAppActivity(userId);
+    }
+    activityIfVisible();
+    document.addEventListener("visibilitychange", activityIfVisible);
+    window.addEventListener("focus", activityIfVisible);
+    document.addEventListener("pointerdown", activityIfVisible);
+    document.addEventListener("keydown", activityIfVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", activityIfVisible);
+      window.removeEventListener("focus", activityIfVisible);
+      document.removeEventListener("pointerdown", activityIfVisible);
+      document.removeEventListener("keydown", activityIfVisible);
+    };
+  }, [sessionUserId]);
+
+  useEffect(() => {
+    if (!sessionUserId || !isActiveViewRestored || restoredActiveViewUserRef.current !== sessionUserId) return;
+    const view = selectedProfileRoute ? "profile" : isGlobalSearchOpen ? "search" : activeView;
+    const measuredKey = `${sessionUserId}:${view}`;
+    if (lastMeasuredViewRef.current === measuredKey) return;
+    lastMeasuredViewRef.current = measuredKey;
+    if (view === "recommendations" || view === "mutual") {
+      void trackProductEvent({
+        eventName: view === "recommendations" ? "discovery_opened" : "mutual_discovery_opened",
+        userId: sessionUserId,
+        featureKey: view
+      });
+    }
+  }, [activeView, isActiveViewRestored, isGlobalSearchOpen, selectedProfileRoute, sessionUserId]);
+
+  useEffect(() => {
     let isMounted = true;
 
     if (!sessionUserId) {
       followSuggestionsLoginRef.current = null;
+      lastMeasuredViewRef.current = null;
       restoredActiveViewUserRef.current = null;
       persistedActiveViewUserRef.current = null;
       setIsActiveViewRestored(false);

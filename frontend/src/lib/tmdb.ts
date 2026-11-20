@@ -13,6 +13,7 @@ import type {
 import { demoDiscovery } from "../data/demoData";
 import { compareByWeightedTmdbScore } from "./titleRanking";
 import { searchReleaseDate, sortSearchResultsByDate } from "./searchChronology";
+import { genreIdsForMedia, type ProductionRegion } from "./discoverTaxonomy";
 
 const apiKey = import.meta.env.VITE_TMDB_API_KEY;
 const baseUrl = "https://api.themoviedb.org/3";
@@ -920,9 +921,11 @@ export type DiscoverFilters = {
   /** provider_id de TMDB. Vacio = cualquier suscripcion disponible en AR. */
   providerIds: number[];
   contentType: "all" | "movie" | "series" | "mini";
+  genreIds?: number[];
+  productionRegions?: ProductionRegion[];
 };
 
-export const NO_FILTERS: DiscoverFilters = { providerIds: [], contentType: "all" };
+export const NO_FILTERS: DiscoverFilters = { providerIds: [], contentType: "all", genreIds: [], productionRegions: [] };
 
 /** TMDB marca las miniseries con with_type=2 en discover/tv. */
 const TMDB_TYPE_MINISERIES = "2";
@@ -940,6 +943,9 @@ export async function getRecommendationTitlesByPage(
     filters.contentType === "all" ||
     filters.contentType === "series" ||
     filters.contentType === "mini";
+  const selectedGenres = filters.genreIds ?? [];
+  const movieGenres = genreIdsForMedia(selectedGenres, "movie");
+  const tvGenres = genreIdsForMedia(selectedGenres, "tv");
 
   function applyCommon(url: URL) {
     url.searchParams.set("api_key", apiKey as string);
@@ -966,9 +972,10 @@ export async function getRecommendationTitlesByPage(
 
   const requests: Array<Promise<{ mediaType: MediaType; results: Record<string, unknown>[] }>> = [];
 
-  if (wantsMovies) {
+  if (wantsMovies && (!selectedGenres.length || movieGenres.length)) {
     const movieUrl = new URL(`${baseUrl}/discover/movie`);
     applyCommon(movieUrl);
+    if (movieGenres.length) movieUrl.searchParams.set("with_genres", movieGenres.join("|"));
     requests.push(
       fetch(movieUrl.toString())
         .then(async (response) => {
@@ -985,9 +992,10 @@ export async function getRecommendationTitlesByPage(
     );
   }
 
-  if (wantsSeries) {
+  if (wantsSeries && (!selectedGenres.length || tvGenres.length)) {
     const tvUrl = new URL(`${baseUrl}/discover/tv`);
     applyCommon(tvUrl);
+    if (tvGenres.length) tvUrl.searchParams.set("with_genres", tvGenres.join("|"));
     if (filters.contentType === "mini") {
       tvUrl.searchParams.set("with_type", TMDB_TYPE_MINISERIES);
     }
@@ -1015,6 +1023,7 @@ export async function getRecommendationTitlesByPage(
     result.status === "fulfilled" ? [result.value] : []
   );
   if (!responses.length) {
+    if (!requests.length) return [];
     throw new Error("TMDB no pudo cargar el catalogo en este momento.");
   }
 
@@ -1523,6 +1532,8 @@ export type TitleAvailability = {
   providerIds: number[];
   /** Solo en series: "Miniseries", "Scripted", etc. Null en peliculas. */
   seriesType: string | null;
+  genreIds: number[];
+  productionCountries: string[];
 };
 
 /**
@@ -1534,9 +1545,7 @@ export type TitleAvailability = {
  */
 /*
   Cache module-level de getTitleAvailability. La funcion se llama varias veces
-  por titulo (una por verificar el ranking, otra al cargar el detalle, otra al
-  armar el modal), y TMDB cuesta ~250ms por llamada. Cacheamos solo las
-  respuestas resueltas (null tambien) para no pedir dos veces lo mismo.
+  por titulo. Los fallos transitorios no se cachean para permitir reintentos.
 */
 const titleAvailabilityCache = new Map<string, Promise<TitleAvailability | null>>();
 
@@ -1574,7 +1583,7 @@ async function getTitleAvailabilityUncached(
     const fallback = demoDiscovery.find(
       (entry) => entry.id === tmdbId && entry.mediaType === mediaType
     );
-    return fallback ? { item: fallback, providerIds: [], seriesType: null } : null;
+    return fallback ? { item: fallback, providerIds: [], seriesType: null, genreIds: [], productionCountries: [] } : null;
   }
 
   const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}`);
@@ -1582,32 +1591,33 @@ async function getTitleAvailabilityUncached(
   url.searchParams.set("language", "es-MX");
   url.searchParams.set("append_to_response", "watch/providers");
 
-  try {
-    const response = await fetch(url.toString());
-    if (!response.ok) {
-      return null;
-    }
+  const response = await fetch(url.toString());
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`TMDB respondio ${response.status} para el detalle.`);
 
-    const payload = (await response.json()) as Record<string, unknown>;
-    const regional = (
-      (payload["watch/providers"] as { results?: Record<string, Record<string, unknown>> } | undefined)
-        ?.results ?? {}
-    )[WATCH_REGION];
+  const payload = (await response.json()) as Record<string, unknown>;
+  const regional = (
+    (payload["watch/providers"] as { results?: Record<string, Record<string, unknown>> } | undefined)
+      ?.results ?? {}
+  )[WATCH_REGION];
 
-    const providerIds = Array.isArray(regional?.flatrate)
-      ? (regional.flatrate as Array<{ provider_id?: number }>)
-          .map((provider) => Number(provider.provider_id))
-          .filter((id) => Number.isFinite(id))
-      : [];
+  const providerIds = Array.isArray(regional?.flatrate)
+    ? (regional.flatrate as Array<{ provider_id?: number }>)
+        .map((provider) => Number(provider.provider_id))
+        .filter((id) => Number.isFinite(id))
+    : [];
 
-    return {
-      item: normalizeItem({ ...payload, media_type: mediaType }),
-      providerIds,
-      seriesType: typeof payload.type === "string" ? payload.type : null
-    };
-  } catch {
-    return null;
-  }
+  return {
+    item: normalizeItem({ ...payload, media_type: mediaType }),
+    providerIds,
+    seriesType: typeof payload.type === "string" ? payload.type : null,
+    genreIds: Array.isArray(payload.genres)
+      ? payload.genres.map((genre) => typeof genre === "object" && genre !== null && "id" in genre ? Number(genre.id) : NaN).filter(Number.isFinite)
+      : [],
+    productionCountries: Array.isArray(payload.production_countries)
+      ? payload.production_countries.map((country) => typeof country === "object" && country !== null && "iso_3166_1" in country ? String(country.iso_3166_1) : "").filter(Boolean)
+      : []
+  };
 }
 
 export type ProviderOption = {
@@ -1961,6 +1971,10 @@ export async function getSeriesAiringInfo(tmdbId: number): Promise<SeriesAiringI
     typeof payload.next_episode_to_air === "object" && payload.next_episode_to_air !== null
       ? (payload.next_episode_to_air as Record<string, unknown>)
       : null;
+  const lastEpisode =
+    typeof payload.last_episode_to_air === "object" && payload.last_episode_to_air !== null
+      ? (payload.last_episode_to_air as Record<string, unknown>)
+      : null;
   const nextEpisodeDate =
     nextEpisode && typeof nextEpisode.air_date === "string" ? nextEpisode.air_date : null;
   const nextEpisodeName =
@@ -1982,7 +1996,7 @@ export async function getSeriesAiringInfo(tmdbId: number): Promise<SeriesAiringI
         : null;
 
   const statusLabels: Record<string, string> = {
-    "Returning Series": "En emisión",
+    "Returning Series": "En curso",
     Ended: "Finalizada",
     Canceled: "Cancelada",
     "In Production": "En producción",
@@ -1994,7 +2008,13 @@ export async function getSeriesAiringInfo(tmdbId: number): Promise<SeriesAiringI
     statusLabel: typeof payload.status === "string" ? statusLabels[payload.status] ?? payload.status : null,
     nextEpisodeLabel,
     nextEpisodeDate,
-    nextEpisodeDayLabel: nextEpisodeDate ? formatWeekday(nextEpisodeDate) : null
+    nextEpisodeDateSource: nextEpisodeDate ? "tmdb" : null,
+    nextEpisodeDayLabel: nextEpisodeDate ? formatWeekday(nextEpisodeDate) : null,
+    lastEpisodeDate: typeof lastEpisode?.air_date === "string" ? lastEpisode.air_date : null,
+    lastEpisodeSeasonNumber: typeof lastEpisode?.season_number === "number" ? lastEpisode.season_number : null,
+    lastEpisodeNumber: typeof lastEpisode?.episode_number === "number" ? lastEpisode.episode_number : null,
+    nextEpisodeSeasonNumber: seasonNumber,
+    nextEpisodeNumber: episodeNumber
   };
 }
 

@@ -270,6 +270,15 @@ export async function saveStoredReaction(input: {
     }
   }).catch(() => undefined);
 
+  if (input.reaction === "watchlist") {
+    void trackProductEvent({
+      eventName: "title_saved",
+      userId: input.userId,
+      featureKey: "watchlist",
+      metadata: { mediaType: input.item.mediaType }
+    });
+  }
+
   notifyReactionsUpdated(input.userId);
 }
 
@@ -333,22 +342,37 @@ export async function fetchWatchlistReactionsForUserIds(
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("media_reactions")
-    .select("user_id, tmdb_id, media_type")
-    .eq("reaction", "watchlist")
-    .in("user_id", userIds)
-    .in("tmdb_id", tmdbIds);
+  const results: Array<{ userId: string; tmdbId: number; mediaType: MediaType }> = [];
+  for (let userIndex = 0; userIndex < userIds.length; userIndex += 50) {
+    const users = userIds.slice(userIndex, userIndex + 50);
+    for (let index = 0; index < tmdbIds.length; index += 100) {
+      const batch = tmdbIds.slice(index, index + 100);
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("media_reactions")
+          .select("user_id, tmdb_id, media_type")
+          .eq("reaction", "watchlist")
+          .in("user_id", users)
+          .in("tmdb_id", batch)
+          .order("user_id")
+          .order("tmdb_id")
+          .order("media_type")
+          .range(from, from + REACTION_PAGE_SIZE - 1);
 
-  if (error) {
-    throw error;
+        if (error) throw error;
+        const page = data ?? [];
+        results.push(...page.map((entry) => ({
+          userId: entry.user_id as string,
+          tmdbId: Number(entry.tmdb_id),
+          mediaType: entry.media_type as MediaType
+        })));
+        if (page.length < REACTION_PAGE_SIZE) break;
+        from += REACTION_PAGE_SIZE;
+      }
+    }
   }
-
-  return (data ?? []).map((entry) => ({
-    userId: entry.user_id as string,
-    tmdbId: Number(entry.tmdb_id),
-    mediaType: entry.media_type as MediaType
-  }));
+  return results;
 }
 
 /**

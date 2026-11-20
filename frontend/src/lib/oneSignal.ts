@@ -1,4 +1,6 @@
 import OneSignal from "react-onesignal";
+import { trackProductEvent } from "./analytics";
+import { verifiedPushClickId } from "./analyticsSession";
 
 const ONE_SIGNAL_APP_ID = import.meta.env.VITE_ONESIGNAL_APP_ID ?? "47939fb0-3234-4852-a5da-1ac4ec3d4f5a";
 const SERVICE_WORKER_PATH = "/push/onesignal/OneSignalSDKWorker.js";
@@ -13,6 +15,13 @@ export type OneSignalConnectionStatus = {
 };
 
 let initializationTask: Promise<void> | null = null;
+let clickTrackingInstalled = false;
+
+function trackVerifiedPushClick(event: { notification: { notificationId: string } }) {
+  const notificationId = verifiedPushClickId(event.notification.notificationId);
+  if (!notificationId) return;
+  void trackProductEvent({ eventName: "push_opened", dedupeKey: notificationId });
+}
 
 function canUseWebPush() {
   return typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator;
@@ -24,6 +33,12 @@ export async function initializeOneSignal() {
   }
 
   if (!initializationTask) {
+    // El wrapper permite registrar el listener en su cola antes de que el SDK
+    // termine de iniciar; así no se pierde un clic durante la inicialización.
+    if (!clickTrackingInstalled) {
+      OneSignal.Notifications.addEventListener("click", trackVerifiedPushClick);
+      clickTrackingInstalled = true;
+    }
     initializationTask = OneSignal.init({
       appId: ONE_SIGNAL_APP_ID,
       autoResubscribe: true,

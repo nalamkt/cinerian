@@ -87,7 +87,13 @@ export type SeriesAiringInfo = {
   statusLabel: string | null;
   nextEpisodeLabel: string | null;
   nextEpisodeDate: string | null;
+  nextEpisodeDateSource: "tmdb" | "estimated" | null;
   nextEpisodeDayLabel: string | null;
+  lastEpisodeDate: string | null;
+  lastEpisodeSeasonNumber: number | null;
+  lastEpisodeNumber: number | null;
+  nextEpisodeSeasonNumber: number | null;
+  nextEpisodeNumber: number | null;
 };
 
 export type StreamingProvider = {

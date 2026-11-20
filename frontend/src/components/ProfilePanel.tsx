@@ -51,6 +51,8 @@ export function ProfilePanel({
   const visibilitySettings = profile?.visibility_settings;
   const [stats, setStats] = useState({ likes: 0, watched: 0, followers: 0, following: 0 });
   const [isEditing, setIsEditing] = useState(false);
+  const [initialAvatarFile, setInitialAvatarFile] = useState<File | null>(null);
+  const [profileSaveMessage, setProfileSaveMessage] = useState<string | null>(null);
   const [focusNotificationSettings, setFocusNotificationSettings] = useState(false);
   const [followerProfiles, setFollowerProfiles] = useState<Profile[]>([]);
   const [followingProfiles, setFollowingProfiles] = useState<Profile[]>([]);
@@ -130,6 +132,11 @@ export function ProfilePanel({
     }
   }, [profile]);
 
+  function closeEditor() {
+    setIsEditing(false);
+    setInitialAvatarFile(null);
+  }
+
   function openPeoplePopup(tab: "followers" | "following") {
     setPeopleSearchQuery("");
     setPeoplePopupTab(tab);
@@ -158,13 +165,30 @@ export function ProfilePanel({
       ) : null}
 
       {!watchingOnly && !watchlistOnly ? <div className="profile-hero">
-        <div className="profile-avatar" aria-hidden="true">
-          {avatarUrl ? (
-            <img src={avatarUrl} alt={`Avatar de ${displayName}`} className="profile-avatar__image" />
-          ) : (
-            displayName.charAt(0).toUpperCase()
-          )}
-        </div>
+        {isOwnProfile && onProfileUpdated ? (
+          <label className="profile-avatar profile-avatar--editable" aria-label="Cambiar foto de perfil">
+            <input
+              className="profile-avatar__file-input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              aria-label="Cambiar foto de perfil"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) {
+                  setInitialAvatarFile(file);
+                  setFocusNotificationSettings(false);
+                  setIsEditing(true);
+                }
+                event.currentTarget.value = "";
+              }}
+            />
+            {avatarUrl ? <img src={avatarUrl} alt="" className="profile-avatar__image" /> : displayName.charAt(0).toUpperCase()}
+          </label>
+        ) : (
+          <div className="profile-avatar" aria-hidden="true">
+            {avatarUrl ? <img src={avatarUrl} alt="" className="profile-avatar__image" /> : displayName.charAt(0).toUpperCase()}
+          </div>
+        )}
 
         <div className="profile-hero__copy">
           <div className="profile-hero__header">
@@ -180,7 +204,7 @@ export function ProfilePanel({
                 <button
                   type="button"
                   className="profile-share-button"
-                  onClick={() => { setFocusNotificationSettings(false); setIsEditing(true); }}
+                  onClick={() => { setInitialAvatarFile(null); setFocusNotificationSettings(false); setIsEditing(true); }}
                 >
                   Editar perfil
                 </button>
@@ -290,15 +314,17 @@ export function ProfilePanel({
         </div>
       ) : null}
 
+      {profileSaveMessage ? <p className="inline-status" role="status">{profileSaveMessage}</p> : null}
+
       {isOwnProfile && profile && onProfileUpdated && isEditing ? (
         createPortal(
           <div
             className="media-modal__backdrop media-modal__backdrop--profile-editor"
             role="presentation"
-            onClick={() => setIsEditing(false)}
+            onClick={closeEditor}
             onMouseDown={(event) => {
               if (event.target === event.currentTarget) {
-                setIsEditing(false);
+                closeEditor();
               }
             }}
           >
@@ -307,7 +333,7 @@ export function ProfilePanel({
               role="presentation"
               onMouseDown={(event) => {
                 if (event.target === event.currentTarget) {
-                  setIsEditing(false);
+                  closeEditor();
                 }
               }}
             >
@@ -317,7 +343,7 @@ export function ProfilePanel({
                     <button
                       type="button"
                       className="media-modal__back"
-                      onClick={() => setIsEditing(false)}
+                      onClick={closeEditor}
                       aria-label="Cerrar editor"
                       data-escape-dismiss
                     >
@@ -326,10 +352,13 @@ export function ProfilePanel({
                   </div>
                   <EditProfileForm
                     profile={profile}
+                    initialAvatarFile={initialAvatarFile}
                     focusNotifications={focusNotificationSettings}
-                    onCancel={() => setIsEditing(false)}
-                    onSaved={(nextProfile) => {
+                    onCancel={closeEditor}
+                    onSaved={(nextProfile, message) => {
                       onProfileUpdated(nextProfile);
+                      setProfileSaveMessage(message);
+                      setInitialAvatarFile(null);
                       setIsEditing(false);
                     }}
                   />

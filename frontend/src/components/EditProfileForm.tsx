@@ -7,13 +7,15 @@ import {
   type ProfileVisibilitySettings,
   updateProfile
 } from "../lib/auth";
+import { commitAvatarChange, drawAvatarCrop, exportAvatarCrop, removeOwnedAvatar, uploadAvatar, validateAvatarFile } from "../lib/avatarUpload";
 import { NotificationPreferences } from "./NotificationPreferences";
 
 type EditProfileFormProps = {
   profile: Profile;
   onCancel: () => void;
-  onSaved: (profile: Profile) => void;
+  onSaved: (profile: Profile, message: string) => void;
   focusNotifications?: boolean;
+  initialAvatarFile?: File | null;
 };
 
 type FormState = {
@@ -35,8 +37,13 @@ function normalizeUsername(value: string) {
     .slice(0, 24);
 }
 
-export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications = false }: EditProfileFormProps) {
+export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications = false, initialAvatarFile = null }: EditProfileFormProps) {
   const notificationsRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cropCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const avatarCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const imageUrlRef = useRef<string | null>(null);
+  const selectionRef = useRef(0);
   const [form, setForm] = useState<FormState>({
     displayName: profile.display_name,
     username: profile.username,
@@ -47,7 +54,64 @@ export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications
     visibilitySettings: profile.visibility_settings
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [avatarImage, setAvatarImage] = useState<HTMLImageElement | null>(null);
+  const [avatarRemoved, setAvatarRemoved] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [cropX, setCropX] = useState(0);
+  const [cropY, setCropY] = useState(0);
+
+  useEffect(() => () => {
+    selectionRef.current += 1;
+    if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (avatarImage && cropCanvasRef.current) {
+      drawAvatarCrop(cropCanvasRef.current, avatarImage, zoom, cropX, cropY);
+    }
+    if (avatarImage && avatarCanvasRef.current) {
+      drawAvatarCrop(avatarCanvasRef.current, avatarImage, zoom, cropX, cropY);
+    }
+  }, [avatarImage, zoom, cropX, cropY]);
+
+  useEffect(() => {
+    if (initialAvatarFile) void prepareAvatar(initialAvatarFile);
+  }, [initialAvatarFile]);
+
+  async function prepareAvatar(file: File) {
+    const selection = ++selectionRef.current;
+    setIsPreparing(true);
+    setError(null);
+    let objectUrl: string | null = null;
+    try {
+      await validateAvatarFile(file);
+      objectUrl = URL.createObjectURL(file);
+      const image = new Image();
+      image.src = objectUrl;
+      await image.decode();
+      if (selection !== selectionRef.current) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+      if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 40_000_000) {
+        throw new Error("La imagen tiene dimensiones no compatibles.");
+      }
+      if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current);
+      imageUrlRef.current = objectUrl;
+      setAvatarImage(image);
+      setAvatarRemoved(false);
+      setZoom(1);
+      setCropX(0);
+      setCropY(0);
+    } catch (cause) {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (selection === selectionRef.current) setError(cause instanceof Error ? cause.message : "No pude abrir esa imagen.");
+    } finally {
+      if (selection === selectionRef.current) setIsPreparing(false);
+    }
+  }
 
   useEffect(() => {
     if (!focusNotifications) {
@@ -87,7 +151,6 @@ export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications
     const displayName = form.displayName.trim();
     const username = normalizeUsername(form.username);
     const bio = form.bio.trim();
-    const avatarUrl = form.avatarUrl.trim();
 
     if (displayName.length < 2) {
       setError("El nombre visible tiene que tener al menos 2 caracteres.");
@@ -103,7 +166,13 @@ export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications
     setError(null);
 
     try {
-      const nextProfile = await updateProfile({
+      const change = avatarImage
+        ? { kind: "replace" as const, blob: await exportAvatarCrop(avatarImage, zoom, cropX, cropY) }
+        : avatarRemoved ? { kind: "remove" as const } : { kind: "keep" as const };
+      const result = await commitAvatarChange(profile.avatar_url ?? "", change, {
+        upload: (blob) => uploadAvatar(profile.id, blob),
+        remove: (url) => removeOwnedAvatar(profile.id, url),
+        update: (avatarUrl) => updateProfile({
         userId: profile.id,
         displayName,
         username,
@@ -116,9 +185,11 @@ export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications
         featuredCollections: profile.featured_collections,
         currentWatching: profile.current_watching,
         visibilitySettings: form.visibilitySettings
+        })
       });
-
-      onSaved(nextProfile);
+      let message = change.kind === "remove" ? "Foto eliminada." : change.kind === "replace" ? "Foto actualizada." : "Perfil actualizado.";
+      if (result.cleanupFailed) message += " No pude retirar el archivo anterior; volvé a intentarlo más tarde.";
+      onSaved(result.value, message);
     } catch (saveError) {
       const message =
         saveError instanceof Error ? saveError.message : "No pude guardar los cambios del perfil.";
@@ -153,7 +224,9 @@ export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications
         <div className="profile-editor__grid">
           <div className="profile-editor__identity-row">
             <div className="profile-editor__avatar-preview">
-              {form.avatarUrl.trim() ? (
+              {avatarImage ? (
+                <canvas ref={avatarCanvasRef} width={96} height={96} role="img" aria-label="Vista previa circular de la foto" />
+              ) : !avatarRemoved && form.avatarUrl.trim() ? (
                 <img src={form.avatarUrl} alt="Preview avatar" className="profile-avatar__image" />
               ) : (
                 <span>{form.displayName.trim().slice(0, 1).toUpperCase() || "C"}</span>
@@ -187,16 +260,42 @@ export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications
             </label>
           </div>
 
-          <label className="profile-editor__field profile-editor__field--full">
-            <span>Avatar</span>
+          <div className="profile-editor__photo profile-editor__field--full">
+            <span className="profile-editor__photo-title">Foto de perfil</span>
             <input
-              type="url"
-              value={form.avatarUrl}
-              onChange={(event) => updateField("avatarUrl", event.target.value)}
-              placeholder="https://..."
+              ref={fileInputRef}
+              className="profile-editor__file-input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              aria-label="Elegir foto de perfil"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) void prepareAvatar(file);
+                event.currentTarget.value = "";
+              }}
             />
-            <small>Por ahora usamos una URL de imagen para que ya puedas personalizarlo.</small>
-          </label>
+            <div className="profile-editor__photo-actions">
+              <button type="button" className="profile-share-button" disabled={isSaving || isPreparing} onClick={() => fileInputRef.current?.click()}>
+                {isPreparing ? "Preparando..." : "Cambiar foto"}
+              </button>
+              {(form.avatarUrl || avatarImage) && !avatarRemoved ? (
+                <button type="button" className="profile-share-button" disabled={isSaving} onClick={() => { setAvatarImage(null); setAvatarRemoved(true); setError(null); }}>
+                  Eliminar foto
+                </button>
+              ) : null}
+            </div>
+            {avatarImage ? (
+              <div className="profile-editor__crop">
+                <canvas ref={cropCanvasRef} width={240} height={240} role="img" aria-label="Vista previa del recorte cuadrado" />
+                <div className="profile-editor__crop-controls">
+                  <label>Zoom <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
+                  <label>Horizontal <input type="range" min="-1" max="1" step="0.05" value={cropX} onChange={(event) => setCropX(Number(event.target.value))} /></label>
+                  <label>Vertical <input type="range" min="-1" max="1" step="0.05" value={cropY} onChange={(event) => setCropY(Number(event.target.value))} /></label>
+                </div>
+              </div>
+            ) : null}
+            <small>JPEG, PNG o WebP, hasta 8 MB. La foto se recorta y optimiza antes de subirla.</small>
+          </div>
 
           <label className="profile-editor__field profile-editor__field--full">
             <span>Bio</span>
@@ -292,13 +391,13 @@ export function EditProfileForm({ profile, onCancel, onSaved, focusNotifications
         <NotificationPreferences userId={profile.id} />
       </div>
 
-      {error ? <div className="inline-status">{error}</div> : null}
+      {error ? <div className="inline-status" role="alert">{error}</div> : null}
 
       <div className="profile-editor__actions">
         <button type="button" className="profile-share-button" onClick={onCancel} disabled={isSaving}>
           Cancelar
         </button>
-        <button type="submit" className="profile-follow-button" disabled={isSaving}>
+        <button type="submit" className="profile-follow-button" disabled={isSaving || isPreparing}>
           {isSaving ? "Guardando..." : "Guardar cambios"}
         </button>
       </div>

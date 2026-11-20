@@ -1205,7 +1205,7 @@ function MediaDetailsModal({
       const nextProfile = await saveCurrentWatchingEntries(profile.id, [
         { tmdbId: item.id, mediaType: "tv", addedAt: new Date().toISOString() },
         ...profile.current_watching
-      ]);
+      ], profile.current_watching);
       onProfileUpdated(nextProfile);
     } catch {
       setWatchingMessage("No pudimos agregar esta serie a Viendo. Probá de nuevo.");

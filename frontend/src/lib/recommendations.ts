@@ -20,6 +20,7 @@ import {
 } from "./tmdb";
 import type { DiscoveryItem, MediaType } from "../types";
 import { compareByWeightedTmdbScore } from "./titleRanking";
+import { matchesProductionRegions } from "./discoverTaxonomy";
 
 const REACTION_WEIGHT: Record<RatedReaction, number> = {
   superliked: 6,
@@ -77,11 +78,11 @@ export type RankedRecommendation = {
  * como condiciones separadas, asi que cuela titulos que en esa plataforma solo
  * se compran y tienen suscripcion en otra.
  */
-function passesFilters(
-  availability: { item: DiscoveryItem; providerIds: number[]; seriesType: string | null },
+export function passesFilters(
+  availability: { item: DiscoveryItem; providerIds: number[]; seriesType: string | null; genreIds: number[]; productionCountries: string[] },
   filters: DiscoverFilters
 ) {
-  const { item, providerIds, seriesType } = availability;
+  const { item, providerIds, seriesType, genreIds, productionCountries } = availability;
 
   if (filters.contentType === "movie" && item.mediaType !== "movie") {
     return false;
@@ -92,6 +93,14 @@ function passesFilters(
   }
 
   if (filters.contentType === "mini" && (item.mediaType !== "tv" || seriesType !== "Miniseries")) {
+    return false;
+  }
+
+  if (filters.genreIds?.length && !genreIds.some((id) => filters.genreIds?.includes(id))) {
+    return false;
+  }
+
+  if (!matchesProductionRegions(productionCountries, filters.productionRegions ?? [])) {
     return false;
   }
 
