@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { decideTrailerAutoplayRecovery, recoverBlockedTrailerAutoplay, requestTrailerAutoplay, shouldRestoreTrailerSound } from "../lib/trailerPlayback";
 import { youtubeThumbnailUrl } from "../lib/discoverTrailer";
+import { chooseTrailerPresentation, shouldExpandTrailerOnRotation, shouldLeaveTrailerOnRotation, type TrailerPresentationMode } from "../lib/trailerFullscreen";
 
 type DiscoverTrailerPlayerProps = {
   title: string;
@@ -113,6 +114,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
   const diagnosticPlayerId = useRef(0);
   if (!diagnosticPlayerId.current) diagnosticPlayerId.current = ++nextDiagnosticPlayerId;
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const mediaRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -137,12 +139,146 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
   const [playbackError, setPlaybackError] = useState(false);
   const [canRetry, setCanRetry] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
+  const [presentationMode, setPresentationMode] = useState<TrailerPresentationMode>("inline");
+  const presentationModeRef = useRef<TrailerPresentationMode>("inline");
+  const [mobilePresentation, setMobilePresentation] = useState(false);
+  const mobilePresentationRef = useRef(false);
+  const landscapeRef = useRef(false);
+  const dismissedRef = useRef(false);
+  const nativeOwnedRef = useRef(false);
+  const nativeRequestPendingRef = useRef(false);
+  const requestTokenRef = useRef(0);
+  const playingRef = useRef(false);
+  playingRef.current = playbackState === "playing";
   const availableUrl = useMemo(
     () => buildDiscoverTrailerUrl(trailerUrl, typeof window === "undefined" ? "https://cinerian.app" : window.location.origin),
     [trailerUrl, retryCount]
   );
   const embedUrl = hasMounted ? availableUrl : null;
+  const hasPlayableVideoRef = useRef(false);
+  hasPlayableVideoRef.current = Boolean(embedUrl && !playbackError && !apiUnavailable && !preload);
   const artworkUrl = backdropUrl || (posterUrl && posterUrl !== "/images/base.png" ? posterUrl : null);
+
+  function present(mode: TrailerPresentationMode) {
+    presentationModeRef.current = mode;
+    setPresentationMode(mode);
+  }
+
+  function leavePresentation(manual: boolean) {
+    requestTokenRef.current += 1;
+    if (manual) dismissedRef.current = true;
+    present("inline");
+    if (nativeOwnedRef.current && document.fullscreenElement === mediaRef.current) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+    nativeOwnedRef.current = false;
+  }
+
+  function enterPresentation(manual: boolean) {
+    const media = mediaRef.current;
+    if (!media || !mobilePresentationRef.current || !activeRef.current || !playingRef.current ||
+      !hasPlayableVideoRef.current || presentationModeRef.current !== "inline" || nativeRequestPendingRef.current || (!manual && dismissedRef.current)) return;
+    const token = ++requestTokenRef.current;
+    const choice = chooseTrailerPresentation({
+      nativeSupported: typeof media.requestFullscreen === "function" && document.fullscreenEnabled !== false,
+      userActivated: manual || navigator.userActivation?.isActive === true
+    });
+    if (choice === "immersive") {
+      present("immersive");
+      return;
+    }
+    nativeRequestPendingRef.current = true;
+    try {
+      void media.requestFullscreen().then(() => {
+        nativeRequestPendingRef.current = false;
+        if (token !== requestTokenRef.current || !activeRef.current || (!manual && !landscapeRef.current)) {
+          if (document.fullscreenElement === media) void document.exitFullscreen().catch(() => undefined);
+          return;
+        }
+        if (document.fullscreenElement !== media) return;
+        nativeOwnedRef.current = true;
+        present("native");
+      }).catch(() => {
+        nativeRequestPendingRef.current = false;
+        if (token === requestTokenRef.current && activeRef.current && (manual || landscapeRef.current)) present("immersive");
+      });
+    } catch {
+      nativeRequestPendingRef.current = false;
+      if (token === requestTokenRef.current) present("immersive");
+    }
+  }
+
+  useEffect(() => {
+    if (preload) return;
+    const orientation = window.matchMedia("(orientation: landscape)");
+    const mobile = window.matchMedia("(pointer: coarse) and (max-width: 1100px)");
+    landscapeRef.current = orientation.matches;
+    mobilePresentationRef.current = mobile.matches;
+    setMobilePresentation(mobile.matches);
+    function handleOrientation() {
+      const wasLandscape = landscapeRef.current;
+      const isLandscape = orientation.matches;
+      mobilePresentationRef.current = mobile.matches;
+      setMobilePresentation(mobile.matches);
+      if (wasLandscape === isLandscape) return;
+      landscapeRef.current = isLandscape;
+      if (!isLandscape) {
+        requestTokenRef.current += 1;
+        if (shouldLeaveTrailerOnRotation(wasLandscape, isLandscape, presentationModeRef.current)) leavePresentation(false);
+        dismissedRef.current = false;
+      } else if (shouldExpandTrailerOnRotation({
+        wasLandscape, isLandscape, mobile: mobile.matches, active: activeRef.current,
+        playing: playingRef.current, hasVideo: hasPlayableVideoRef.current,
+        dismissed: dismissedRef.current, mode: presentationModeRef.current
+      })) {
+        enterPresentation(false);
+      }
+    }
+    if (orientation.addEventListener) orientation.addEventListener("change", handleOrientation);
+    else orientation.addListener(handleOrientation);
+    if (mobile.addEventListener) mobile.addEventListener("change", handleOrientation);
+    else mobile.addListener(handleOrientation);
+    window.addEventListener("resize", handleOrientation);
+    return () => {
+      if (orientation.removeEventListener) orientation.removeEventListener("change", handleOrientation);
+      else orientation.removeListener(handleOrientation);
+      if (mobile.removeEventListener) mobile.removeEventListener("change", handleOrientation);
+      else mobile.removeListener(handleOrientation);
+      window.removeEventListener("resize", handleOrientation);
+      requestTokenRef.current += 1;
+      if (nativeOwnedRef.current && document.fullscreenElement === mediaRef.current) void document.exitFullscreen().catch(() => undefined);
+    };
+  }, [preload]);
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      if (!nativeOwnedRef.current || document.fullscreenElement === mediaRef.current) return;
+      nativeOwnedRef.current = false;
+      dismissedRef.current = true;
+      present("inline");
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    if (!active || !embedUrl || playbackError || apiUnavailable) leavePresentation(false);
+  }, [active, embedUrl, playbackError, apiUnavailable]);
+
+  useEffect(() => {
+    if (presentationMode !== "immersive") return;
+    document.documentElement.classList.add("trailer-immersive");
+    document.body.classList.add("trailer-immersive");
+    function exitOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") leavePresentation(true);
+    }
+    document.addEventListener("keydown", exitOnEscape);
+    return () => {
+      document.documentElement.classList.remove("trailer-immersive");
+      document.body.classList.remove("trailer-immersive");
+      document.removeEventListener("keydown", exitOnEscape);
+    };
+  }, [presentationMode]);
 
   useEffect(() => {
     if (active || preload) setHasMounted(true);
@@ -406,7 +542,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
   }
 
   return (
-    <div className={`discover-trailer__media${preload ? " is-preloading" : ""}${!embedUrl || playbackError || apiUnavailable ? " is-poster" : ""}`} aria-hidden={preload || undefined}>
+    <div ref={mediaRef} className={`discover-trailer__media${preload ? " is-preloading" : ""}${!embedUrl || playbackError || apiUnavailable ? " is-poster" : ""}${presentationMode === "immersive" ? " is-immersive" : ""}`} aria-hidden={preload || undefined}>
       <div className="discover-trailer__frame">
         {embedUrl && !playbackError && !apiUnavailable ? (
           <>
@@ -430,8 +566,13 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
       </div>
       {playbackError && canRetry ? <button type="button" className="discover-trailer__retry" onClick={() => { setPlaybackError(false); setRetryCount((value) => value + 1); }}>Reintentar tráiler</button> : null}
       {embedUrl && !apiUnavailable && !playbackError && !preload ? (
-        <div className="discover-trailer__playback" aria-label="Sonido del tráiler">
+        <div className="discover-trailer__playback" aria-label="Controles del tráiler">
           {playbackState === "blocked" && active && apiReady ? <button type="button" className="discover-trailer__resume" onClick={resumeBlockedPlayback}>Reproducir tráiler</button> : null}
+          {mobilePresentation && active && (playbackState === "playing" || presentationMode !== "inline") ? (
+            <button type="button" className="discover-trailer__fullscreen-toggle" aria-label={presentationMode === "inline" ? "Pantalla completa" : "Salir de pantalla completa"} onClick={() => presentationMode === "inline" ? enterPresentation(true) : leavePresentation(true)}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d={presentationMode === "inline" ? "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" : "M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"} /></svg>
+            </button>
+          ) : null}
           <button type="button" className="discover-trailer__sound-toggle" disabled={!apiReady} aria-label={isMuted ? "Activar sonido del tráiler" : "Silenciar tráiler"} onClick={toggleSound}>
             <span className="discover-trailer__playback-label">{isMuted ? "Activar sonido" : "Silenciar"}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" />{isMuted ? <path d="m17 9 5 6m0-6-5 6" /> : <><path d="M17 9a4 4 0 0 1 0 6" /><path d="M20 6a8 8 0 0 1 0 12" /></>}</svg>
