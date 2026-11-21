@@ -129,7 +129,7 @@ test("un único iframe permanece al pausar temporalmente y se desmonta al cambia
   assert.match(playerSource, /if \(!active\) \{[\s\S]*?player\.pauseVideo\(\)/);
   assert.match(playerSource, /if \(playerRef\.current && iframe\.isConnected\) \{[\s\S]*?playerRef\.current\.pauseVideo\(\)/);
   assert.match(deckSource, /discoverMode === "trailers" && shownTrailerItem && !isTrailerEnd \? \(/);
-  assert.match(deckSource, /active=\{canPlayTrailer\}/);
+  assert.match(deckSource, /active=\{canPlayTrailer && trailerDetailsReady\}/);
   assert.match(deckSource, /soundEnabled=\{trailerSoundEnabled\}/);
 });
 

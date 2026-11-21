@@ -11,6 +11,7 @@ const { chooseTrailerPresentation, shouldExpandTrailerOnRotation, shouldLeaveTra
 const { DiscoverTrailerPlayer, buildDiscoverTrailerUrl } = await vite.ssrLoadModule("/src/components/DiscoverTrailerPlayer.tsx");
 const source = readFileSync(new URL("../src/components/DiscoverTrailerPlayer.tsx", import.meta.url), "utf8");
 const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
 
 const playing = {
   wasLandscape: false, isLandscape: true, mobile: true, active: true,
@@ -73,4 +74,46 @@ test("backdrop sin video no ofrece pantalla completa", () => {
   }));
   assert.match(markup, /discover-trailer__backdrop/);
   assert.doesNotMatch(markup, /discover-trailer__fullscreen-toggle|<iframe/);
+});
+
+test("modo horizontal oculta la interfaz del feed y la navegacion solo en Descubri", () => {
+  assert.match(source, /if \(presentationMode === "inline" \|\| onPresentationChange\) return;[\s\S]*?classList\.add\("trailer-presentation"\)/);
+  assert.match(source, /if \(presentationMode === "immersive"\) \{[\s\S]*?classList\.add\("trailer-immersive"\)/);
+  assert.match(css, /html\.trailer-presentation \.app-shell--discover \.app-topbar/);
+  assert.match(css, /html\.trailer-presentation \.app-shell--discover \.discover--trailers > :not\(\.discover-trailer\)/);
+  for (const element of ["preview", "info", "bottom"]) {
+    assert.match(css, new RegExp(`html\\.trailer-presentation \\.app-shell--discover \\.discover-trailer__${element}`));
+  }
+  assert.match(css, /html\.trailer-presentation \.app-shell--discover \.discover-trailer__stage,[\s\S]*?overflow: visible !important/);
+});
+
+test("salir, cambiar de seccion o desmontar limpia el estado compartido sin reiniciar el iframe", () => {
+  assert.match(source, /if \(!active \|\| !embedUrl \|\| playbackError \|\| apiUnavailable\) leavePresentation\(false\)/);
+  assert.match(source, /document\.documentElement\.classList\.remove\("trailer-presentation"\)/);
+  assert.match(source, /document\.body\.classList\.remove\("trailer-presentation"\)/);
+  assert.match(source, /document\.documentElement\.classList\.remove\("trailer-immersive"\)/);
+  assert.match(source, /if \(manual\) dismissedRef\.current = true/);
+  assert.doesNotMatch(source.slice(source.indexOf("function enterPresentation"), source.indexOf("useEffect(() => {\n    if (active || preload)")), /loadVideoById|seekTo|setRetryCount|onSoundEnabledChange/);
+});
+
+test("swipe vertical en los bordes horizontales usa el cursor existente sin reacciones", () => {
+  assert.match(source, /Math\.abs\(deltaX\) >= Math\.abs\(deltaY\) \|\| !completesTrailerSwipe\(deltaY/);
+  assert.match(source, /navigateImmersive\(deltaY < 0 \? "next" : "previous"\)/);
+  assert.match(panel, /function navigateHorizontalTrailer\(direction: "next" \| "previous"\)[\s\S]*?navigateTrailer\(direction\)/);
+  assert.match(panel, /function navigateTrailer\([\s\S]*?moveTrailerCursor\(/);
+  assert.match(panel, /saveTrailerProgress\(advanceTrailerProgress\(/);
+  assert.doesNotMatch(panel.slice(panel.indexOf("function navigateHorizontalTrailer"), panel.indexOf("function resetTrailerProgress")), /registerReaction/);
+  assert.match(source, /suppressNavigationClickRef\.current = Date\.now\(\) \+ 400/);
+});
+
+test("cambiar entre video y backdrop conserva la sesion inmersiva y la salida", () => {
+  assert.match(panel, /keepImmersive=\{horizontalSession\}/);
+  assert.match(panel, /!trailerDetailsReady && !horizontalSession/);
+  assert.match(source, /presentationMode === "immersive" \|\| \(keepImmersive && presentationMode !== "native"\)/);
+  assert.match(source, /if \(nativeOwnedRef\.current\) leavePresentation\(false\)/);
+  assert.match(panel, /if \(!active\) setHorizontalSession\(false\)/);
+  assert.match(panel, /if \(!orientation\.matches\) setHorizontalSession\(false\)/);
+  assert.match(source, /if \(manual\) onPresentationChange\?\.\(false\)/);
+  assert.match(css, /\.discover-trailer__edge-navigation \{[^}]*pointer-events: none/);
+  assert.match(css, /\.discover-trailer__edge-button \{[^}]*pointer-events: auto/);
 });

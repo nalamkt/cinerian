@@ -25,7 +25,7 @@ export function sortMutualPreview(items: DiscoveryItem[]): DiscoveryItem[] {
 export function buildMutualPreview(keys: string[], titles: Map<string, DiscoveryItem>): { count: number; items: DiscoveryItem[] } {
   return {
     count: keys.length,
-    items: sortMutualPreview(keys.map((key) => titles.get(key)).filter((item): item is DiscoveryItem => Boolean(item))).slice(0, 3)
+    items: sortMutualPreview(keys.map((key) => titles.get(key)).filter((item): item is DiscoveryItem => Boolean(item)))
   };
 }
 

@@ -104,8 +104,20 @@ test("la vista previa usa solo la intersección real, sin duplicados y ordenada 
   ]);
   const preview = buildMutualPreview(keys, titles);
   assert.equal(preview.count, 4);
-  assert.deepEqual(preview.items.map((item) => item.id), [4, 2, 1]);
+  assert.deepEqual(preview.items.map((item) => item.id), [4, 2, 1, 3]);
   assert.deepEqual(sharedWatchlistKeys(own, [{ mediaType: "tv", tmdbId: 1 }]), []);
+});
+
+test("desktop muestra tres coincidencias y mobile todas con acceso a la ficha", () => {
+  const items = [1, 2, 3, 4].map((id) => ({ id, mediaType: "movie", title: `Título ${id}`, score: 10 - id, posterUrl: `/${id}.jpg`, year: "2024" }));
+  const props = { preview: { count: 4, items }, loading: false, error: false, privateWatchlist: false, onOpenDetails: () => {} };
+  const desktop = renderToStaticMarkup(createElement(PreviewTitles, props));
+  const mobile = renderToStaticMarkup(createElement(PreviewTitles, { ...props, mobile: true }));
+  assert.equal((desktop.match(/mutual-discovery__poster-button/g) ?? []).length, 3);
+  assert.equal((mobile.match(/mutual-discovery__poster-button/g) ?? []).length, 4);
+  assert.match(mobile, /aria-label="Ver ficha de Título 4"/);
+  assert.match(mobile, /TMDB 6\.0/);
+  assert.match(readFileSync(new URL("../src/components/MutualDiscovery.tsx", import.meta.url), "utf8"), /onOpenDetails=\{openMediaDetails\}/);
 });
 
 test("la presentación conserva estado vacío, carga, error y privacidad", () => {
@@ -128,6 +140,8 @@ test("mobile tiene acordeón nativo y carrusel; Ver más reutiliza la comparaci�
   assert.match(source, /className="mutual-discovery__person-card"/);
   assert.match(source, /sortPeopleByMutualCount\(matches, counts\)/);
   assert.match(source, /onCompare\(\{ userId: person\.id, username: person\.username \}\)/);
+  assert.match(source, /aria-label=\{`Ver todas las coincidencias con \$\{person\.display_name\}`\}/);
+  assert.match(source, />Ver todo<\/button>/);
   assert.match(styles, /\.mutual-discovery__preview \{ display: flex;[^}]*overflow-x: auto;[^}]*overscroll-behavior-x: contain;/);
   assert.match(styles, /\.mutual-discovery__person-card \{ display: none; \}/);
 });

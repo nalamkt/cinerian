@@ -3238,6 +3238,8 @@ textarea {
 .mutual-discovery__count { margin: 0; color: var(--muted); font-size: 0.88rem; }
 .mutual-discovery__preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; min-width: 0; }
 .mutual-discovery__title { min-width: 0; }
+.mutual-discovery__poster-button { display: block; width: 100%; padding: 0; border: 0; border-radius: 9px; background: none; cursor: pointer; }
+.mutual-discovery__poster-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .mutual-discovery__title img,
 .mutual-discovery__poster-fallback { display: grid; place-items: center; width: 100%; aspect-ratio: 2 / 3; border-radius: 9px; object-fit: cover; background: rgba(252, 195, 95, 0.13); color: var(--accent); }
 .mutual-discovery__title strong,
@@ -3285,6 +3287,7 @@ textarea {
   .mutual-discovery__person-accordion[open] .mutual-discovery__arrow { transform: rotate(180deg); }
   .mutual-discovery__person-content { display: grid; gap: 12px; min-width: 0; padding: 0 12px 14px; }
   .mutual-discovery__preview { display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; padding-bottom: 4px; }
+  .mutual-discovery__preview { touch-action: pan-x pan-y; }
   .mutual-discovery__title { flex: 0 0 104px; scroll-snap-align: start; }
 }
 
@@ -14527,12 +14530,22 @@ textarea {
 .discover-trailer__playback-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .discover-trailer__retry { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 3; border: 1px solid var(--accent); border-radius: 999px; padding: 7px 12px; background: rgba(6, 7, 10, 0.82); color: var(--text); font: inherit; font-size: 0.78rem; cursor: pointer; }
 
+/* El estado del reproductor también retira la navegación y los controles del feed. */
+html.trailer-presentation .app-shell--discover .app-topbar,
+html.trailer-presentation .app-shell--discover .discover--trailers > :not(.discover-trailer),
+html.trailer-presentation .app-shell--discover .discover-trailer__preview,
+html.trailer-presentation .app-shell--discover .discover-trailer__info,
+html.trailer-presentation .app-shell--discover .discover-trailer__bottom { display: none !important; }
+html.trailer-presentation .app-shell--discover .discover-trailer,
+html.trailer-presentation .app-shell--discover .discover-trailer__stage,
+html.trailer-presentation .app-shell--discover .discover-trailer__current { overflow: visible !important; }
+html.trailer-presentation .app-shell--discover .discover-trailer__current { transform: none !important; animation: none !important; }
+
 /* El mismo iframe ocupa el viewport: no se mueve ni se reconstruye al rotar. */
 html.trailer-immersive,
 body.trailer-immersive { overflow: hidden !important; }
 html.discover-mobile-lock.trailer-immersive,
 body.discover-mobile-lock.trailer-immersive { overflow: hidden !important; }
-html.trailer-immersive .discover-trailer__current { transform: none !important; animation: none !important; }
 .discover-trailer__media.is-immersive,
 .discover-trailer__media:fullscreen {
   position: fixed;
@@ -14571,6 +14584,30 @@ html.trailer-immersive .discover-trailer__current { transform: none !important; 
   top: max(10px, env(safe-area-inset-top, 0px));
   right: max(10px, env(safe-area-inset-right, 0px));
 }
+.discover-trailer__edge-navigation { position: absolute; z-index: 4; inset: 0; pointer-events: none; }
+.discover-trailer__edge-button {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: min(36dvh, 180px);
+  min-height: 100px;
+  padding: 0;
+  border: 1px solid rgba(252, 195, 95, 0.4);
+  border-radius: 999px;
+  background: rgba(6, 7, 10, 0.42);
+  color: var(--accent);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
+  transform: translateY(-50%);
+}
+.discover-trailer__edge-button--previous { left: max(8px, env(safe-area-inset-left, 0px)); }
+.discover-trailer__edge-button--next { right: max(8px, env(safe-area-inset-right, 0px)); }
+.discover-trailer__edge-button:disabled { opacity: 0.35; cursor: default; }
+.discover-trailer__edge-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.discover-trailer__edge-button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 .discover-trailer__info { width: min(100%, 700px); margin: 0 auto; cursor: pointer; }
 .discover-trailer__info .discover-circle { cursor: default; }
 .discover-trailer__info .discover-title-row .discover-trailer__title-mobile { display: none; }

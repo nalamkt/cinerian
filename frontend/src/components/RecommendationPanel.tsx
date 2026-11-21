@@ -274,6 +274,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const [trailerHistoryIndex, setTrailerHistoryIndex] = useState<number | null>(null);
   const [isTrailerEnd, setIsTrailerEnd] = useState(false);
   const [trailerTransition, setTrailerTransition] = useState<{ next: DiscoveryItem; direction: "next" | "previous" } | null>(null);
+  const [horizontalSession, setHorizontalSession] = useState(false);
   const [dragPreview, setDragPreview] = useState<{ item: DiscoveryItem; direction: "next" | "previous" } | null>(null);
   const [isTrailerDragging, setIsTrailerDragging] = useState(false);
   const [isTrailerReturning, setIsTrailerReturning] = useState(false);
@@ -338,6 +339,26 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const progressScope = trailerProgressStorageKey(userId, filters.contentType, filters.providerIds, filters.genreIds, filters.productionRegions);
   const deckScope = `${progressScope}:${deckReloadKey}`;
   const trailerProgress = progressState?.scope === progressScope ? progressState.progress : null;
+
+  useEffect(() => {
+    if (!horizontalSession) return;
+    document.documentElement.classList.add("trailer-presentation", "trailer-immersive");
+    document.body.classList.add("trailer-presentation", "trailer-immersive");
+    const orientation = window.matchMedia("(orientation: landscape)");
+    const handleOrientation = () => { if (!orientation.matches) setHorizontalSession(false); };
+    if (orientation.addEventListener) orientation.addEventListener("change", handleOrientation);
+    else orientation.addListener(handleOrientation);
+    return () => {
+      if (orientation.removeEventListener) orientation.removeEventListener("change", handleOrientation);
+      else orientation.removeListener(handleOrientation);
+      document.documentElement.classList.remove("trailer-presentation", "trailer-immersive");
+      document.body.classList.remove("trailer-presentation", "trailer-immersive");
+    };
+  }, [horizontalSession]);
+
+  useEffect(() => {
+    if (!active) setHorizontalSession(false);
+  }, [active]);
 
   useEffect(() => {
     let progress = EMPTY_TRAILER_PROGRESS;
@@ -1281,7 +1302,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
       key: itemKey
     });
     if (!movement) {
-      if (direction === "next" && isTrailerJourneyComplete) setIsTrailerEnd(true);
+      if (direction === "next" && isTrailerJourneyComplete && !horizontalSession) setIsTrailerEnd(true);
       return;
     }
     setIsTrailerEnd(false);
@@ -1294,6 +1315,12 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
 
   function showNextTrailer() {
     navigateTrailer("next");
+  }
+
+  function navigateHorizontalTrailer(direction: "next" | "previous") {
+    if (Date.now() - lastTrailerNavigationRef.current < 750 || isSyncing || trailerTransition) return;
+    lastTrailerNavigationRef.current = Date.now();
+    navigateTrailer(direction);
   }
 
   function resetTrailerProgress() {
@@ -1803,7 +1830,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
               onSoundEnabledChange={changeTrailerSound}
             />
           ) : null}
-          {!trailerDetailsReady ? (
+          {!trailerDetailsReady && !horizontalSession ? (
             <div key={`preparing:${itemKey(shownTrailerItem)}`} className="discover-trailer__preparing" role="status">
               {shownTrailerArtwork ? <img className={shownTrailerBackdrop ? "is-backdrop" : ""} src={shownTrailerArtwork} alt="" /> : null}
               <span>Preparando este título...</span>
@@ -1815,9 +1842,14 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
               trailerUrl={shownTrailerDetails?.trailerUrl ?? null}
               posterUrl={shownTrailerItem.posterUrl}
               backdropUrl={shownTrailerBackdrop}
-              active={canPlayTrailer}
+              active={canPlayTrailer && trailerDetailsReady}
               soundEnabled={trailerSoundEnabled}
               onSoundEnabledChange={changeTrailerSound}
+              keepImmersive={horizontalSession}
+              onPresentationChange={setHorizontalSession}
+              onNavigate={navigateHorizontalTrailer}
+              canNavigatePrevious={Boolean(previousTrailerItem)}
+              canNavigateNext={Boolean(upcomingTrailerItem)}
             />
           )}
           {upcomingTrailerItem && upcomingTrailerUrl ? (

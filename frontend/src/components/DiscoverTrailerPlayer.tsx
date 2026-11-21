@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from "react";
 import { decideTrailerAutoplayRecovery, recoverBlockedTrailerAutoplay, requestTrailerAutoplay, shouldRestoreTrailerSound } from "../lib/trailerPlayback";
-import { youtubeThumbnailUrl } from "../lib/discoverTrailer";
+import { completesTrailerSwipe, youtubeThumbnailUrl } from "../lib/discoverTrailer";
 import { chooseTrailerPresentation, shouldExpandTrailerOnRotation, shouldLeaveTrailerOnRotation, type TrailerPresentationMode } from "../lib/trailerFullscreen";
 
 type DiscoverTrailerPlayerProps = {
@@ -13,6 +13,11 @@ type DiscoverTrailerPlayerProps = {
   preload?: boolean;
   soundEnabled: boolean;
   onSoundEnabledChange: (enabled: boolean) => void;
+  keepImmersive?: boolean;
+  onPresentationChange?: (active: boolean) => void;
+  onNavigate?: (direction: "next" | "previous") => void;
+  canNavigatePrevious?: boolean;
+  canNavigateNext?: boolean;
 };
 
 type YouTubePlayer = {
@@ -110,7 +115,7 @@ export function isPermanentYouTubeError(code: number) {
   return code === 2 || code === 100 || code === 101 || code === 150;
 }
 
-export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUrl, active, preload = false, soundEnabled, onSoundEnabledChange }: DiscoverTrailerPlayerProps) {
+export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUrl, active, preload = false, soundEnabled, onSoundEnabledChange, keepImmersive = false, onPresentationChange, onNavigate, canNavigatePrevious = false, canNavigateNext = false }: DiscoverTrailerPlayerProps) {
   const diagnosticPlayerId = useRef(0);
   if (!diagnosticPlayerId.current) diagnosticPlayerId.current = ++nextDiagnosticPlayerId;
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -149,6 +154,8 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
   const nativeRequestPendingRef = useRef(false);
   const requestTokenRef = useRef(0);
   const playingRef = useRef(false);
+  const navigationTouchRef = useRef<{ x: number; y: number; startedAt: number } | null>(null);
+  const suppressNavigationClickRef = useRef(0);
   playingRef.current = playbackState === "playing";
   const availableUrl = useMemo(
     () => buildDiscoverTrailerUrl(trailerUrl, typeof window === "undefined" ? "https://cinerian.app" : window.location.origin),
@@ -172,6 +179,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
       void document.exitFullscreen().catch(() => undefined);
     }
     nativeOwnedRef.current = false;
+    if (manual) onPresentationChange?.(false);
   }
 
   function enterPresentation(manual: boolean) {
@@ -185,6 +193,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
     });
     if (choice === "immersive") {
       present("immersive");
+      onPresentationChange?.(true);
       return;
     }
     nativeRequestPendingRef.current = true;
@@ -198,13 +207,20 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
         if (document.fullscreenElement !== media) return;
         nativeOwnedRef.current = true;
         present("native");
+        onPresentationChange?.(true);
       }).catch(() => {
         nativeRequestPendingRef.current = false;
-        if (token === requestTokenRef.current && activeRef.current && (manual || landscapeRef.current)) present("immersive");
+        if (token === requestTokenRef.current && activeRef.current && (manual || landscapeRef.current)) {
+          present("immersive");
+          onPresentationChange?.(true);
+        }
       });
     } catch {
       nativeRequestPendingRef.current = false;
-      if (token === requestTokenRef.current) present("immersive");
+      if (token === requestTokenRef.current) {
+        present("immersive");
+        onPresentationChange?.(true);
+      }
     }
   }
 
@@ -225,6 +241,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
       if (!isLandscape) {
         requestTokenRef.current += 1;
         if (shouldLeaveTrailerOnRotation(wasLandscape, isLandscape, presentationModeRef.current)) leavePresentation(false);
+        onPresentationChange?.(false);
         dismissedRef.current = false;
       } else if (shouldExpandTrailerOnRotation({
         wasLandscape, isLandscape, mobile: mobile.matches, active: activeRef.current,
@@ -256,6 +273,7 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
       nativeOwnedRef.current = false;
       dismissedRef.current = true;
       present("inline");
+      onPresentationChange?.(false);
     }
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
@@ -266,19 +284,25 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
   }, [active, embedUrl, playbackError, apiUnavailable]);
 
   useEffect(() => {
-    if (presentationMode !== "immersive") return;
-    document.documentElement.classList.add("trailer-immersive");
-    document.body.classList.add("trailer-immersive");
+    if (presentationMode === "inline" || onPresentationChange) return;
+    document.documentElement.classList.add("trailer-presentation");
+    document.body.classList.add("trailer-presentation");
+    if (presentationMode === "immersive") {
+      document.documentElement.classList.add("trailer-immersive");
+      document.body.classList.add("trailer-immersive");
+    }
     function exitOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") leavePresentation(true);
+      if (event.key === "Escape" && presentationMode === "immersive") leavePresentation(true);
     }
     document.addEventListener("keydown", exitOnEscape);
     return () => {
+      document.documentElement.classList.remove("trailer-presentation");
+      document.body.classList.remove("trailer-presentation");
       document.documentElement.classList.remove("trailer-immersive");
       document.body.classList.remove("trailer-immersive");
       document.removeEventListener("keydown", exitOnEscape);
     };
-  }, [presentationMode]);
+  }, [presentationMode, onPresentationChange]);
 
   useEffect(() => {
     if (active || preload) setHasMounted(true);
@@ -541,8 +565,30 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
     }
   }
 
+  function navigateImmersive(direction: "next" | "previous") {
+    if (nativeOwnedRef.current) leavePresentation(false);
+    onNavigate?.(direction);
+  }
+
+  function startNavigationTouch(event: ReactTouchEvent<HTMLButtonElement>) {
+    if (event.touches.length !== 1) return;
+    navigationTouchRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, startedAt: Date.now() };
+  }
+
+  function endNavigationTouch(event: ReactTouchEvent<HTMLButtonElement>) {
+    const start = navigationTouchRef.current;
+    navigationTouchRef.current = null;
+    if (!start || event.changedTouches.length !== 1) return;
+    const deltaX = event.changedTouches[0].clientX - start.x;
+    const deltaY = event.changedTouches[0].clientY - start.y;
+    if (Math.abs(deltaX) >= Math.abs(deltaY) || !completesTrailerSwipe(deltaY, Date.now() - start.startedAt, mediaRef.current?.clientHeight ?? 600, true)) return;
+    event.preventDefault();
+    suppressNavigationClickRef.current = Date.now() + 400;
+    navigateImmersive(deltaY < 0 ? "next" : "previous");
+  }
+
   return (
-    <div ref={mediaRef} className={`discover-trailer__media${preload ? " is-preloading" : ""}${!embedUrl || playbackError || apiUnavailable ? " is-poster" : ""}${presentationMode === "immersive" ? " is-immersive" : ""}`} aria-hidden={preload || undefined}>
+    <div ref={mediaRef} className={`discover-trailer__media${preload ? " is-preloading" : ""}${!embedUrl || playbackError || apiUnavailable ? " is-poster" : ""}${presentationMode === "immersive" || (keepImmersive && presentationMode !== "native") ? " is-immersive" : ""}`} aria-hidden={preload || undefined}>
       <div className="discover-trailer__frame">
         {embedUrl && !playbackError && !apiUnavailable ? (
           <>
@@ -565,20 +611,25 @@ export function DiscoverTrailerPlayer({ title, trailerUrl, posterUrl, backdropUr
         )}
       </div>
       {playbackError && canRetry ? <button type="button" className="discover-trailer__retry" onClick={() => { setPlaybackError(false); setRetryCount((value) => value + 1); }}>Reintentar tráiler</button> : null}
-      {embedUrl && !apiUnavailable && !playbackError && !preload ? (
+      {(embedUrl && !apiUnavailable && !playbackError && !preload) || keepImmersive ? (
         <div className="discover-trailer__playback" aria-label="Controles del tráiler">
           {playbackState === "blocked" && active && apiReady ? <button type="button" className="discover-trailer__resume" onClick={resumeBlockedPlayback}>Reproducir tráiler</button> : null}
-          {mobilePresentation && active && (playbackState === "playing" || presentationMode !== "inline") ? (
-            <button type="button" className="discover-trailer__fullscreen-toggle" aria-label={presentationMode === "inline" ? "Pantalla completa" : "Salir de pantalla completa"} onClick={() => presentationMode === "inline" ? enterPresentation(true) : leavePresentation(true)}>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d={presentationMode === "inline" ? "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" : "M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"} /></svg>
+          {mobilePresentation && active && (playbackState === "playing" || presentationMode !== "inline" || keepImmersive) ? (
+            <button type="button" className="discover-trailer__fullscreen-toggle" aria-label={presentationMode === "inline" && !keepImmersive ? "Pantalla completa" : "Salir de pantalla completa"} onClick={() => presentationMode === "inline" && !keepImmersive ? enterPresentation(true) : leavePresentation(true)}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d={presentationMode === "inline" && !keepImmersive ? "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" : "M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"} /></svg>
             </button>
           ) : null}
-          <button type="button" className="discover-trailer__sound-toggle" disabled={!apiReady} aria-label={isMuted ? "Activar sonido del tráiler" : "Silenciar tráiler"} onClick={toggleSound}>
+          {embedUrl && !apiUnavailable && !playbackError && !preload ? <button type="button" className="discover-trailer__sound-toggle" disabled={!apiReady} aria-label={isMuted ? "Activar sonido del tráiler" : "Silenciar tráiler"} onClick={toggleSound}>
             <span className="discover-trailer__playback-label">{isMuted ? "Activar sonido" : "Silenciar"}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" />{isMuted ? <path d="m17 9 5 6m0-6-5 6" /> : <><path d="M17 9a4 4 0 0 1 0 6" /><path d="M20 6a8 8 0 0 1 0 12" /></>}</svg>
-          </button>
+          </button> : null}
         </div>
       ) : null}
+      {keepImmersive && onNavigate ? <div className="discover-trailer__edge-navigation" aria-label="Navegar entre títulos">
+        {(["previous", "next"] as const).map((direction) => <button key={direction} type="button" disabled={direction === "previous" ? !canNavigatePrevious : !canNavigateNext} className={`discover-trailer__edge-button discover-trailer__edge-button--${direction}`} aria-label={direction === "previous" ? "Título anterior" : "Siguiente título"} onTouchStart={startNavigationTouch} onTouchEnd={endNavigationTouch} onTouchCancel={() => { navigationTouchRef.current = null; }} onClick={() => { if (Date.now() >= suppressNavigationClickRef.current) navigateImmersive(direction); }}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d={direction === "previous" ? "m6 14 6-6 6 6" : "m6 10 6 6 6-6"} /></svg>
+        </button>)}
+      </div> : null}
     </div>
   );
 }

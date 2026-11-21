@@ -1,4 +1,5 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useMediaDetails } from "./MediaDetailsModal";
 import { publicComparisonSections, type Profile } from "../lib/auth";
 import { fetchStoredReactions, fetchWatchlistReactionsForUserIds, REACTIONS_UPDATED_EVENT } from "../lib/reactions";
 import { getTitleById } from "../lib/tmdb";
@@ -40,12 +41,16 @@ function MutualAvatar({ person }: { person: Profile }) {
 
 type MutualPreview = { count: number; items: DiscoveryItem[] };
 
-export function PreviewTitles({ preview, loading, error, privateWatchlist }: {
+export function PreviewTitles({ preview, loading, error, privateWatchlist, mobile = false, onOpenDetails }: {
   preview: MutualPreview | undefined;
   loading: boolean;
   error: boolean;
   privateWatchlist: boolean;
+  mobile?: boolean;
+  onOpenDetails?: (item: DiscoveryItem) => void;
 }) {
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressOpenUntilRef = useRef(0);
   if (privateWatchlist) return <p className="mutual-discovery__empty">Esta persona no comparte su Watchlist.</p>;
   if (loading) return <p className="mutual-discovery__empty" role="status">Buscando títulos en común...</p>;
   if (error) return <p className="mutual-discovery__empty">No pudimos cargar la vista previa.</p>;
@@ -54,15 +59,26 @@ export function PreviewTitles({ preview, loading, error, privateWatchlist }: {
 
   return (
     <div className="mutual-discovery__preview" aria-label="Títulos en común mejor puntuados">
-      {preview.items.map((item) => (
+      {(mobile ? preview.items : preview.items.slice(0, 3)).map((item) => (
         <div className="mutual-discovery__title" key={watchlistKey({ mediaType: item.mediaType, tmdbId: item.id })}>
-          {item.posterUrl ? <img src={item.posterUrl} alt="" loading="lazy" /> : <span className="mutual-discovery__poster-fallback" aria-hidden="true">C</span>}
+          <button type="button" className="mutual-discovery__poster-button" aria-label={`Ver ficha de ${item.title}`} onTouchStart={(event) => { touchStartRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY }; }} onTouchEnd={(event) => {
+            const start = touchStartRef.current;
+            touchStartRef.current = null;
+            if (start && Math.abs(event.changedTouches[0].clientX - start.x) > 10 && Math.abs(event.changedTouches[0].clientX - start.x) > Math.abs(event.changedTouches[0].clientY - start.y)) suppressOpenUntilRef.current = Date.now() + 350;
+          }} onClick={(event) => { event.stopPropagation(); if (Date.now() >= suppressOpenUntilRef.current) onOpenDetails?.(item); }}>
+            {item.posterUrl ? <img src={item.posterUrl} alt="" loading="lazy" /> : <span className="mutual-discovery__poster-fallback" aria-hidden="true">C</span>}
+          </button>
           <strong>{item.title}</strong>
           <small>{item.year ? `${item.year} · ` : ""}TMDB {item.score.toFixed(1)}</small>
         </div>
       ))}
     </div>
   );
+}
+
+function PreviewTitlesWithDetails(props: Omit<Parameters<typeof PreviewTitles>[0], "onOpenDetails">) {
+  const { openMediaDetails } = useMediaDetails();
+  return <PreviewTitles {...props} onOpenDetails={openMediaDetails} />;
 }
 
 export function MutualDiscovery({ userId, profiles, followingUserIds, onCompare, alwaysOpen = false }: MutualDiscoveryProps) {
@@ -184,20 +200,20 @@ export function MutualDiscovery({ userId, profiles, followingUserIds, onCompare,
                 const privateWatchlist = !publicComparisonSections(person.visibility_settings).watchlist;
                 const preview = previewsReady ? previews?.entries[person.id] : undefined;
                 const count = !privateWatchlist && preview && !previews?.error ? `${preview.count} ${preview.count === 1 ? "título" : "títulos"} en común` : null;
-                const content = <>
-                  <PreviewTitles preview={preview} loading={previewLoading} error={ownLoadError || Boolean(previewsReady && previews?.error)} privateWatchlist={privateWatchlist} />
-                  <button type="button" className="profile-share-button mutual-discovery__more" onClick={() => onCompare({ userId: person.id, username: person.username })}>Ver más<span className="visually-hidden"> con {person.display_name}</span></button>
+                const content = (mobile: boolean) => <>
+                  <PreviewTitlesWithDetails preview={preview} loading={previewLoading} error={ownLoadError || Boolean(previewsReady && previews?.error)} privateWatchlist={privateWatchlist} mobile={mobile} />
+                  <button type="button" className="profile-share-button mutual-discovery__more" aria-label={`Ver todas las coincidencias con ${person.display_name}`} onClick={() => onCompare({ userId: person.id, username: person.username })}>Ver todo</button>
                 </>;
                 return (
                   <div className="mutual-discovery__person" key={person.id}>
                     <article className="mutual-discovery__person-card">
                       <div className="mutual-discovery__person-heading"><MutualAvatar person={person} /><span><strong>{person.display_name}</strong><small>@{person.username}</small></span></div>
                       {count ? <p className="mutual-discovery__count">{count}</p> : null}
-                      {content}
+                      {content(false)}
                     </article>
                     <details className="mutual-discovery__person-accordion">
                       <summary><MutualAvatar person={person} /><span><strong>{person.display_name}</strong><small>{count ?? `@${person.username}`}</small></span><span className="mutual-discovery__arrow" aria-hidden="true">⌄</span></summary>
-                      <div className="mutual-discovery__person-content">{content}</div>
+                      <div className="mutual-discovery__person-content">{content(true)}</div>
                     </details>
                   </div>
                 );
