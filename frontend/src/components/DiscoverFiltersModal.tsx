@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { CONTENT_TYPE_LABEL } from "../lib/discoverFilters";
-import { DISCOVER_GENRES, DISCOVER_REGIONS } from "../lib/discoverTaxonomy";
-import { getProviderCatalog, NO_FILTERS, type DiscoverFilters, type ProviderOption } from "../lib/tmdb";
+import { DISCOVER_GENRES } from "../lib/discoverTaxonomy";
+import { getOriginalLanguageCatalog, getProviderCatalog, NO_FILTERS, type DiscoverFilters, type ProviderOption } from "../lib/tmdb";
+import { FEATURED_ORIGINAL_LANGUAGES, PRIMARY_ORIGINAL_LANGUAGES, originalLanguageLabel, visibleOriginalLanguages } from "../lib/originalLanguages";
 
 type DiscoverFiltersModalProps = {
   isOpen: boolean;
@@ -31,7 +32,13 @@ export function DiscoverFiltersModal({
   const [draft, setDraft] = useState<DiscoverFilters>(filters);
   const [query, setQuery] = useState("");
   const [catalog, setCatalog] = useState<ProviderOption[]>([]);
+  const [languages, setLanguages] = useState<Array<{ id: string; label: string }>>(() => FEATURED_ORIGINAL_LANGUAGES.map((id) => ({ id, label: originalLanguageLabel(id) })));
+  const [areLanguagesExpanded, setAreLanguagesExpanded] = useState(false);
   const id = useId();
+
+  useEffect(() => {
+    if (!isOpen) setAreLanguagesExpanded(false);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -59,6 +66,13 @@ export function DiscoverFiltersModal({
     };
   }, [isOpen, catalog.length]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    let current = true;
+    void getOriginalLanguageCatalog().then((items) => { if (current) setLanguages(items); });
+    return () => { current = false; };
+  }, [isOpen]);
+
   const visibleProviders = useMemo(() => {
     const normalized = normalizeForSearch(query.trim());
     if (!normalized) {
@@ -67,6 +81,8 @@ export function DiscoverFiltersModal({
 
     return catalog.filter((provider) => normalizeForSearch(provider.name).includes(normalized));
   }, [catalog, query]);
+  const visibleLanguages = visibleOriginalLanguages(languages, draft.originalLanguages ?? [], areLanguagesExpanded);
+  const hasMoreLanguages = languages.some((language) => !PRIMARY_ORIGINAL_LANGUAGES.includes(language.id));
 
   if (!isOpen) {
     return null;
@@ -90,12 +106,12 @@ export function DiscoverFiltersModal({
     }));
   }
 
-  function toggleRegion(id: (typeof DISCOVER_REGIONS)[number]["id"]) {
+  function toggleLanguage(id: string) {
     setDraft((current) => ({
       ...current,
-      productionRegions: (current.productionRegions ?? []).includes(id)
-        ? (current.productionRegions ?? []).filter((entry) => entry !== id)
-        : [...(current.productionRegions ?? []), id]
+      originalLanguages: (current.originalLanguages ?? []).includes(id)
+        ? (current.originalLanguages ?? []).filter((entry) => entry !== id)
+        : [...(current.originalLanguages ?? []), id]
     }));
   }
 
@@ -153,19 +169,26 @@ export function DiscoverFiltersModal({
         </fieldset>
 
         <fieldset className="filters-group filters-group--choices">
-          <legend className="filters-group__label">Región de producción</legend>
+          <legend className="filters-group__label">Idioma original</legend>
           <div className="filters-group__actions">
-            <p className="filters-group__help">Según países de producción de TMDB, no según idioma. Podés elegir varias.</p>
-            <button type="button" className="filters-modal__clear" onClick={() => setDraft((current) => ({ ...current, productionRegions: [] }))} disabled={!draft.productionRegions?.length}>Limpiar región</button>
+            <p className="filters-group__help">Idioma en que se creó el título, no doblaje ni país. Podés elegir varios.</p>
+            <button type="button" className="filters-modal__clear" onClick={() => setDraft((current) => ({ ...current, originalLanguages: [] }))} disabled={!draft.originalLanguages?.length}>Limpiar idioma</button>
           </div>
-          <div className="filters-choice-grid">
-            {DISCOVER_REGIONS.map((region) => (
-              <div className="filters-choice" key={region.id}>
-                <input id={`${id}-region-${region.id}`} type="checkbox" checked={(draft.productionRegions ?? []).includes(region.id)} onChange={() => toggleRegion(region.id)} />
-                <label htmlFor={`${id}-region-${region.id}`}>{region.label}</label>
+          <div className="filters-choice-grid" id={`${id}-languages`}>
+            {visibleLanguages.map((language) => (
+              <div className="filters-choice" key={language.id}>
+                <input id={`${id}-language-${language.id}`} type="checkbox" checked={(draft.originalLanguages ?? []).includes(language.id)} onChange={() => toggleLanguage(language.id)} />
+                <label htmlFor={`${id}-language-${language.id}`}>{language.label}</label>
               </div>
             ))}
           </div>
+          {hasMoreLanguages ? <button
+            type="button"
+            className="filters-modal__clear filters-modal__languages-toggle"
+            aria-controls={`${id}-languages`}
+            aria-expanded={areLanguagesExpanded}
+            onClick={() => setAreLanguagesExpanded((current) => !current)}
+          >{areLanguagesExpanded ? "Ver menos" : "Ver más idiomas"}</button> : null}
         </fieldset>
 
         <div className="filters-group">
@@ -227,7 +250,7 @@ export function DiscoverFiltersModal({
           <button
             type="button"
             className="filters-modal__clear"
-            onClick={() => setDraft({ ...NO_FILTERS, providerIds: [], genreIds: [], productionRegions: [] })}
+            onClick={() => setDraft({ ...NO_FILTERS, providerIds: [], genreIds: [], originalLanguages: [] })}
             disabled={isSaving}
           >
             Limpiar filtros

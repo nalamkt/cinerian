@@ -12,10 +12,11 @@ type DiscoveryHubProps = {
   isBrowsing: boolean;
   onToggleBrowse: () => void;
   isGlobalSearchOpen: boolean;
+  onCloseSearch: () => void;
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
 };
 
-export function DiscoveryHub({ userId, canSearch, canDiscover, active, query, onQueryChange, isBrowsing, onToggleBrowse, isGlobalSearchOpen, onOpenUserProfile }: DiscoveryHubProps) {
+export function DiscoveryHub({ userId, canSearch, canDiscover, active, query, onQueryChange, isBrowsing, onToggleBrowse, isGlobalSearchOpen, onCloseSearch, onOpenUserProfile }: DiscoveryHubProps) {
   const showingSearch = Boolean(query.trim()) || isBrowsing || isGlobalSearchOpen || !canDiscover;
 
   return (
@@ -28,9 +29,10 @@ export function DiscoveryHub({ userId, canSearch, canDiscover, active, query, on
           isBrowsing={isBrowsing || !canDiscover}
           canDiscover={canDiscover}
           onToggleBrowse={onToggleBrowse}
-          showInput={false}
-          showEmptyPrompt={isGlobalSearchOpen}
-          showBrowseToggle={isGlobalSearchOpen || isBrowsing}
+          showInput={isGlobalSearchOpen}
+          dedicated={isGlobalSearchOpen}
+          onClose={onCloseSearch}
+          showBrowseToggle={false}
           onOpenUserProfile={onOpenUserProfile}
         />
       ) : null}

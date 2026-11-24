@@ -336,7 +336,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const trailerReturnTimerRef = useRef<number | null>(null);
   const loadingPageRef = useRef<number | null>(null);
   const deckGenerationRef = useRef(0);
-  const progressScope = trailerProgressStorageKey(userId, filters.contentType, filters.providerIds, filters.genreIds, filters.productionRegions);
+  const progressScope = trailerProgressStorageKey(userId, filters.contentType, filters.providerIds, filters.genreIds, filters.originalLanguages);
   const deckScope = `${progressScope}:${deckReloadKey}`;
   const trailerProgress = progressState?.scope === progressScope ? progressState.progress : null;
 

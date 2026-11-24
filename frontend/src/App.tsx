@@ -24,7 +24,6 @@ import { MAIN_NAV_ITEMS, MOBILE_NAV_ITEMS, requestedApbView, resolveApbView } fr
 import { recordAppActivity, trackProductEvent } from "./lib/analytics";
 import { signOut } from "./lib/auth";
 import { fetchDiscoverFilters } from "./lib/discoverFilters";
-import { shouldCompactGlobalSearch } from "./lib/globalSearchLayout";
 import { fetchUnreadInboxCount, INBOX_UPDATED_EVENT } from "./lib/inbox";
 import { createAndShareInvite, PENDING_INVITE_STORAGE_KEY } from "./lib/invites";
 import { clearOneSignalUser, identifyOneSignalUser } from "./lib/oneSignal";
@@ -141,9 +140,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchBrowsing, setIsSearchBrowsing] = useState(false);
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
-  const [isSearchCompact, setIsSearchCompact] = useState(false);
-  const searchSlotRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const searchReturnRef = useRef<{ view: AppView; profileRoute: { userId?: string; username: string } | null; url: string } | null>(null);
   const [inboxTarget, setInboxTarget] = useState<{ target: ActivityTarget; key: number } | null>(null);
   const activityContainerRef = useRef<HTMLDivElement>(null);
@@ -187,21 +183,7 @@ export default function App() {
     [accessControl, hasDiscoveryAccess]
   );
   const visibleDockItems = useMemo(() => visibleNavigationItems.filter((item) => item.id !== "user"), [visibleNavigationItems]);
-  const isDiscoverActive = activeView === "recommendations" && !selectedProfileRoute;
-
-  useEffect(() => {
-    const slot = searchSlotRef.current;
-    if (!slot || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => setIsSearchCompact(shouldCompactGlobalSearch(entry.contentRect.width)));
-    observer.observe(slot);
-    return () => observer.disconnect();
-  }, [sessionUserId, canSearch]);
-
-  useEffect(() => {
-    if (!isGlobalSearchOpen) return;
-    const input = searchInputRef.current;
-    if (input?.getClientRects().length) input.focus();
-  }, [isGlobalSearchOpen, isSearchCompact]);
+  const isDiscoverActive = activeView === "recommendations" && !selectedProfileRoute && !isGlobalSearchOpen;
 
   useEffect(() => {
     if (!selectedProfileRoute && !isGlobalSearchOpen && MAIN_NAV_ITEMS.some((item) => item.id === activeView)) {
@@ -470,6 +452,10 @@ export default function App() {
     const initialView = [requestedView, storedView, preferredView].find((view) =>
       view && (view === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(view))
     ) ?? visibleDockItems[0]?.id ?? "user";
+    if (requestedApbView(window.location.search) === "search" && canSearch) {
+      searchReturnRef.current = { view: storedView ?? preferredView ?? "recommendations", profileRoute: null, url: "/" };
+      setIsGlobalSearchOpen(true);
+    }
     setActiveView(initialView);
     hasAppliedDefaultViewRef.current = true;
     restoredActiveViewUserRef.current = sessionUserId;
@@ -820,6 +806,10 @@ export default function App() {
   }
 
   function handleChangeView(view: AppView) {
+    if (view === "search") {
+      openGlobalSearch();
+      return;
+    }
     const destination = resolveApbView(view, canSearch, canDiscover);
     if (!destination || !(destination === "recommendations" ? hasDiscoveryAccess : accessControl.canAccessView(destination))) return;
     if (document.activeElement instanceof HTMLInputElement && document.activeElement.type === "search") document.activeElement.blur();
@@ -856,6 +846,7 @@ export default function App() {
             isBrowsing={isSearchBrowsing}
             onToggleBrowse={() => setIsSearchBrowsing((current) => !current)}
             isGlobalSearchOpen={isGlobalSearchOpen}
+            onCloseSearch={closeGlobalSearch}
             onOpenUserProfile={handleOpenUserProfile}
           />
         ) : null}
@@ -990,7 +981,7 @@ export default function App() {
         <FollowSuggestionsModal userId={session.user.id} onClose={() => setShowFollowSuggestions(false)} />
       ) : null}
 
-      <div className={`app-shell app-shell--immersive${isDiscoverActive ? " app-shell--discover" : ""}`}>
+      <div className={`app-shell app-shell--immersive${isDiscoverActive ? " app-shell--discover" : ""}${isGlobalSearchOpen && !selectedProfileRoute ? " app-shell--search" : ""}`}>
         {error ? <div className="app-alert app-alert--floating">{error}</div> : null}
         {isLoading ? <div className="app-alert app-alert--session-status">Cargando sesión...</div> : null}
 
@@ -1023,20 +1014,9 @@ export default function App() {
 
           <div className="app-topbar__actions">
             {canSearch ? (
-              <div ref={searchSlotRef} className={`app-topbar__search-slot${isSearchCompact ? " is-compact" : ""}${isGlobalSearchOpen ? " is-open" : ""}`}>
-                <div className="app-topbar__search-inline">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                  <input type="search" value={searchQuery} onFocus={openGlobalSearch} onChange={(event) => changeGlobalSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeGlobalSearch(); } }} aria-label="Buscar en Cinerian" placeholder="Películas, series, personas..." />
-                  {isGlobalSearchOpen || searchQuery ? <button type="button" onClick={closeGlobalSearch} aria-label="Cerrar búsqueda" data-escape-dismiss={isGlobalSearchOpen ? "" : undefined}>×</button> : null}
-                </div>
-                <button type="button" className="app-topbar__search-trigger" onClick={openGlobalSearch} aria-label="Abrir búsqueda global" aria-expanded={isGlobalSearchOpen} aria-controls={isGlobalSearchOpen ? "app-global-search-popover" : undefined}>
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                </button>
-                {isGlobalSearchOpen ? <div className="app-topbar__search-popover" id="app-global-search-popover">
-                  <input ref={searchInputRef} type="search" value={searchQuery} onChange={(event) => changeGlobalSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeGlobalSearch(); } }} aria-label="Buscar películas, series, personas o talentos" placeholder="Películas, series, personas..." />
-                  <button type="button" onClick={closeGlobalSearch} aria-label="Cerrar búsqueda" data-escape-dismiss>Cerrar</button>
-                </div> : null}
-              </div>
+              <button type="button" className="app-topbar__search-trigger" onClick={openGlobalSearch} aria-label="Abrir búsqueda global" aria-expanded={isGlobalSearchOpen}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+              </button>
             ) : null}
                 {accessControl.canAccessView("inbox") ? (
                   <div className="app-activity-anchor" ref={activityContainerRef}>

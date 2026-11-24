@@ -31,7 +31,10 @@ test("el chat conserva el encabezado y desplaza solo los mensajes", () => {
 test("la búsqueda mobile evita autozoom sin impedir el zoom manual", () => {
   assert.match(app, /function closeGlobalSearch\(\) \{\s*if \(document\.activeElement instanceof HTMLInputElement && document\.activeElement\.type === "search"\) document\.activeElement\.blur\(\)/);
   assert.match(app, /function handleChangeView\(view: AppView\) \{[\s\S]*?document\.activeElement\.blur\(\)/);
-  assert.match(styles, /\.app-topbar__search-slot\.is-open \.app-topbar__search-popover \{ display: flex; position: fixed;[^}]*left: 12px; right: 12px; width: auto;/);
+  assert.match(app, /app-shell--search/);
+  assert.match(styles, /\.app-shell--search \.app-topbar \{ position: relative; top: auto; \}/);
+  assert.match(styles, /\.search-panel--dedicated \.search-panel__input--glass input \{ font-size: max\(16px, 1rem\); \}/);
+  assert.doesNotMatch(app, /app-global-search-popover/);
   const viewport = index.match(/name="viewport"\s+content="([^"]+)"/)?.[1] ?? "";
   assert.doesNotMatch(viewport, /maximum-scale|user-scalable=no/);
 });

@@ -13,11 +13,14 @@ export const EMPTY_TRAILER_PROGRESS: TrailerProgress = {
   visitedKeys: [], currentKey: null, historyKeys: []
 };
 
-export function trailerProgressStorageKey(userId: string, contentType: string, providerIds: number[], genreIds: number[] = [], productionRegions: string[] = []) {
+export function trailerProgressStorageKey(userId: string, contentType: string, providerIds: number[], genreIds: number[] = [], originalLanguages: string[] = []) {
   const providers = [...providerIds].sort((a, b) => a - b).join(",") || "all";
   const base = `cinerian:trailer-progress:v${VERSION}:${userId}:${contentType}:${providers}`;
-  if (!genreIds.length && !productionRegions.length) return base;
-  return `${base}:genres=${[...new Set(genreIds)].sort((a, b) => a - b).join(",") || "all"}:regions=${[...new Set(productionRegions)].sort().join(",") || "all"}`;
+  if (!genreIds.length && !originalLanguages.length) return base;
+  const genres = `:genres=${[...new Set(genreIds)].sort((a, b) => a - b).join(",") || "all"}`;
+  // Conserva el progreso previo de quienes solo habían elegido géneros.
+  if (!originalLanguages.length) return `${base}${genres}:regions=all`;
+  return `${base}${genres}:languages=${[...new Set(originalLanguages)].sort().join(",")}`;
 }
 
 export function parseTrailerProgress(raw: string | null): TrailerProgress {

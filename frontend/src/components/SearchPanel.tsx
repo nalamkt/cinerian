@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { SendRecommendationModal } from "./SendRecommendationModal";
 import { TalentDetailsModal } from "./TalentDetailsModal";
@@ -8,6 +8,9 @@ import { useDiscovery } from "../hooks/useDiscovery";
 import { createFeedPost, removeFeedEvent } from "../lib/feed";
 import { listProfiles, type Profile } from "../lib/auth";
 import { DISCOVER_FILTERS_UPDATED_EVENT } from "../lib/discoverFilters";
+import { DISCOVER_GENRES } from "../lib/discoverTaxonomy";
+import { DEFAULT_SEARCH_FILTERS, rankSearchTitles, type SearchCategory, type SearchFilters, type SearchOrder } from "../lib/searchRanking";
+import { scheduleSearchCommit } from "../lib/searchInputTiming";
 import { fetchForYouTitles } from "../lib/personalizedTitles";
 import { preloadPosters } from "../lib/posterPreload";
 import {
@@ -25,7 +28,7 @@ import {
   getTitlesByGenre,
   getTrendingTitles,
   getUpcomingTitles,
-  searchTalent
+  searchTalentPage
 } from "../lib/tmdb";
 import { fetchTopCinerianTitles } from "../lib/topCinerian";
 import type { DiscoveryItem, TalentSearchItem } from "../types";
@@ -38,8 +41,10 @@ type SearchPanelProps = {
   canDiscover: boolean;
   onToggleBrowse: () => void;
   showInput?: boolean;
-  showEmptyPrompt?: boolean;
   showBrowseToggle?: boolean;
+  showRecents?: boolean;
+  dedicated?: boolean;
+  onClose?: () => void;
   onOpenUserProfile: (profile: { userId: string; username?: string }) => void;
 };
 
@@ -77,7 +82,57 @@ function isWatchedReaction(reaction: RecommendationReaction | undefined): reacti
   return reaction === "superliked" || reaction === "liked" || reaction === "disliked";
 }
 
-export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDiscover, onToggleBrowse, showInput = true, showEmptyPrompt = false, showBrowseToggle = true, onOpenUserProfile }: SearchPanelProps) {
+const SearchInput = memo(function SearchInput({ query, onQueryChange, inputRef, onFocus }: {
+  query: string;
+  onQueryChange: (query: string) => void;
+  inputRef: RefObject<HTMLInputElement>;
+  onFocus: () => void;
+}) {
+  const [draft, setDraft] = useState(query);
+  const [isComposing, setIsComposing] = useState(false);
+  const onQueryChangeRef = useRef(onQueryChange);
+  const lastSentRef = useRef(query);
+  onQueryChangeRef.current = onQueryChange;
+
+  useEffect(() => {
+    if (query !== lastSentRef.current) setDraft(query);
+  }, [query]);
+  useEffect(() => {
+    if (isComposing || draft === query) return;
+    return scheduleSearchCommit(draft, (value) => {
+      lastSentRef.current = value;
+      onQueryChangeRef.current(value);
+    });
+  }, [draft, query, isComposing]);
+
+  return <div className="input-stack search-panel__input search-panel__input--glass">
+    <svg className="search-panel__input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+    </svg>
+    <input
+      ref={inputRef}
+      id="cinerian-global-search"
+      type="search"
+      aria-label="Buscar películas, series, usuarios o actores"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onCompositionStart={() => setIsComposing(true)}
+      onCompositionEnd={(event) => { setDraft(event.currentTarget.value); setIsComposing(false); }}
+      onFocus={onFocus}
+      placeholder="Películas, series, usuarios o actores"
+    />
+    {draft ? <button type="button" className="search-panel__input-clear" aria-label="Borrar búsqueda"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => { setDraft(""); lastSentRef.current = ""; onQueryChangeRef.current(""); inputRef.current?.focus(); }}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+      </svg>
+    </button> : null}
+  </div>;
+});
+
+export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDiscover, onToggleBrowse, showInput = true, showBrowseToggle = true, showRecents = false, dedicated = false, onClose, onOpenUserProfile }: SearchPanelProps) {
   const { openMediaDetails } = useMediaDetails();
   const [storedReactions, setStoredReactions] = useState<StoredReaction[]>([]);
   const [areReactionsReady, setAreReactionsReady] = useState(false);
@@ -90,9 +145,13 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
   const [reviewInitialReaction, setReviewInitialReaction] = useState<RatedReaction | null>(null);
   const [sendItem, setSendItem] = useState<DiscoveryItem | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profileLimit, setProfileLimit] = useState(8);
   const [isProfilesLoading, setIsProfilesLoading] = useState(true);
   const [profilesError, setProfilesError] = useState<string | null>(null);
   const [talentResults, setTalentResults] = useState<TalentSearchItem[]>([]);
+  const [talentPage, setTalentPage] = useState(0);
+  const [talentTotalPages, setTalentTotalPages] = useState(0);
+  const [isTalentLoadingMore, setIsTalentLoadingMore] = useState(false);
   const [talentQuery, setTalentQuery] = useState("");
   const [topCinerianTitles, setTopCinerianTitles] = useState<DiscoveryItem[]>([]);
   const [trendingTitles, setTrendingTitles] = useState<DiscoveryItem[]>([]);
@@ -105,14 +164,21 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
   const [activeTalent, setActiveTalent] = useState<TalentSearchItem | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches(userId));
+  const [searchFilters, setSearchFilters] = useState<SearchFilters>(DEFAULT_SEARCH_FILTERS);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const talentRequestRef = useRef(0);
+  const talentControllerRef = useRef<AbortController | null>(null);
+  const talentMoreRef = useRef(false);
   const reactionsRequestRef = useRef(0);
   const [hasOpenedBrowse, setHasOpenedBrowse] = useState(false);
-  const { results, isLoading, error, partial, scannedCount } = useDiscovery(query);
+  const { results, isLoading, isLoadingMore, error, partial, loadMore } = useDiscovery(query);
+  const visibleTitles = useMemo(() => rankSearchTitles(results, query, searchFilters), [results, query, searchFilters]);
 
   useEffect(() => {
     setRecentSearches(loadRecentSearches(userId));
   }, [userId]);
+
+  useEffect(() => { setProfileLimit(8); }, [query]);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -307,8 +373,14 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
 
   useEffect(() => {
     const trimmed = query.trim();
+    const requestId = ++talentRequestRef.current;
+    talentControllerRef.current?.abort();
+    talentMoreRef.current = false;
     setTalentQuery(trimmed);
     setTalentResults([]);
+    setTalentPage(0);
+    setTalentTotalPages(0);
+    setIsTalentLoadingMore(false);
     setTalentError(null);
     setIsTalentLoading(Boolean(trimmed));
 
@@ -317,29 +389,63 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
     }
 
     let isCurrent = true;
-    const timeoutId = window.setTimeout(async () => {
+    const controller = new AbortController();
+    talentControllerRef.current = controller;
+    void (async () => {
       try {
-        const talents = await searchTalent(trimmed);
-        if (isCurrent) {
-          setTalentResults(talents);
+        const page = await searchTalentPage(trimmed, 1, controller.signal);
+        if (isCurrent && talentRequestRef.current === requestId) {
+          setTalentResults(page.items);
+          setTalentPage(1);
+          setTalentTotalPages(page.totalPages);
         }
       } catch {
-        if (isCurrent) {
+        if (isCurrent && talentRequestRef.current === requestId) {
           setTalentError("No pude traer actores y directores ahora.");
           setTalentResults([]);
         }
       } finally {
-        if (isCurrent) {
+        if (isCurrent && talentRequestRef.current === requestId) {
           setIsTalentLoading(false);
         }
       }
-    }, 250);
+    })();
 
     return () => {
       isCurrent = false;
-      window.clearTimeout(timeoutId);
+      controller.abort();
     };
   }, [query]);
+
+  async function loadMoreTalent() {
+    if (talentMoreRef.current || talentPage >= talentTotalPages || talentQuery !== query.trim()) return;
+    talentMoreRef.current = true;
+    const requestId = talentRequestRef.current;
+    const nextPage = talentPage + 1;
+    const controller = new AbortController();
+    talentControllerRef.current = controller;
+    setIsTalentLoadingMore(true);
+    try {
+      const response = await searchTalentPage(query.trim(), nextPage, controller.signal);
+      if (talentRequestRef.current === requestId) {
+        setTalentResults((current) => {
+          const seen = new Set(current.map((entry) => entry.id));
+          return [...current, ...response.items.filter((entry) => !seen.has(entry.id))];
+        });
+        setTalentPage(nextPage);
+        setTalentTotalPages(response.totalPages);
+        setTalentError(null);
+      }
+    } catch {
+      if (talentRequestRef.current === requestId) setTalentError("No pude cargar más talentos. Intentá otra vez.");
+    } finally {
+      if (talentControllerRef.current === controller) {
+        talentControllerRef.current = null;
+        talentMoreRef.current = false;
+      }
+      if (talentRequestRef.current === requestId) setIsTalentLoadingMore(false);
+    }
+  }
 
   const reactionMap = useMemo(
     () =>
@@ -350,6 +456,7 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
   );
 
   const profileResults = useMemo(() => {
+    if (searchFilters.category !== "all" && searchFilters.category !== "people") return [];
     const trimmed = query.trim().toLowerCase().replace(/^@/, "");
     if (!trimmed) {
       return [];
@@ -362,12 +469,18 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
           profile.display_name.toLowerCase().includes(trimmed) ||
           profile.username.toLowerCase().includes(trimmed)
       )
-      .slice(0, 8);
-  }, [profiles, query, userId]);
+      .slice(0, profileLimit);
+  }, [profiles, profileLimit, query, searchFilters.category, userId]);
+  const profileMatchCount = useMemo(() => {
+    const term = query.trim().toLowerCase().replace(/^@/, "");
+    return term && (searchFilters.category === "all" || searchFilters.category === "people")
+      ? profiles.filter((profile) => profile.id !== userId && (profile.display_name.toLowerCase().includes(term) || profile.username.toLowerCase().includes(term))).length
+      : 0;
+  }, [profiles, query, searchFilters.category, userId]);
 
   const hasQuery = Boolean(query.trim());
   const isTalentCurrent = talentQuery === query.trim();
-  const visibleTalentResults = isTalentCurrent ? talentResults : [];
+  const visibleTalentResults = isTalentCurrent && (searchFilters.category === "all" || searchFilters.category === "people") ? talentResults : [];
   const visibleTalentError = isTalentCurrent ? talentError : null;
   const isSearching = isLoading || isTalentLoading || (hasQuery && !isTalentCurrent);
 
@@ -470,42 +583,25 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
   }
 
   return (
-    <section className={`panel search-panel${hasQuery || isBrowsing ? " is-active" : ""}${showInput ? "" : " search-panel--global"}`} onBlur={(event) => {
+    <section className={`panel search-panel${hasQuery || isBrowsing || dedicated ? " is-active" : ""}${showInput ? "" : " search-panel--global"}${dedicated ? " search-panel--dedicated" : ""}`} onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setIsInputFocused(false);
     }}>
-      {showInput ? <div className="input-stack search-panel__input search-panel__input--glass">
-        <svg className="search-panel__input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <circle cx="11" cy="11" r="7" />
-          <path d="m20 20-3.5-3.5" strokeLinecap="round" />
-        </svg>
-        <input
-          ref={searchInputRef}
-          type="search"
-          aria-label="Buscar películas, series, usuarios o actores"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          onFocus={() => setIsInputFocused(true)}
-          placeholder="Películas, series, usuarios o actores"
-        />
-        {query ? (
-          <button
-            type="button"
-            className="search-panel__input-clear"
-            aria-label="Borrar búsqueda"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              onQueryChange("");
-              searchInputRef.current?.focus();
-            }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
-            </svg>
-          </button>
-        ) : null}
-      </div> : null}
+      {dedicated ? <div className="search-panel__heading"><h1>Buscar</h1><button type="button" className="search-panel__close" onClick={onClose} data-escape-dismiss>Cerrar</button></div> : null}
+      {showInput ? <SearchInput query={query} onQueryChange={onQueryChange} inputRef={searchInputRef} onFocus={() => setIsInputFocused(true)} /> : null}
 
-      {showEmptyPrompt && !hasQuery && !isBrowsing ? <p className="search-panel__global-prompt">Buscá películas, series, personas o talentos.</p> : null}
+      {dedicated && hasQuery ? <div className="search-panel__filters">
+        <div className="search-panel__tabs" role="group" aria-label="Tipo de resultado">
+          {([ ["all", "Todo"], ["movie", "Películas"], ["tv", "Series"], ["people", "Personas"] ] as [SearchCategory, string][]).map(([category, label]) => <button key={category} type="button" className={`search-panel__tab${searchFilters.category === category ? " search-panel__tab--active" : ""}`} aria-pressed={searchFilters.category === category} onClick={() => setSearchFilters((current) => ({ ...current, category }))}>{label}</button>)}
+        </div>
+        {searchFilters.category !== "people" ? <div className="search-panel__filter-row">
+          <label><input type="checkbox" checked={searchFilters.excludeAnimation} onChange={(event) => setSearchFilters((current) => ({ ...current, excludeAnimation: event.target.checked }))} /> Excluir animación</label>
+          <label><input type="checkbox" checked={searchFilters.releasedOnly} onChange={(event) => setSearchFilters((current) => ({ ...current, releasedOnly: event.target.checked }))} /> Solo estrenados</label>
+          <label>Ordenar <select value={searchFilters.order} onChange={(event) => setSearchFilters((current) => ({ ...current, order: event.target.value as SearchOrder }))}>
+            <option value="relevance">Relevancia</option><option value="popularity">Popularidad</option><option value="rating">Mejor puntuados</option><option value="newest">Más recientes</option><option value="oldest">Más antiguos</option>
+          </select></label>
+          <details className="search-panel__advanced"><summary>Más filtros</summary><div className="search-panel__advanced-content"><fieldset><legend>Género</legend><div className="search-panel__genre-list">{DISCOVER_GENRES.map((genre) => <label key={genre.id}><input type="checkbox" checked={searchFilters.genreIds.includes(genre.id)} onChange={() => setSearchFilters((current) => ({ ...current, genreIds: current.genreIds.includes(genre.id) ? current.genreIds.filter((id) => id !== genre.id) : [...current.genreIds, genre.id] }))} /> {genre.label}</label>)}</div></fieldset><label>Desde <input type="number" inputMode="numeric" min="1880" max="2100" placeholder="Año" value={searchFilters.yearFrom} onChange={(event) => setSearchFilters((current) => ({ ...current, yearFrom: event.target.value }))} /></label><label>Hasta <input type="number" inputMode="numeric" min="1880" max="2100" placeholder="Año" value={searchFilters.yearTo} onChange={(event) => setSearchFilters((current) => ({ ...current, yearTo: event.target.value }))} /></label></div></details>
+        </div> : null}
+      </div> : null}
 
       {!hasQuery && canDiscover && showBrowseToggle ? (
         <button type="button" className="search-panel__browse-toggle" onClick={onToggleBrowse} aria-expanded={isBrowsing} aria-label={isBrowsing ? "Volver a las tarjetas" : "Explorar catálogo"}>
@@ -519,7 +615,7 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
         </div>
       ) : null}
 
-      {!hasQuery && isInputFocused && recentSearches.length ? (
+      {showRecents && !hasQuery && isInputFocused && recentSearches.length ? (
         <div className="search-panel__recents">
           <div className="search-panel__recents-header">
             <p>Busquedas recientes</p>
@@ -554,15 +650,10 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
           {error && !results.length ? <p className="inline-status">{error}</p> : null}
           {visibleTalentError && !visibleTalentResults.length ? <p className="inline-status">{visibleTalentError}</p> : null}
           {profilesError ? <p className="inline-status">{profilesError}</p> : null}
-          {partial ? <p className="inline-status">Ordenados por estreno entre los primeros {scannedCount} títulos encontrados por TMDB. Hay más resultados que todavía no se incluyen en este orden.</p> : null}
-          {results.length ? (
-            <section className="search-result-section">
-              <div className="search-result-section__heading">
-                <p className="section-eyebrow">Titulos</p>
-                <h2>Peliculas y series</h2>
-              </div>
-              <div className="card-list">
-                {results.map((item) => {
+          {visibleTitles.length ? (
+            <section className="search-result-section" aria-label="Películas y series">
+              <div className="card-list search-panel__title-grid">
+                {visibleTitles.map((item) => {
             const reaction = reactionMap[`${item.mediaType}-${item.id}`];
             const watchedReaction = isWatchedReaction(reaction) ? reaction : null;
 
@@ -583,7 +674,7 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
                   <p className="meta-line">
                     {item.mediaType === "tv" ? "Serie" : "Pelicula"} • {item.year}
                   </p>
-                  <span className="media-score">TMDB {item.score}</span>
+                  {item.score > 0 ? <span className="media-score">TMDB {item.score}</span> : null}
                 </div>
                 <h3>{item.title}</h3>
                 <div className="action-row">
@@ -654,6 +745,8 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
             </section>
           ) : null}
 
+          {partial && searchFilters.category !== "people" ? <button type="button" className="search-panel__load-more" onClick={() => void loadMore()} disabled={isLoadingMore}>{isLoadingMore ? "Cargando..." : "Cargar más resultados"}</button> : null}
+
           {profileResults.length ? (
             <section className="search-result-section">
               <div className="search-result-section__heading">
@@ -683,6 +776,7 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
             </button>
                 ))}
               </div>
+              {profileMatchCount > profileLimit ? <button type="button" className="search-panel__load-more" onClick={() => setProfileLimit((current) => current + 8)}>Cargar más personas</button> : null}
             </section>
           ) : null}
 
@@ -693,7 +787,7 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
                 <h2>Actores y directores</h2>
               </div>
               <div className="card-list">
-                {visibleTalentResults.slice(0, 8).map((talent) => (
+                {visibleTalentResults.map((talent) => (
             <button
               key={talent.id}
               type="button"
@@ -711,12 +805,13 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
             </button>
                 ))}
               </div>
+              {talentPage < talentTotalPages ? <button type="button" className="search-panel__load-more" onClick={() => void loadMoreTalent()} disabled={isTalentLoadingMore}>{isTalentLoadingMore ? "Cargando..." : "Cargar más talentos"}</button> : null}
             </section>
           ) : null}
 
           {!isSearching && !isProfilesLoading && !error && !visibleTalentError && !profilesError &&
-            !results.length && !profileResults.length && !visibleTalentResults.length ? (
-            <p className="search-empty">No encontramos coincidencias. Proba con otro nombre o titulo.</p>
+            !visibleTitles.length && !profileResults.length && !visibleTalentResults.length ? (
+            <p className="search-empty">{partial && searchFilters.category !== "people" ? "Todavía no hay coincidencias. Probá con Cargar más." : "No encontramos coincidencias. Probá con otro nombre o título."}</p>
           ) : null}
         </div>
       ) : isBrowsing ? (

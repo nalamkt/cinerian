@@ -20,7 +20,7 @@ import {
 } from "./tmdb";
 import type { DiscoveryItem, MediaType } from "../types";
 import { compareByWeightedTmdbScore } from "./titleRanking";
-import { matchesProductionRegions } from "./discoverTaxonomy";
+import { matchesOriginalLanguages } from "./originalLanguages";
 
 const REACTION_WEIGHT: Record<RatedReaction, number> = {
   superliked: 6,
@@ -79,10 +79,10 @@ export type RankedRecommendation = {
  * se compran y tienen suscripcion en otra.
  */
 export function passesFilters(
-  availability: { item: DiscoveryItem; providerIds: number[]; seriesType: string | null; genreIds: number[]; productionCountries: string[] },
+  availability: { item: DiscoveryItem; providerIds: number[]; seriesType: string | null; genreIds: number[]; originalLanguage: string | null },
   filters: DiscoverFilters
 ) {
-  const { item, providerIds, seriesType, genreIds, productionCountries } = availability;
+  const { item, providerIds, seriesType, genreIds, originalLanguage } = availability;
 
   if (filters.contentType === "movie" && item.mediaType !== "movie") {
     return false;
@@ -100,7 +100,7 @@ export function passesFilters(
     return false;
   }
 
-  if (!matchesProductionRegions(productionCountries, filters.productionRegions ?? [])) {
+  if (!matchesOriginalLanguages(originalLanguage, filters.originalLanguages ?? [])) {
     return false;
   }
 

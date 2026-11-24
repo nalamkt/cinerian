@@ -13,7 +13,9 @@ import type {
 import { demoDiscovery } from "../data/demoData";
 import { compareByWeightedTmdbScore } from "./titleRanking";
 import { searchReleaseDate, sortSearchResultsByDate } from "./searchChronology";
-import { genreIdsForMedia, type ProductionRegion } from "./discoverTaxonomy";
+import { genreIdsForMedia } from "./discoverTaxonomy";
+import { FEATURED_ORIGINAL_LANGUAGES, normalizeOriginalLanguage, originalLanguageLabel } from "./originalLanguages";
+import type { SearchTitle } from "./searchRanking";
 
 const apiKey = import.meta.env.VITE_TMDB_API_KEY;
 const baseUrl = "https://api.themoviedb.org/3";
@@ -867,6 +869,29 @@ export async function searchTitles(query: string): Promise<DiscoveryItem[]> {
     .map(normalizeItem);
 }
 
+export async function searchTitlesPage(query: string, page: number, signal?: AbortSignal): Promise<{ items: SearchTitle[]; totalPages: number }> {
+  if (!apiKey || !query.trim()) return { items: [], totalPages: 0 };
+  const url = new URL(`${baseUrl}/search/multi`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("query", query.trim());
+  url.searchParams.set("include_adult", "false");
+  url.searchParams.set("language", "es-MX");
+  url.searchParams.set("page", String(page));
+  const response = await fetch(url.toString(), { signal });
+  if (!response.ok) throw new Error(`TMDB respondió ${response.status}`);
+  const payload = await response.json() as { results?: Record<string, unknown>[]; total_pages?: number };
+  if (!Array.isArray(payload.results) || !Number.isInteger(payload.total_pages)) throw new Error("TMDB devolvió una búsqueda inválida.");
+  const seen = new Set<string>();
+  const items = payload.results.filter((raw) => (raw.media_type === "movie" || raw.media_type === "tv") && hasDisplayTitle(raw)).flatMap((raw) => {
+    const item = normalizeItem(raw);
+    const key = `${item.mediaType}-${item.id}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ ...item, originalTitle: String(raw.original_title ?? raw.original_name ?? ""), popularity: popularityOf(raw), genreIds: Array.isArray(raw.genre_ids) ? raw.genre_ids.filter((id): id is number => typeof id === "number") : [] }];
+  });
+  return { items, totalPages: payload.total_pages ?? 0 };
+}
+
 const MAX_CHRONOLOGICAL_SEARCH_PAGES = 5;
 
 export async function searchTitlesByDate(query: string): Promise<{
@@ -922,10 +947,27 @@ export type DiscoverFilters = {
   providerIds: number[];
   contentType: "all" | "movie" | "series" | "mini";
   genreIds?: number[];
-  productionRegions?: ProductionRegion[];
+  originalLanguages?: string[];
 };
 
-export const NO_FILTERS: DiscoverFilters = { providerIds: [], contentType: "all", genreIds: [], productionRegions: [] };
+export const NO_FILTERS: DiscoverFilters = { providerIds: [], contentType: "all", genreIds: [], originalLanguages: [] };
+
+export async function getOriginalLanguageCatalog(): Promise<Array<{ id: string; label: string }>> {
+  const fallback = FEATURED_ORIGINAL_LANGUAGES.map((id) => ({ id, label: originalLanguageLabel(id) }));
+  if (!apiKey) return fallback;
+  try {
+    const url = new URL(`${baseUrl}/configuration/languages`);
+    url.searchParams.set("api_key", apiKey);
+    const response = await fetch(url.toString());
+    if (!response.ok) return fallback;
+    const payload: unknown = await response.json();
+    if (!Array.isArray(payload)) return fallback;
+    const codes = [...new Set([...FEATURED_ORIGINAL_LANGUAGES, ...payload.map((entry) => normalizeOriginalLanguage((entry as { iso_639_1?: unknown })?.iso_639_1)).filter((code): code is string => Boolean(code))])];
+    return codes.map((id) => ({ id, label: originalLanguageLabel(id) }));
+  } catch {
+    return fallback;
+  }
+}
 
 /** TMDB marca las miniseries con with_type=2 en discover/tv. */
 const TMDB_TYPE_MINISERIES = "2";
@@ -968,6 +1010,7 @@ export async function getRecommendationTitlesByPage(
     if (filters.providerIds.length) {
       url.searchParams.set("with_watch_providers", filters.providerIds.join("|"));
     }
+    if (filters.originalLanguages?.length === 1) url.searchParams.set("with_original_language", filters.originalLanguages[0]);
   }
 
   const requests: Array<Promise<{ mediaType: MediaType; results: Record<string, unknown>[] }>> = [];
@@ -1533,7 +1576,7 @@ export type TitleAvailability = {
   /** Solo en series: "Miniseries", "Scripted", etc. Null en peliculas. */
   seriesType: string | null;
   genreIds: number[];
-  productionCountries: string[];
+  originalLanguage: string | null;
 };
 
 /**
@@ -1583,7 +1626,7 @@ async function getTitleAvailabilityUncached(
     const fallback = demoDiscovery.find(
       (entry) => entry.id === tmdbId && entry.mediaType === mediaType
     );
-    return fallback ? { item: fallback, providerIds: [], seriesType: null, genreIds: [], productionCountries: [] } : null;
+    return fallback ? { item: fallback, providerIds: [], seriesType: null, genreIds: [], originalLanguage: null } : null;
   }
 
   const url = new URL(`${baseUrl}/${mediaType}/${tmdbId}`);
@@ -1614,9 +1657,7 @@ async function getTitleAvailabilityUncached(
     genreIds: Array.isArray(payload.genres)
       ? payload.genres.map((genre) => typeof genre === "object" && genre !== null && "id" in genre ? Number(genre.id) : NaN).filter(Number.isFinite)
       : [],
-    productionCountries: Array.isArray(payload.production_countries)
-      ? payload.production_countries.map((country) => typeof country === "object" && country !== null && "iso_3166_1" in country ? String(country.iso_3166_1) : "").filter(Boolean)
-      : []
+    originalLanguage: normalizeOriginalLanguage(payload.original_language)
   };
 }
 
@@ -2019,12 +2060,16 @@ export async function getSeriesAiringInfo(tmdbId: number): Promise<SeriesAiringI
 }
 
 export async function searchTalent(query: string): Promise<TalentSearchItem[]> {
+  return (await searchTalentPage(query, 1)).items.slice(0, 8);
+}
+
+export async function searchTalentPage(query: string, page: number, signal?: AbortSignal): Promise<{ items: TalentSearchItem[]; totalPages: number }> {
   if (!query.trim()) {
-    return [];
+    return { items: [], totalPages: 0 };
   }
 
   if (!apiKey) {
-    return [];
+    return { items: [], totalPages: 0 };
   }
 
   const url = new URL(`${baseUrl}/search/person`);
@@ -2032,17 +2077,17 @@ export async function searchTalent(query: string): Promise<TalentSearchItem[]> {
   url.searchParams.set("query", query);
   url.searchParams.set("include_adult", "false");
   url.searchParams.set("language", "es-MX");
+  url.searchParams.set("page", String(page));
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), { signal });
   if (!response.ok) {
     throw new Error(`TMDB respondio ${response.status}`);
   }
 
-  const payload = (await response.json()) as { results?: Record<string, unknown>[] };
-  return (payload.results ?? [])
+  const payload = (await response.json()) as { results?: Record<string, unknown>[]; total_pages?: number };
+  if (!Array.isArray(payload.results) || !Number.isInteger(payload.total_pages)) throw new Error("TMDB devolvió una búsqueda de personas inválida.");
+  const items = payload.results
     .filter((item) => typeof item.name === "string" && item.name.trim().length > 0)
-    .filter((item) => typeof item.profile_path === "string" && item.profile_path.trim().length > 0)
-    .slice(0, 8)
     .map((item) => ({
       id: Number(item.id),
       name: String(item.name),
@@ -2066,6 +2111,7 @@ export async function searchTalent(query: string): Promise<TalentSearchItem[]> {
             .slice(0, 3)
         : []
     }));
+  return { items, totalPages: payload.total_pages ?? 0 };
 }
 
 export async function getTalentDetails(personId: number): Promise<TalentDetails | null> {
