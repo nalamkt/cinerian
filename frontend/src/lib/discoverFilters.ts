@@ -12,6 +12,28 @@ function extraFiltersKey(userId: string) {
   return `cinerian:discover-extra-filters:v2:${userId}`;
 }
 
+function profileFiltersCacheKey(userId: string) {
+  return `cinerian:discover-profile-filters:v1:${userId}`;
+}
+
+function readCachedProfileFilters(userId: string): DiscoverFilters | null {
+  try {
+    const raw = window.localStorage.getItem(profileFiltersCacheKey(userId));
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object") return null;
+    const record = value as Record<string, unknown>;
+    if (!Array.isArray(record.providerIds) || !CONTENT_TYPES.includes(record.contentType as DiscoverFilters["contentType"])) return null;
+    return normalize(record.providerIds, record.contentType);
+  } catch { return null; }
+}
+
+function cacheProfileFilters(userId: string, filters: DiscoverFilters) {
+  try {
+    window.localStorage.setItem(profileFiltersCacheKey(userId), JSON.stringify({ providerIds: filters.providerIds, contentType: filters.contentType }));
+  } catch { /* El perfil remoto sigue siendo la fuente de verdad. */ }
+}
+
 export function parseExtraFilters(raw: string | null): Pick<DiscoverFilters, "genreIds" | "originalLanguages"> {
   try {
     const value: unknown = raw ? JSON.parse(raw) : null;
@@ -30,7 +52,11 @@ export function parseExtraFilters(raw: string | null): Pick<DiscoverFilters, "ge
 }
 
 function readExtraFilters(userId: string): Pick<DiscoverFilters, "genreIds" | "originalLanguages"> {
-  return parseExtraFilters(window.localStorage.getItem(extraFiltersKey(userId)) ?? window.localStorage.getItem(`cinerian:discover-extra-filters:v1:${userId}`));
+  try {
+    return parseExtraFilters(window.localStorage.getItem(extraFiltersKey(userId)) ?? window.localStorage.getItem(`cinerian:discover-extra-filters:v1:${userId}`));
+  } catch {
+    return { genreIds: [], originalLanguages: [] };
+  }
 }
 
 export const CONTENT_TYPE_LABEL: Record<DiscoverFilters["contentType"], string> = {
@@ -61,21 +87,35 @@ function normalize(
  */
 export async function fetchDiscoverFilters(userId: string): Promise<DiscoverFilters> {
   const extras = typeof window === "undefined" ? { genreIds: [], originalLanguages: [] } : readExtraFilters(userId);
+  const cached = typeof window === "undefined" ? null : readCachedProfileFilters(userId);
   if (!supabase) {
-    return { ...NO_FILTERS, ...extras };
+    return { ...(cached ?? NO_FILTERS), ...extras };
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("watch_providers, content_filter")
-    .eq("id", userId)
-    .maybeSingle<{ watch_providers: number[] | null; content_filter: string | null }>();
-
-  if (error || !data) {
-    return { ...NO_FILTERS, ...extras };
+  let data: { watch_providers: number[] | null; content_filter: string | null } | null;
+  let error: unknown;
+  try {
+    const response = await supabase
+      .from("profiles")
+      .select("watch_providers, content_filter")
+      .eq("id", userId)
+      .maybeSingle<{ watch_providers: number[] | null; content_filter: string | null }>();
+    data = response.data;
+    error = response.error;
+  } catch (caught) {
+    error = caught;
+    data = null;
   }
 
-  return { ...normalize(data.watch_providers, data.content_filter), ...extras };
+  if (error) {
+    if (cached) return { ...cached, ...extras };
+    throw error;
+  }
+  if (!data) return { ...NO_FILTERS, ...extras };
+
+  const profileFilters = normalize(data.watch_providers, data.content_filter);
+  if (typeof window !== "undefined") cacheProfileFilters(userId, profileFilters);
+  return { ...profileFilters, ...extras };
 }
 
 export async function saveDiscoverFilters(userId: string, filters: DiscoverFilters) {
@@ -92,6 +132,7 @@ export async function saveDiscoverFilters(userId: string, filters: DiscoverFilte
   }
 
   if (typeof window !== "undefined") {
+    cacheProfileFilters(userId, filters);
     window.localStorage.setItem(extraFiltersKey(userId), JSON.stringify({
       genreIds: filters.genreIds ?? [],
       originalLanguages: filters.originalLanguages ?? []

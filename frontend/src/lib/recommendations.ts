@@ -199,14 +199,18 @@ async function collectFillerTitles(
 ): Promise<DiscoveryItem[]> {
   const picked: DiscoveryItem[] = [];
   const seen = new Set(alreadyPicked);
-  const pages = await Promise.allSettled(
-    Array.from({ length: MAX_BACKFILL_PAGES }, (_, offset) =>
-      getRecommendationTitlesByPage(startPage + offset, filters)
-    )
-  );
+  const pages: PromiseSettledResult<DiscoveryItem[]>[] = [];
+  for (let offset = 0; offset < MAX_BACKFILL_PAGES; offset += 2) {
+    pages.push(...await Promise.allSettled(
+      Array.from({ length: Math.min(2, MAX_BACKFILL_PAGES - offset) }, (_, index) =>
+        getRecommendationTitlesByPage(startPage + offset + index, filters)
+      )
+    ));
+  }
   if (pages.every((page) => page.status === "rejected")) {
     throw new Error("TMDB no pudo cargar paginas del catalogo.");
   }
+  const pageFailed = pages.some((page) => page.status === "rejected");
 
   // TMDB pagina por promedio bruto. Primero juntamos el bloque completo y
   // despues lo ordenamos por nota ponderada para comparar muestras distintas.
@@ -225,29 +229,24 @@ async function collectFillerTitles(
   // Discover de TMDB aproxima la disponibilidad: comprobamos los proveedores
   // argentinos reales en tandas acotadas antes de ofrecer cada titulo.
   const verificationLimit = Math.min(candidates.length, Math.max(needed * 8, 48));
+  let verificationFailed = false;
   for (let offset = 0; offset < verificationLimit && picked.length < needed; offset += 12) {
-    const checked = await Promise.all(
-      candidates.slice(offset, offset + 12).map(async (item) => {
-        const availability = await getTitleAvailability(item.id, item.mediaType);
-        return availability && passesFilters(availability, filters) ? availability.item : null;
-      })
+    const checked = await Promise.allSettled(
+      candidates.slice(offset, offset + 12).map((item) => getTitleAvailability(item.id, item.mediaType))
     );
 
-    for (const item of checked) {
+    for (const result of checked) {
       if (picked.length >= needed) {
         break;
       }
-      if (item) {
-        picked.push(item);
-      }
+      if (result.status === "rejected") { verificationFailed = true; continue; }
+      if (result.value && passesFilters(result.value, filters)) picked.push(result.value.item);
     }
   }
 
-  if (picked.length === 0 && candidates.length) {
-    // Conserva el fallback regional ya acotado por TMDB si fallaron todas las
-    // verificaciones individuales; evita declarar vacio un catalogo grande.
-    return candidates.slice(0, needed);
-  }
+  // Una lista de TMDB no demuestra disponibilidad ni idioma: nunca ofrecemos
+  // candidatos sin verificar solo para ocultar un fallo de sus detalles.
+  if (!picked.length && (verificationFailed || pageFailed)) throw new Error("TMDB no pudo verificar títulos para estos filtros.");
 
   // El relleno no compite con el ranking social.
   return sortByTmdbScore(picked);
@@ -733,30 +732,19 @@ export async function fetchSocialRecommendations(
     const batch = preliminary.slice(cursor, cursor + batchSize);
     cursor += batch.length;
 
-    const results = await Promise.all(
-      batch.map(async (candidate) => {
-        const availability = await getTitleAvailability(candidate.tmdbId, candidate.mediaType);
-        if (!availability || !passesFilters(availability, filters)) {
-          return null;
-        }
-        const { item } = availability;
+    const results = await Promise.allSettled(
+      batch.map((candidate) => getTitleAvailability(candidate.tmdbId, candidate.mediaType))
+    );
+
+    for (let index = 0; index < results.length; index += 1) {
+      const result = results[index];
+      const candidate = batch[index];
+      if (result.status !== "fulfilled" || !result.value || !passesFilters(result.value, filters)) continue;
+      const { item } = result.value;
         const genreBonus =
           item.genres.filter((genre) => genreAffinity.has(normalizeGenreLabel(genre))).length *
           GENRE_BONUS_WEIGHT;
-        return {
-          candidate,
-          entry: {
-            item,
-            totalScore: socialScoreOf(candidate) + genreBonus,
-            watcherIds: candidate.watcherIds
-          } as FilteredEntry
-        };
-      })
-    );
-
-    for (const result of results) {
-      if (!result) continue;
-      filtered.push(result.entry);
+      filtered.push({ item, totalScore: socialScoreOf(candidate) + genreBonus, watcherIds: candidate.watcherIds });
     }
   }
 
@@ -824,13 +812,13 @@ export async function fetchSocialRecommendations(
   // marcado los amigos, cuando el título entraba por relleno (porque no
   // llegaba al ranking por poca señal, filtros, o cayó en otra página).
   const seenKeys = new Set(ranked.map((entry) => candidateKey(entry.item.mediaType, entry.item.id)));
-  const fillerItems = await collectFillerTitles(
-    catalogPageForDeckPage(page),
-    limit - ranked.length,
-    excludedKeys,
-    filters,
-    seenKeys
-  );
+  let fillerItems: DiscoveryItem[];
+  try {
+    fillerItems = await collectFillerTitles(catalogPageForDeckPage(page), limit - ranked.length, excludedKeys, filters, seenKeys);
+  } catch (error) {
+    if (ranked.length) return ranked;
+    throw error;
+  }
 
   // Indice de reacciones del circulo por titulo, reusando lo ya traido.
   const watchersByTitle = new Map<string, Array<{ userId: string; reaction: RatedReaction }>>();

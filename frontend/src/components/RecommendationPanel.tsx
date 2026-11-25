@@ -262,6 +262,8 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const [entriesScope, setEntriesScope] = useState<string | null>(null);
   const [isLoadingDeck, setIsLoadingDeck] = useState(true);
   const [deckLoadError, setDeckLoadError] = useState(false);
+  const [filtersLoadError, setFiltersLoadError] = useState(false);
+  const [filtersReloadKey, setFiltersReloadKey] = useState(0);
   const [deckReloadKey, setDeckReloadKey] = useState(0);
   const [isInitialCardReady, setIsInitialCardReady] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -338,6 +340,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const deckGenerationRef = useRef(0);
   const progressScope = trailerProgressStorageKey(userId, filters.contentType, filters.providerIds, filters.genreIds, filters.originalLanguages);
   const deckScope = `${progressScope}:${deckReloadKey}`;
+  const hasCompatibleEntries = entriesScope?.startsWith(`${progressScope}:`) === true && entries.length > 0;
   const trailerProgress = progressState?.scope === progressScope ? progressState.progress : null;
 
   useEffect(() => {
@@ -602,26 +605,23 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   useEffect(() => {
     let isMounted = true;
     setAreFiltersReady(false);
+    setFiltersLoadError(false);
 
     void fetchDiscoverFilters(userId)
       .then((saved) => {
         if (isMounted) {
           setFilters(saved);
+          setAreFiltersReady(true);
         }
       })
       .catch(() => {
-        // Sin filtros guardados se muestra todo, que es el default.
-      })
-      .finally(() => {
-        if (isMounted) {
-          setAreFiltersReady(true);
-        }
+        if (isMounted) setFiltersLoadError(true);
       });
 
     return () => {
       isMounted = false;
     };
-  }, [userId]);
+  }, [userId, filtersReloadKey]);
 
   useEffect(() => {
     if (!areFiltersReady || !areReactionsReady) {
@@ -633,11 +633,13 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     let isMounted = true;
     setIsLoadingDeck(true);
     setTrailerPageError(false);
-    setIsInitialCardReady(false);
+    if (!hasCompatibleEntries) setIsInitialCardReady(false);
     setDeckLoadError(false);
-    setEntriesScope(null);
-    setEntries([]);
-    setCurrentIndex(0);
+    if (!hasCompatibleEntries) {
+      setEntriesScope(null);
+      setEntries([]);
+      setCurrentIndex(0);
+    }
 
     void (async () => {
       let results: RankedRecommendation[] = [];
@@ -673,9 +675,11 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
           // Nunca mostramos el fallback a ciegas: si no pudimos armar el mazo
           // respetando reacciones, seria posible volver a ofrecer un titulo
           // que la persona acaba de pasar de largo.
-          setEntries([]);
-          setEntriesScope(null);
-          setPage(1);
+          if (!hasCompatibleEntries) {
+            setEntries([]);
+            setEntriesScope(null);
+          }
+          if (!hasCompatibleEntries) setPage(1);
           setDeckLoadError(true);
         }
       })
@@ -1563,7 +1567,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
 
   const activeFilterCount = countActiveFilters(filters);
   const isDiscoverBooting =
-    !areFiltersReady || (!areReactionsReady && !reactionSyncError) || isLoadingDeck;
+    !areFiltersReady || (!areReactionsReady && !reactionSyncError) || (isLoadingDeck && !hasCompatibleEntries);
   const shownTrailerKey = shownTrailerItem ? itemKey(shownTrailerItem) : null;
   const shownTrailerPayload = shownTrailerKey ? trailerPayloads[shownTrailerKey] ?? null : null;
   // El reproductor arranca apenas está la ficha; las plataformas llegan después sin frenarlo.
@@ -1711,7 +1715,14 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
 
   return (
     <section className={`discover${activeFilterCount ? " is-filtered" : ""}${discoverMode === "trailers" ? " discover--trailers" : ""}`}>
-      {reactionSyncError ? (
+      {filtersLoadError ? (
+        <div className="discover-empty-state" role="alert">
+          <p className="section-eyebrow">Descubrí</p>
+          <h2>No pudimos cargar tus filtros</h2>
+          <p>Para respetar tus preferencias, esperamos a recuperarlas antes de mostrar títulos.</p>
+          <button type="button" className="primary-button" onClick={() => setFiltersReloadKey((value) => value + 1)}>Reintentar</button>
+        </div>
+      ) : reactionSyncError ? (
         <div className="discover-empty-state">
           <p className="section-eyebrow">Descubrí</p>
           <h2>No pudimos revisar tus reacciones</h2>
@@ -1731,13 +1742,17 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
             <LoadingState label="Armando tu ranking..." />
           </div>
         </div>
-      ) : deckLoadError ? (
+      ) : deckLoadError && !hasCompatibleEntries ? (
         <div className="discover-empty-state">
           <p className="section-eyebrow">Descubrí</p>
           <h2>No pudimos actualizar el catálogo ahora</h2>
           <p>Tus filtros siguen guardados. Volvé a intentarlo en un momento.</p>
           <button type="button" className="primary-button" onClick={() => setDeckReloadKey((value) => value + 1)}>
             Reintentar
+          </button>
+          <button type="button" className="discover-filterbar__button" onClick={() => setIsFiltersOpen(true)} aria-label="Abrir filtros">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+            <span className="discover-filterbar__label">Filtros</span>
           </button>
         </div>
       ) : (
@@ -1771,6 +1786,11 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
           <span className="discover-filterbar__label">Filtros</span>
         </button>
       </div>
+
+      {deckLoadError && hasCompatibleEntries ? <div className="inline-status" role="status">
+        No pudimos actualizar el catálogo. Seguís viendo títulos compatibles con tus filtros.
+        <button type="button" onClick={() => setDeckReloadKey((value) => value + 1)}>Reintentar</button>
+      </div> : null}
 
       {discoverMode === "trailers" && shownTrailerItem && !isTrailerEnd ? (
         <article

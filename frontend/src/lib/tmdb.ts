@@ -28,6 +28,31 @@ const WATCH_REGION = "AR";
 // opiniones. Este piso mantiene Descubrí en títulos con una nota representativa.
 const MIN_RECOMMENDATION_VOTE_COUNT = 50;
 
+export async function fetchTmdbWithRetry(url: string): Promise<Response> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeout = globalThis.setTimeout(() => { timedOut = true; controller.abort(); }, 10000);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      const transient = response.status === 408 || response.status === 429 || response.status >= 500;
+      if (!transient || attempt === 1) return response;
+      const retryAfterHeader = response.headers.get("Retry-After");
+      const retryAfter = retryAfterHeader === null ? 0 : /^\d+(?:\.\d+)?$/.test(retryAfterHeader)
+        ? Number(retryAfterHeader)
+        : Math.max(0, (Date.parse(retryAfterHeader) - Date.now()) / 1000);
+      if (response.status === 429 && Number.isFinite(retryAfter) && retryAfter > 2) return response;
+      await new Promise((resolve) => globalThis.setTimeout(resolve, response.status === 429 ? Math.max(1000, retryAfter * 1000 || 0) : 350));
+    } catch (error) {
+      if (attempt === 1 || (error instanceof DOMException && error.name === "AbortError" && !timedOut)) throw error;
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 350));
+    } finally {
+      globalThis.clearTimeout(timeout);
+    }
+  }
+  throw new Error("TMDB no respondió.");
+}
+
 const MOVIE_GENRE_LABELS: Record<number, string> = {
   12: "Aventura",
   14: "Fantasia",
@@ -1020,16 +1045,17 @@ export async function getRecommendationTitlesByPage(
     applyCommon(movieUrl);
     if (movieGenres.length) movieUrl.searchParams.set("with_genres", movieGenres.join("|"));
     requests.push(
-      fetch(movieUrl.toString())
+      fetchTmdbWithRetry(movieUrl.toString())
         .then(async (response) => {
           if (!response.ok) {
             throw new Error(`TMDB respondio ${response.status} para peliculas.`);
           }
 
           const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+          if (!Array.isArray(payload.results)) throw new Error("TMDB devolvió una lista de películas inválida.");
           return {
             mediaType: "movie" as MediaType,
-            results: payload.results ?? []
+            results: payload.results
           };
         })
     );
@@ -1043,16 +1069,17 @@ export async function getRecommendationTitlesByPage(
       tvUrl.searchParams.set("with_type", TMDB_TYPE_MINISERIES);
     }
     requests.push(
-      fetch(tvUrl.toString())
+      fetchTmdbWithRetry(tvUrl.toString())
         .then(async (response) => {
           if (!response.ok) {
             throw new Error(`TMDB respondio ${response.status} para series.`);
           }
 
           const payload = (await response.json()) as { results?: Record<string, unknown>[] };
+          if (!Array.isArray(payload.results)) throw new Error("TMDB devolvió una lista de series inválida.");
           return {
             mediaType: "tv" as MediaType,
-            results: payload.results ?? []
+            results: payload.results
           };
         })
     );
@@ -1073,7 +1100,7 @@ export async function getRecommendationTitlesByPage(
   // Con un solo tipo pedido, esa lista se lleva todos los lugares del mazo.
   const perList = responses.length > 1 ? 8 : 16;
 
-  return responses
+  const items = responses
     .flatMap((response) =>
       response.results
         .filter(isSupportedDiscoverResult)
@@ -1083,6 +1110,10 @@ export async function getRecommendationTitlesByPage(
     // TMDB pagina peliculas y series por separado. Reordenamos el lote
     // combinado con la misma confianza estadistica que usa Descubri.
     .sort(compareByWeightedTmdbScore);
+  if (!items.length && settledResponses.some((result) => result.status === "rejected")) {
+    throw new Error("TMDB devolvió una respuesta parcial sin títulos verificables.");
+  }
+  return items;
 }
 
 async function fetchCatalogCollection(
@@ -1634,7 +1665,7 @@ async function getTitleAvailabilityUncached(
   url.searchParams.set("language", "es-MX");
   url.searchParams.set("append_to_response", "watch/providers");
 
-  const response = await fetch(url.toString());
+  const response = await fetchTmdbWithRetry(url.toString());
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`TMDB respondio ${response.status} para el detalle.`);
 
