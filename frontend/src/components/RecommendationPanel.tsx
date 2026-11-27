@@ -26,7 +26,7 @@ import {
 } from "../lib/discoverFilters";
 import { fetchSocialRecommendations, type RankedRecommendation, type Watcher } from "../lib/recommendations";
 import { buildWatchedPostBody } from "../lib/reviews";
-import { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerDragOffset, trailerEmptyPhase, youtubeThumbnailUrl, type DiscoverMode } from "../lib/discoverTrailer";
+import { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerDragOffset, trailerEmptyPhase, youtubeThumbnailUrl, remainingRanks, type DiscoverMode } from "../lib/discoverTrailer";
 import { advanceTrailerProgress, EMPTY_TRAILER_PROGRESS, parseTrailerProgress, serializeTrailerProgress, trailerProgressStorageKey, type TrailerProgress } from "../lib/trailerProgress";
 import { readTrailerSoundPreference, saveTrailerSoundPreference } from "../lib/trailerPlayback";
 import {
@@ -342,6 +342,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
   const deckScope = `${progressScope}:${deckReloadKey}`;
   const hasCompatibleEntries = entriesScope?.startsWith(`${progressScope}:`) === true && entries.length > 0;
   const trailerProgress = progressState?.scope === progressScope ? progressState.progress : null;
+  const [sessionPassedKeys, setSessionPassedKeys] = useState<{ scope: string; keys: Set<string> } | null>(null);
 
   useEffect(() => {
     if (!horizontalSession) return;
@@ -368,6 +369,8 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     try { progress = parseTrailerProgress(window.localStorage.getItem(progressScope)); }
     catch { /* Se puede explorar aunque el almacenamiento no este disponible. */ }
     setProgressState({ scope: progressScope, progress });
+    // Foto de lo ya pasado al empezar: los puestos no se corren mientras navegás.
+    setSessionPassedKeys({ scope: progressScope, keys: new Set(progress.visitedKeys) });
   }, [progressScope]);
 
   function saveTrailerProgress(progress: TrailerProgress) {
@@ -437,6 +440,16 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     if (unexploredTrailerItems.some((item) => !historyKeys.has(itemKey(item)))) setIsTrailerEnd(false);
   }, [isTrailerEnd, trailerHistory, unexploredTrailerItems]);
   const badgeEntry = entries.find((entry) => shownTrailerItem && itemKey(entry.item) === itemKey(shownTrailerItem));
+  const displayRanks = useMemo(
+    () => remainingRanks(
+      entries,
+      (entry) => itemKey(entry.item),
+      (entry) => entry.rank !== null,
+      sessionPassedKeys?.scope === progressScope ? sessionPassedKeys.keys : new Set<string>()
+    ),
+    [entries, sessionPassedKeys, progressScope]
+  );
+  const badgeRank = badgeEntry && badgeEntry.rank !== null ? displayRanks.get(itemKey(badgeEntry.item)) ?? null : null;
   const trailerSocialLine = badgeEntry ? buildSocialLine(badgeEntry.watchers) : null;
   const badgeInsideCircle = badgeEntry ? badgeEntry.rank !== null || Boolean(trailerSocialLine) : false;
   const hasReactedToShownTrailer = shownTrailerItem ? reactedKeys.has(itemKey(shownTrailerItem)) : false;
@@ -716,7 +729,8 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     const nextPage = page + 1;
     const generation = deckGenerationRef.current;
     loadingPageRef.current = nextPage;
-    void fetchSocialRecommendations(userId, nextPage, 12, filters, storedReactions)
+    // Los ya cargados van al servidor: la tanda nueva son los siguientes que faltan, sin repetidos.
+    void fetchSocialRecommendations(userId, nextPage, 12, filters, storedReactions, entries.map((entry) => itemKey(entry.item)))
       .then((results) => {
         if (generation !== deckGenerationRef.current) return;
         // La pagina avanza siempre, incluso si esta vino vacia: si no, el mazo
@@ -745,7 +759,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
       .finally(() => {
         if (generation === deckGenerationRef.current) loadingPageRef.current = null;
       });
-  }, [circleEntries.length, isLoadingDeck, page, userId, filters, storedReactions, trailerScan.complete, unexploredTrailerItems.length, shownTrailerItem, trailerProgress, trailerPageError, pageRetryKey, entriesScope, deckScope]);
+  }, [circleEntries.length, entries, isLoadingDeck, page, userId, filters, storedReactions, trailerScan.complete, unexploredTrailerItems.length, shownTrailerItem, trailerProgress, trailerPageError, pageRetryKey, entriesScope, deckScope]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1335,6 +1349,7 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
     setTrailerHistory([]);
     setTrailerHistoryIndex(null);
     saveTrailerProgress(EMPTY_TRAILER_PROGRESS);
+    setSessionPassedKeys({ scope: progressScope, keys: new Set() });
   }
 
   function handleTrailerWheel(event: ReactWheelEvent<HTMLElement>) {
@@ -1761,14 +1776,14 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
         <span
           className="discover-circle-badge"
           aria-label={
-            badgeEntry?.rank != null
-              ? `${badgeEntry.rank}° en tu círculo`
+            badgeRank !== null
+              ? `${badgeRank}° en tu círculo`
               : badgeInsideCircle ? "En tu círculo" : "Fuera de tu círculo"
           }
         >
           <span className="discover-circle-badge__dot" aria-hidden="true" />
-          {badgeEntry?.rank != null ? (
-            <span className="discover-circle-badge__rank">{badgeEntry.rank}° ·</span>
+          {badgeRank !== null ? (
+            <span className="discover-circle-badge__rank">{badgeRank}° ·</span>
           ) : null}
           <span className="discover-circle-badge__full">{badgeInsideCircle ? "En tu círculo" : "Fuera de tu círculo"}</span>
           <span className="discover-circle-badge__compact" aria-hidden="true">{badgeInsideCircle ? "Tu círculo" : "Fuera del círculo"}</span>

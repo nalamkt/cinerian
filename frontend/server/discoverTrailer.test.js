@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
 after(() => vite.close());
 const { DiscoverTrailerPlayer, buildDiscoverTrailerUrl } = await vite.ssrLoadModule("/src/components/DiscoverTrailerPlayer.tsx");
-const { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerAvailability, trailerDragOffset, trailerEmptyPhase, youtubeThumbnailUrl } = await vite.ssrLoadModule("/src/lib/discoverTrailer.ts");
+const { canFinishTrailerJourney, completesTrailerSwipe, moveTrailerCursor, shouldFetchMoreTrailerPages, shouldOpenTrailerInfo, shouldPlayDiscoverTrailer, splitTrailerTitleForBadge, trailerAvailability, trailerDragOffset, trailerEmptyPhase, youtubeThumbnailUrl, remainingRanks } = await vite.ssrLoadModule("/src/lib/discoverTrailer.ts");
 const { advanceTrailerProgress, parseTrailerProgress, serializeTrailerProgress, trailerProgressStorageKey } = await vite.ssrLoadModule("/src/lib/trailerProgress.ts");
 const { getTrailerUrl } = await vite.ssrLoadModule("/src/lib/tmdb.ts");
 const { DiscoverWatchOptions } = await vite.ssrLoadModule("/src/components/DiscoverWatchOptions.tsx");
@@ -365,4 +365,26 @@ test("en mobile la sinopsis se abre en una hoja desde abajo, fuera del tráiler"
   assert.match(panel, /<\/article>[\s\S]*?<DiscoverSynopsisSheet/);
   assert.match(sheet, /createPortal\(/);
   assert.match(css, /\.discover-synopsis-button \{ display: none; \}\n@media \(max-width: 900px\) \{\n  \.discover-trailer__info \.discover-overview \{ display: none; \}/);
+});
+
+test("el puesto visible cuenta solo lo que queda por ver con tus filtros, sin huecos", () => {
+  // Ranking filtrado 1..21 más relleno; ya pasados en sesiones anteriores: 4, 6-11 y 13-20.
+  const entries = [...Array.from({ length: 21 }, (_, index) => ({ key: `t${index + 1}`, rank: index + 1 })), { key: "relleno", rank: null }];
+  const passed = new Set(["t4", "t6", "t7", "t8", "t9", "t10", "t11", "t13", "t14", "t15", "t16", "t17", "t18", "t19", "t20"]);
+  const ranks = remainingRanks(entries, (entry) => entry.key, (entry) => entry.rank !== null, passed);
+  assert.deepEqual(["t1", "t2", "t3", "t5", "t12", "t21"].map((key) => ranks.get(key)), [1, 2, 3, 4, 5, 6]);
+  assert.equal(ranks.has("t4"), false);
+  assert.equal(ranks.has("relleno"), false);
+  const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /setSessionPassedKeys\(\{ scope: progressScope, keys: new Set\(progress\.visitedKeys\) \}\)/);
+  assert.match(panel, /discover-circle-badge__rank">\{badgeRank\}° ·/);
+});
+
+test("la tanda nueva trae los siguientes que faltan: sin repetir el último ni perder títulos", () => {
+  const recommendations = readFileSync(new URL("../src/lib/recommendations.ts", import.meta.url), "utf8");
+  const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
+  assert.match(recommendations, /loadedKeys: Iterable<string> = \[\]/);
+  assert.match(recommendations, /\.filter\(\(entry\) => !loaded\.has\(candidateKey\(entry\.item\.mediaType, entry\.item\.id\)\)\)\s*\.slice\(offset, offset \+ limit\)/);
+  assert.match(recommendations, /const offset = loaded\.size \? 0 :/);
+  assert.match(panel, /fetchSocialRecommendations\(userId, nextPage, 12, filters, storedReactions, entries\.map\(\(entry\) => itemKey\(entry\.item\)\)\)/);
 });

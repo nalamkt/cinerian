@@ -611,8 +611,13 @@ export async function fetchSocialRecommendations(
   page: number,
   limit = 12,
   filters: DiscoverFilters = NO_FILTERS,
-  knownReactions: StoredReaction[] = []
+  knownReactions: StoredReaction[] = [],
+  loadedKeys: Iterable<string> = []
 ): Promise<RankedRecommendation[]> {
+  // Títulos que el mazo ya tiene ("movie-123"). Con ellos, la tanda nueva son
+  // los siguientes que faltan en vez de cortar por posición: el reordenamiento
+  // por género podía repetir el último de la tanda anterior y perder otro.
+  const loaded = new Set(loadedKeys);
   const [followingResult] = await Promise.allSettled([fetchFollowingUserIds(userId)]);
   const followingIds = followingResult.status === "fulfilled" ? followingResult.value : [];
 
@@ -715,8 +720,7 @@ export async function fetchSocialRecommendations(
     Cache de getTitleAvailability (en tmdb.ts) evita que la pagina 2 vuelva
     a verificar los titulos que la pagina 1 ya verifico.
   */
-  const offset = Math.max(0, (page - 1) * limit);
-  const wanted = offset + limit;
+  const offset = loaded.size ? 0 : Math.max(0, (page - 1) * limit);
   const batchSize = Math.max(limit, 12);
 
   type FilteredEntry = {
@@ -727,8 +731,9 @@ export async function fetchSocialRecommendations(
 
   const filtered: FilteredEntry[] = [];
   let cursor = 0;
+  let freshCount = 0;
 
-  while (filtered.length < wanted && cursor < preliminary.length) {
+  while (freshCount < offset + limit && cursor < preliminary.length) {
     const batch = preliminary.slice(cursor, cursor + batchSize);
     cursor += batch.length;
 
@@ -745,6 +750,7 @@ export async function fetchSocialRecommendations(
           item.genres.filter((genre) => genreAffinity.has(normalizeGenreLabel(genre))).length *
           GENRE_BONUS_WEIGHT;
       filtered.push({ item, totalScore: socialScoreOf(candidate) + genreBonus, watcherIds: candidate.watcherIds });
+      if (!loaded.has(candidateKey(item.mediaType, item.id))) freshCount += 1;
     }
   }
 
@@ -769,12 +775,15 @@ export async function fetchSocialRecommendations(
     filtered.map((entry, index) => [candidateKey(entry.item.mediaType, entry.item.id), index + 1])
   );
 
-  const detailed = filtered.slice(offset, offset + limit).map((entry, indexInSlice) => ({
-    item: entry.item,
-    rank: offset + indexInSlice + 1,
-    totalScore: entry.totalScore,
-    watcherIds: entry.watcherIds
-  }));
+  const detailed = filtered
+    .map((entry, index) => ({
+      item: entry.item,
+      rank: index + 1,
+      totalScore: entry.totalScore,
+      watcherIds: entry.watcherIds
+    }))
+    .filter((entry) => !loaded.has(candidateKey(entry.item.mediaType, entry.item.id)))
+    .slice(offset, offset + limit);
 
   // 4) Los perfiles de quienes vieron algo de esta pagina, en una sola consulta.
   const neededProfileIds = [
@@ -811,7 +820,7 @@ export async function fetchSocialRecommendations(
   // decía "nadie de tu círculo la vio todavía" para películas que sí habían
   // marcado los amigos, cuando el título entraba por relleno (porque no
   // llegaba al ranking por poca señal, filtros, o cayó en otra página).
-  const seenKeys = new Set(ranked.map((entry) => candidateKey(entry.item.mediaType, entry.item.id)));
+  const seenKeys = new Set([...loaded, ...ranked.map((entry) => candidateKey(entry.item.mediaType, entry.item.id))]);
   let fillerItems: DiscoveryItem[];
   try {
     fillerItems = await collectFillerTitles(catalogPageForDeckPage(page), limit - ranked.length, excludedKeys, filters, seenKeys);

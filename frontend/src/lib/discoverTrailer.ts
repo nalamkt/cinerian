@@ -108,3 +108,27 @@ export function youtubeThumbnailUrl(trailerUrl: string | null | undefined) {
     return null;
   }
 }
+
+/*
+  Puesto que se muestra: la posición entre los títulos del ranking que quedan
+  por ver, sin huecos. Los ya pasados en sesiones anteriores no cuentan, así
+  el primero que aparece con tus filtros es siempre el 1°. El relleno (sin
+  puesto en el ranking) no se numera.
+*/
+export function remainingRanks<T>(
+  entries: T[],
+  key: (entry: T) => string,
+  isRanked: (entry: T) => boolean,
+  hiddenKeys: ReadonlySet<string>
+) {
+  const ranks = new Map<string, number>();
+  let next = 1;
+  for (const entry of entries) {
+    if (!isRanked(entry)) continue;
+    const entryKey = key(entry);
+    if (hiddenKeys.has(entryKey) || ranks.has(entryKey)) continue;
+    ranks.set(entryKey, next);
+    next += 1;
+  }
+  return ranks;
+}
