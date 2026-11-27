@@ -274,7 +274,7 @@ test("la pista de deslizar queda siempre visible y el filtro activo conserva un 
   const source = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
   assert.match(source, /\(trailer \? eligibleTrailerItems\.length > 1 : circleEntries\.length > 1\) \? \([\s\S]*?discover-swipe-hint/);
   assert.doesNotMatch(source, /trailer-swipe-learned:/);
-  assert.match(source, /Filtros activos, abrir filtros/);
+  assert.match(source, /"filtros activos"\}, abrir filtros`/);
   assert.match(source, /discover-circle-badge/);
 });
 
@@ -387,4 +387,11 @@ test("la tanda nueva trae los siguientes que faltan: sin repetir el último ni p
   assert.match(recommendations, /\.filter\(\(entry\) => !loaded\.has\(candidateKey\(entry\.item\.mediaType, entry\.item\.id\)\)\)\s*\.slice\(offset, offset \+ limit\)/);
   assert.match(recommendations, /const offset = loaded\.size \? 0 :/);
   assert.match(panel, /fetchSocialRecommendations\(userId, nextPage, 12, filters, storedReactions, entries\.map\(\(entry\) => itemKey\(entry\.item\)\)\)/);
+});
+
+test("el botón Filtros muestra en rojo cuántos filtros hay activos", () => {
+  const panel = readFileSync(new URL("../src/components/RecommendationPanel.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(panel, /<span className="discover-filterbar__label">Filtros<\/span>\s*\{activeFilterCount \? \(\s*<span className="discover-filterbar__count"/);
+  assert.match(css, /\.discover-filterbar__button \.discover-filterbar__count \{[^}]*background: #e5484d;/);
 });

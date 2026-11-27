@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useMediaDetails } from "./MediaDetailsModal";
 import { SendRecommendationModal } from "./SendRecommendationModal";
 import { TalentDetailsModal } from "./TalentDetailsModal";
@@ -76,6 +77,26 @@ type BrowseRail = {
   description: string;
   items: DiscoveryItem[];
 };
+
+const HEADER_SEARCH_SLOT_ID = "app-topbar-search-slot";
+const DESKTOP_HEADER_QUERY = "(min-width: 901px)";
+
+// En desktop el buscador abierto vive dentro del header, no debajo.
+function useDesktopHeaderSearchSlot(enabled: boolean) {
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && Boolean(window.matchMedia?.(DESKTOP_HEADER_QUERY).matches));
+  const [, setMounted] = useState(false);
+  useEffect(() => {
+    // Un render más tras montar: el header ya está en el DOM y el slot se puede encontrar.
+    setMounted(true);
+    const media = window.matchMedia?.(DESKTOP_HEADER_QUERY);
+    if (!media) return;
+    const update = () => setIsDesktop(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  if (!enabled || !isDesktop || typeof document === "undefined") return null;
+  return document.getElementById(HEADER_SEARCH_SLOT_ID);
+}
 
 /** Vista = marcada con pulgar arriba o abajo (ya no existe un estado 'watched' aparte). */
 function isWatchedReaction(reaction: RecommendationReaction | undefined): reaction is RatedReaction {
@@ -166,6 +187,10 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
   const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches(userId));
   const [searchFilters, setSearchFilters] = useState<SearchFilters>(DEFAULT_SEARCH_FILTERS);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const headerSearchSlot = useDesktopHeaderSearchSlot(dedicated && showInput);
+  useEffect(() => {
+    if (headerSearchSlot) searchInputRef.current?.focus();
+  }, [headerSearchSlot]);
   const talentRequestRef = useRef(0);
   const talentControllerRef = useRef<AbortController | null>(null);
   const talentMoreRef = useRef(false);
@@ -586,8 +611,14 @@ export function SearchPanel({ userId, query, onQueryChange, isBrowsing, canDisco
     <section className={`panel search-panel${hasQuery || isBrowsing || dedicated ? " is-active" : ""}${showInput ? "" : " search-panel--global"}${dedicated ? " search-panel--dedicated" : ""}`} onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setIsInputFocused(false);
     }}>
-      {dedicated ? <div className="search-panel__heading"><h1>Buscar</h1><button type="button" className="search-panel__close" onClick={onClose} data-escape-dismiss>Cerrar</button></div> : null}
-      {showInput ? <SearchInput query={query} onQueryChange={onQueryChange} inputRef={searchInputRef} onFocus={() => setIsInputFocused(true)} /> : null}
+      {dedicated && !headerSearchSlot ? <div className="search-panel__heading"><h1>Buscar</h1><button type="button" className="search-panel__close" onClick={onClose} data-escape-dismiss>Cerrar</button></div> : null}
+      {headerSearchSlot ? createPortal(
+        <div className="app-topbar-search">
+          <SearchInput query={query} onQueryChange={onQueryChange} inputRef={searchInputRef} onFocus={() => setIsInputFocused(true)} />
+          <button type="button" className="app-topbar-search__close" onClick={onClose} data-escape-dismiss>Cerrar</button>
+        </div>,
+        headerSearchSlot
+      ) : showInput ? <SearchInput query={query} onQueryChange={onQueryChange} inputRef={searchInputRef} onFocus={() => setIsInputFocused(true)} /> : null}
 
       {dedicated && hasQuery ? <div className="search-panel__filters">
         <div className="search-panel__tabs" role="group" aria-label="Tipo de resultado">

@@ -15824,3 +15824,82 @@ body.discover-mobile-lock.trailer-immersive { overflow: hidden !important; }
 @media (min-width: 901px) {
   .discover-synopsis-sheet { display: none; }
 }
+
+/* Buscador en el header (desktop): al abrirse crece desde la lupa hacia la navegación. */
+.app-topbar__search-slot:empty { display: none; }
+@media (min-width: 901px) {
+  /* Llena el espacio libre y deja un respiro antes de la navegación, mayor en pantallas anchas. */
+  .app-topbar__search-slot { flex: 1 1 auto; min-width: 0; max-width: 900px; margin-left: clamp(16px, calc(10vw - 80px), 120px); }
+  .app-topbar__actions:has(.app-topbar-search) .app-topbar__search-trigger { display: none; }
+  .app-topbar-search { display: flex; align-items: center; gap: 8px; width: 100%; animation: app-topbar-search-in 240ms cubic-bezier(0.22, 0.8, 0.3, 1); }
+  .app-topbar-search .search-panel__input--glass {
+    position: relative;
+    top: auto;
+    z-index: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .app-topbar-search .search-panel__input-icon { left: 15px; width: 18px; height: 18px; }
+  .app-topbar-search .search-panel__input--glass input {
+    height: 42px;
+    min-height: 42px;
+    padding: 0 44px 0 42px;
+    border: 1px solid rgba(252, 195, 95, 0.35);
+    border-radius: 999px;
+    background: rgba(18, 21, 27, 0.78);
+    font-size: 0.95rem;
+  }
+  .app-topbar-search .search-panel__input--glass input:focus { border-color: var(--accent); outline: none; }
+  .app-topbar-search .search-panel__input-clear { right: 6px; width: 30px; height: 30px; }
+  .app-topbar-search__close {
+    flex: none;
+    height: 42px;
+    padding: 0 16px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.88rem;
+    cursor: pointer;
+  }
+  .app-topbar-search__close:hover { background: rgba(255, 255, 255, 0.06); }
+  .app-topbar-search__close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+}
+@keyframes app-topbar-search-in {
+  from { opacity: 0; clip-path: inset(0 0 0 calc(100% - 42px) round 999px); }
+  to { opacity: 1; clip-path: inset(0 0 0 0 round 999px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-topbar-search { animation: none; }
+}
+
+/* Contador rojo de filtros activos: al lado de "Filtros" en desktop, en la esquina del ícono en mobile. */
+.discover-filterbar__button { position: relative; }
+.discover-filterbar__button .discover-filterbar__count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+}
+@media (max-width: 900px) {
+  .discover-filterbar__button .discover-filterbar__count {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    font-size: 0.62rem;
+    box-shadow: 0 0 0 2px var(--bg, #08090c);
+  }
+}

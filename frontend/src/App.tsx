@@ -1013,6 +1013,8 @@ export default function App() {
           </div>
 
           <div className="app-topbar__actions">
+            {/* En desktop, el buscador abierto se dibuja acá (SearchPanel lo monta con un portal). */}
+            {canSearch ? <div className="app-topbar__search-slot" id="app-topbar-search-slot" /> : null}
             {canSearch ? (
               <button type="button" className="app-topbar__search-trigger" onClick={openGlobalSearch} aria-label="Abrir búsqueda global" aria-expanded={isGlobalSearchOpen}>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>

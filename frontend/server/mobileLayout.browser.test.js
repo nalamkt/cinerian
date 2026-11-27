@@ -188,3 +188,41 @@ test("el feed híbrido conserva proporción, jerarquía y acciones con video o i
     }
   } finally { browser.close(); }
 });
+
+const desktopHeaderMarkup = (open) => `<div class="app-shell app-shell--immersive${open ? " app-shell--search" : ""}"><header class="app-topbar">
+  <div class="app-topbar__navigation"><button class="app-topbar__brand">CINERIAN</button><nav class="dock"><div class="dock__items"><div class="dock__nav">
+    <button class="dock__button is-active"><span class="dock__icon"></span><span class="dock__label">Descubrí</span></button>
+    <button class="dock__button"><span class="dock__icon"></span><span class="dock__label">En común</span></button>
+    <button class="dock__button"><span class="dock__icon"></span><span class="dock__label">Viendo</span></button>
+    <button class="dock__button watchlist-tab"><span class="dock__icon"></span><span class="dock__label">Watchlist</span></button>
+  </div></div></nav></div>
+  <div class="app-topbar__actions">
+    <div class="app-topbar__search-slot" id="app-topbar-search-slot">${open ? '<div class="app-topbar-search"><div class="input-stack search-panel__input search-panel__input--glass"><svg class="search-panel__input-icon"></svg><input type="search" aria-label="Buscar"></div><button class="app-topbar-search__close">Cerrar</button></div>' : ""}</div>
+    <button class="app-topbar__search-trigger">Buscar</button>
+    <div class="app-activity-anchor"><button class="app-notifications-button">Actividad</button></div>
+    <button class="app-topbar__avatar">P</button>
+  </div>
+</header></div>`;
+
+test("en desktop el buscador abierto ocupa el header, entre Watchlist y las notificaciones", { skip: !existsSync(chromePath) }, async () => {
+  const browser = await connectChrome();
+  try {
+    for (const width of [1024, 1280, 1440, 1920]) {
+      await browser.send("Emulation.setDeviceMetricsOverride", { width, height: 900, screenWidth: width, screenHeight: 900, deviceScaleFactor: 1, mobile: false });
+      const measure = async (open) => (await browser.send("Runtime.evaluate", {
+        expression: `(() => { document.querySelector('#root').innerHTML = ${JSON.stringify(desktopHeaderMarkup(open))}; document.querySelectorAll('.app-topbar-search').forEach((node) => { node.style.animation = 'none'; }); const rect = (selector) => { const node = document.querySelector(selector); if (!node) return null; const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height, width: r.width }; }; return { header: rect('.app-topbar'), watchlist: rect('.watchlist-tab'), search: rect('.app-topbar-search'), input: rect('.app-topbar-search input'), bell: rect('.app-notifications-button'), trigger: rect('.app-topbar__search-trigger'), pageWidth: document.documentElement.scrollWidth }; })()`,
+        returnByValue: true
+      })).result.value;
+      const closed = await measure(false);
+      const open = await measure(true);
+      assert.ok(open.search.left >= open.watchlist.right + 12, `${width}px: el buscador pisa la navegación ${JSON.stringify(open)}`);
+      assert.ok(open.search.right <= open.bell.left, `${width}px: el buscador pisa las notificaciones`);
+      assert.ok(open.input.width >= 200, `${width}px: el campo quedó demasiado angosto (${open.input.width}px)`);
+      assert.ok(open.input.top >= open.header.top && open.input.bottom <= open.header.bottom, `${width}px: el campo sale del header`);
+      assert.ok(Math.abs(open.header.height - closed.header.height) <= 1, `${width}px: abrir el buscador cambió el alto del header`);
+      if (width >= 1280) assert.ok(open.search.left - open.watchlist.right <= 200, `${width}px: queda demasiado espacio vacío antes del buscador`);
+      assert.equal(open.trigger.width, 0, `${width}px: la lupa sigue visible con el buscador abierto`);
+      assert.ok(open.pageWidth <= width, `${width}px: desborde horizontal`);
+    }
+  } finally { browser.close(); }
+});

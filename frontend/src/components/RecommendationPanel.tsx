@@ -1793,12 +1793,15 @@ export function RecommendationPanel({ userId, active, onOpenUserProfile }: Recom
           type="button"
           className={`discover-filterbar__button${activeFilterCount ? " is-active" : ""}`}
           onClick={() => setIsFiltersOpen(true)}
-          aria-label={activeFilterCount ? "Filtros activos, abrir filtros" : "Abrir filtros"}
+          aria-label={activeFilterCount ? `${activeFilterCount} ${activeFilterCount === 1 ? "filtro activo" : "filtros activos"}, abrir filtros` : "Abrir filtros"}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 6h16M7 12h10M10 18h4" />
           </svg>
           <span className="discover-filterbar__label">Filtros</span>
+          {activeFilterCount ? (
+            <span className="discover-filterbar__count" aria-hidden="true">{activeFilterCount > 9 ? "9+" : activeFilterCount}</span>
+          ) : null}
         </button>
       </div>
 
